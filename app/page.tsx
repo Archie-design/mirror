@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-// 已修正編譯錯誤：在預覽環境中使用 esm.sh 匯入 Supabase
-// 在您的本地 VS Code 專案中，請確保已執行：npm install @supabase/supabase-js lucide-react
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'; 
+// 已修正部署錯誤：還原為標準 npm 匯入路徑
+// 請確保執行過：npm install @supabase/supabase-js lucide-react
+import { createClient, SupabaseClient } from '@supabase/supabase-js'; 
 
 import { 
   Flame, 
@@ -162,9 +162,10 @@ export default function App() {
   }, []);
 
   // 1. 工作階段保留機制 (20分鐘)
-  // 由於不使用 Firebase，我們採用 sessionStorage 搭配時間戳記來管理
   useEffect(() => {
     const checkSession = async () => {
+      if (typeof window === 'undefined') return;
+      
       const savedUserId = sessionStorage.getItem('starry_session_uid');
       const savedTimestamp = sessionStorage.getItem('starry_session_time');
 
@@ -174,21 +175,23 @@ export default function App() {
         const sessionTime = parseInt(savedTimestamp);
 
         if (currentTime - sessionTime < TWENTY_MINUTES) {
-          // 自動重新獲取資料
-          const { data, error } = await supabase
-            .from('CharacterStats')
-            .select('*')
-            .eq('UserID', savedUserId)
-            .single();
+          try {
+            const { data, error } = await supabase
+              .from('CharacterStats')
+              .select('*')
+              .eq('UserID', savedUserId)
+              .single();
 
-          if (data && !error) {
-            setUserData(data as CharacterStats);
-            const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', data.UserID);
-            setLogs((userLogs as DailyLog[]) || []);
-            // 更新 session 時間
-            sessionStorage.setItem('starry_session_time', Date.now().toString());
-            setView('app');
-            return;
+            if (data && !error) {
+              setUserData(data as CharacterStats);
+              const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', data.UserID);
+              setLogs((userLogs as DailyLog[]) || []);
+              sessionStorage.setItem('starry_session_time', Date.now().toString());
+              setView('app');
+              return;
+            }
+          } catch (e) {
+            console.error("Session re-auth failed", e);
           }
         }
       }
@@ -197,7 +200,7 @@ export default function App() {
     checkSession();
   }, []);
 
-  // 2. 系統設定與排行榜 (進入 App 後執行)
+  // 2. 系統設定與排行榜
   useEffect(() => {
     async function fetchData() {
       if (!supabase || view !== 'app') return;
@@ -217,7 +220,7 @@ export default function App() {
     fetchData();
   }, [view, activeTab]);
 
-  // 3. 登入邏輯 (包含建立工作階段)
+  // 3. 登入邏輯
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!supabase) return;
@@ -236,7 +239,6 @@ export default function App() {
       });
 
       if (userMatch) {
-        // 建立工作階段
         sessionStorage.setItem('starry_session_uid', userMatch.UserID);
         sessionStorage.setItem('starry_session_time', Date.now().toString());
 
@@ -348,7 +350,6 @@ export default function App() {
         UserID: userData.UserID, 
         QuestTitle: quest.title 
       }]);
-      // 互動後重置 session 時間
       sessionStorage.setItem('starry_session_time', Date.now().toString());
     } catch (err) { 
       setModalMessage({ text: "同步失敗。", type: 'error' });
@@ -399,16 +400,14 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-10 space-y-12 bg-slate-950 text-center text-slate-200">
         <div className="animate-in zoom-in duration-700 flex flex-col items-center">
-          <div className="w-32 h-32 bg-orange-600 rounded-[3.5rem] flex items-center justify-center shadow-2xl border-4 border-white/20 mb-6 text-white">
-            <span className="text-7xl">🕉️</span>
-          </div>
+          <div className="w-32 h-32 bg-orange-600 rounded-[3.5rem] flex items-center justify-center shadow-2xl border-4 border-white/20 mb-6 text-white text-center"><span className="text-7xl">🕉️</span></div>
           <h1 className="text-5xl font-black tracking-widest mb-2 text-white">星光西遊</h1>
           <p className="text-orange-400 text-lg font-bold uppercase tracking-[0.4em]">修行轉生門戶</p>
         </div>
         <form onSubmit={handleLogin} className="w-full max-w-sm space-y-6">
           <input name="name" required className="w-full bg-slate-900/60 border-2 border-slate-800 rounded-2xl p-6 text-white text-center text-xl focus:border-orange-500 outline-none transition-all placeholder:text-slate-600 font-bold" placeholder="冒險者姓名" />
           <input name="phone" required type="password" className="w-full bg-slate-900/60 border-2 border-slate-800 rounded-2xl p-6 text-white text-center text-xl focus:border-orange-500 outline-none transition-all placeholder:text-slate-600 font-bold" placeholder="手機末三碼" />
-          <button disabled={isSyncing} className="w-full py-7 rounded-[2.5rem] bg-gradient-to-r from-orange-600 to-yellow-500 text-slate-950 font-black text-2xl shadow-2xl active:scale-95 transition-all text-center flex items-center justify-center">
+          <button disabled={isSyncing} className="w-full py-7 rounded-[2.5rem] bg-gradient-to-r from-orange-600 to-yellow-500 text-slate-950 font-black text-2xl shadow-2xl active:scale-95 transition-all flex items-center justify-center">
             {isSyncing ? <Loader2 className="animate-spin mr-2" /> : "連結靈魂印記"}
           </button>
           <button type="button" onClick={() => setView('register')} className="text-slate-500 text-sm font-bold flex items-center gap-2 mx-auto hover:text-orange-400 transition-colors">
@@ -429,7 +428,7 @@ export default function App() {
               <Sparkles size={40} />
             </div>
             <h1 className="text-4xl font-black tracking-tight text-white">啟動轉生</h1>
-            <p className="text-slate-500 font-bold italic">請輸入評分以具現化你的修行資質</p>
+            <p className="text-slate-500 font-bold italic">請填寫評分以具現化你的修行資質</p>
           </header>
           <form onSubmit={handleCreateCharacter} className="space-y-8">
             <div className="space-y-4 text-left">
@@ -441,9 +440,9 @@ export default function App() {
               <label className="text-xs font-black text-orange-500 uppercase tracking-widest ml-2 flex items-center gap-2 text-left text-white"><Target size={14} /> 生命五力評分 (1-10)</label>
               {[{ id: 'career', label: '事業運勢', sub: '悟性', icon: <Briefcase size={16} /> }, { id: 'wealth', label: '財富運勢', sub: '機緣', icon: <Coins size={16} /> }, { id: 'love', label: '感情運勢', sub: '魅力', icon: <Heart size={16} /> }, { id: 'family', label: '家庭運勢', sub: '神識', icon: <Home size={16} /> }, { id: 'health', label: '身體運勢', sub: '根骨', icon: <HeartPulse size={16} /> }].map(f => (
                 <div key={f.id} className="space-y-2 bg-slate-900/50 p-4 rounded-3xl border border-slate-800">
-                  <div className="flex justify-between items-center px-1"><span className="font-bold text-white text-sm flex items-center gap-2 text-left">{f.icon} {f.label}</span><span className="text-[10px] text-slate-500 font-bold italic">{f.sub}</span></div>
+                  <div className="flex justify-between items-center px-1"><span className="font-bold text-white text-sm flex items-center gap-2 text-left">{f.icon} {f.label}</span><span className="text-[10px] text-slate-500 font-bold italic text-left">{f.sub}</span></div>
                   <input name={f.id} type="range" min="1" max="10" defaultValue="5" className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
-                  <div className="flex justify-between text-[10px] text-slate-600 font-bold px-1 uppercase tracking-widest"><span>1 困頓</span><span>5 平衡</span><span>10 圓滿</span></div>
+                  <div className="flex justify-between text-[10px] text-slate-600 font-bold px-1 uppercase tracking-widest text-center"><span>1 困頓</span><span>5 平衡</span><span>10 圓滿</span></div>
                 </div>
               ))}
             </div>
@@ -466,11 +465,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-40">
       <header className="p-8 bg-slate-900 border-b border-slate-800 shadow-2xl relative text-white">
-        <div className="absolute top-0 right-0 p-6"><button onClick={handleLogout} className="bg-slate-950/50 border border-slate-800 p-2 rounded-xl text-slate-500 hover:text-red-400"><LogOut size={20} /></button></div>
+        <div className="absolute top-0 right-0 p-6"><button onClick={handleLogout} className="bg-slate-950/50 border border-slate-800 p-2 rounded-xl text-slate-500 hover:text-red-400 text-center"><LogOut size={20} /></button></div>
         <div className="max-w-md mx-auto flex items-center gap-6">
-          <div className="relative flex-shrink-0">
+          <div className="relative flex-shrink-0 text-center">
             <div className="w-24 h-24 bg-orange-600 rounded-[2.2rem] flex items-center justify-center text-white text-5xl font-black shadow-lg">{userData!.Name[0]}</div>
-            <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-1 rounded-full border-4 border-slate-900">LV.{userData!.Level}</div>
+            <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-1 rounded-full border-4 border-slate-900 text-center">LV.{userData!.Level}</div>
           </div>
           <div className="flex-1 text-left">
             <div className="flex items-center gap-2 mb-1">
@@ -485,7 +484,7 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="flex gap-2 p-4 bg-slate-950 sticky top-0 z-20 border-b border-slate-900 shadow-lg max-w-md mx-auto overflow-x-auto no-scrollbar">
+      <nav className="flex gap-2 p-4 bg-slate-950 sticky top-0 z-20 border-b border-slate-900 shadow-lg max-w-md mx-auto overflow-x-auto no-scrollbar text-center">
         <button onClick={() => setActiveTab('daily')} className={`flex-shrink-0 px-6 py-4 rounded-[1.2rem] text-sm font-black transition-all ${activeTab === 'daily' ? 'bg-orange-600 text-white shadow-xl' : 'bg-slate-900 text-slate-500'}`}>今日定課</button>
         <button onClick={() => setActiveTab('weekly')} className={`flex-shrink-0 px-6 py-4 rounded-[1.2rem] text-sm font-black transition-all ${activeTab === 'weekly' ? 'bg-orange-600 text-white shadow-xl' : 'bg-slate-900 text-slate-500'}`}>加分主題</button>
         <button onClick={() => setActiveTab('rank')} className={`flex-shrink-0 px-6 py-4 rounded-[1.2rem] text-sm font-black transition-all ${activeTab === 'rank' ? 'bg-orange-600 text-white shadow-xl' : 'bg-slate-900 text-slate-500'}`}>法界榜</button>
@@ -497,7 +496,7 @@ export default function App() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             <div className="bg-red-900/30 border-2 border-red-500/50 rounded-[2rem] p-6 shadow-2xl text-center">
               <div className="flex items-center gap-3 mb-2 font-black text-red-400 justify-center"><Flame size={20} /><h2 className="text-base uppercase tracking-widest">本週指定必修</h2></div>
-              <p className="text-xl text-white font-black leading-relaxed text-center">「{DAILY_QUEST_CONFIG.find(q => q.id === systemSettings.MandatoryQuestId)?.title || "載入中"}」</p>
+              <p className="text-xl text-white font-black leading-relaxed">「{DAILY_QUEST_CONFIG.find(q => q.id === systemSettings.MandatoryQuestId)?.title || "載入中"}」</p>
               <div className="mt-4 p-3 bg-red-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 animate-pulse"><Coins size={18} /> 現實罰款 NT$ 50 / 日</div>
               <p className="text-slate-400 font-bold mt-3 text-xs italic">⚠️ 未完成將於結算時由大會執行罰扣並累積</p>
             </div>
@@ -507,7 +506,7 @@ export default function App() {
               const isMandatory = q.id === systemSettings.MandatoryQuestId;
               return (
                 <div key={q.id} onClick={() => !isDone && handleCheckIn(q)} className={`p-7 rounded-[2.5rem] border-2 transition-all flex flex-col gap-4 relative text-center ${isDone ? 'bg-emerald-950/20 border-emerald-500/40 opacity-60' : isMandatory ? 'bg-slate-900 border-red-600 scale-[1.02] shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900 border-slate-800 hover:border-orange-500 shadow-lg'} ${isCure && !isDone ? 'border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : ''}`}>
-                  <div className="flex items-center gap-6 text-left"><div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-2xl font-black text-center ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-orange-500'}`}>{isDone ? "✓" : "✧"}</div><div className="flex-1 text-left text-white text-left"><h3 className={`text-xl font-black text-left ${isDone ? 'text-emerald-400' : 'text-white'}`}>{q.title}</h3><p className="text-sm text-slate-500 font-bold text-left">{q.sub}</p></div><div className="text-right text-orange-500 font-black text-right">+{q.reward}</div></div>
+                  <div className="flex items-center gap-6 text-left"><div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-2xl font-black text-center ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-orange-500'}`}>{isDone ? "✓" : "✧"}</div><div className="flex-1 text-left text-white"><h3 className={`text-xl font-black text-left ${isDone ? 'text-emerald-400' : 'text-white'}`}>{q.title}</h3><p className="text-sm text-slate-500 font-bold text-left">{q.sub}</p></div><div className="text-right text-orange-500 font-black">+{q.reward}</div></div>
                 </div>
               );
             })}
@@ -517,19 +516,19 @@ export default function App() {
         {activeTab === 'weekly' && (
           <div className="space-y-8 text-center animate-in slide-in-from-right-8 text-white">
             <div className="p-8 rounded-[3rem] border-2 border-yellow-500/50 bg-yellow-500/5 shadow-2xl relative overflow-hidden text-center">
-              <div className="flex items-center gap-6 mb-6 text-left text-white text-left">
+              <div className="flex items-center gap-6 mb-6 text-left text-white">
                 <div className="text-6xl text-center">🎯</div>
                 <div className="flex-1 text-left"><span className="bg-yellow-500 text-slate-950 text-[10px] px-2 py-0.5 rounded-full font-black uppercase mb-1 inline-block">雙週主題挑戰</span><h3 className="text-2xl font-black text-left">主題親證</h3><p className="text-sm text-yellow-400 font-bold leading-tight mt-1 italic text-left">「{systemSettings.TopicQuestTitle}」</p></div>
                 <div className="text-sm font-black text-yellow-500 bg-yellow-500/10 px-3 py-1 rounded-xl text-center">+1000</div>
               </div>
-              <button disabled={isTopicDone} onClick={() => handleCheckIn({ id: 't1', title: '主題親證', sub: '雙週挑戰', reward: 1000 })} className={`w-full py-4 rounded-2xl font-black text-lg transition-all ${isTopicDone ? 'bg-emerald-600/20 text-emerald-400 cursor-not-allowed text-center' : 'bg-yellow-500 text-slate-950 shadow-lg active:scale-95 text-center'}`}>{isTopicDone ? "本期已圓滿 ✓" : "回報主題修行"}</button>
+              <button disabled={isTopicDone} onClick={() => handleCheckIn({ id: 't1', title: '主題親證', sub: '雙週挑戰', reward: 1000 })} className={`w-full py-4 rounded-2xl font-black text-lg transition-all ${isTopicDone ? 'bg-emerald-600/20 text-emerald-400 cursor-not-allowed' : 'bg-yellow-500 text-slate-950 shadow-lg active:scale-95'}`}>{isTopicDone ? "本期已圓滿 ✓" : "回報主題修行"}</button>
             </div>
             {WEEKLY_QUEST_CONFIG.map(q => {
               const comps = logs.filter(l => l.QuestID.startsWith(q.id)).length;
               const isMax = q.limit !== 99 && comps >= (q.limit || 0);
               return (
                 <div key={q.id} className={`p-8 rounded-[3rem] bg-slate-900 border border-slate-800 shadow-2xl text-center ${isMax ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="flex items-center gap-6 mb-8 text-left text-white text-left">
+                  <div className="flex items-center gap-6 mb-8 text-left text-white">
                     <div className="text-6xl text-center"> {q.icon} </div>
                     <div className="flex-1 text-left text-left"><h3 className="text-2xl font-black text-left">{q.title}</h3><p className="text-sm text-slate-400 font-bold italic text-left">{q.sub}</p></div>
                     <div className="text-sm font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-xl text-center">+${q.reward}</div>
@@ -557,7 +556,7 @@ export default function App() {
           <div className="space-y-4 text-center animate-in fade-in slide-in-from-bottom-4">
              <div className="flex items-center gap-2 mb-6 justify-center text-white"><Crown className="text-yellow-500" /><h2 className="text-2xl font-black text-center">法界修為榜</h2></div>
              <div className="bg-slate-900 border-2 border-slate-800 rounded-[2.5rem] overflow-hidden text-center">{leaderboard.map((p, i) => (
-                <div key={p.UserID} className={`flex items-center gap-4 p-5 ${i < 3 ? 'bg-white/5' : ''} ${i !== leaderboard.length - 1 ? 'border-b border-slate-800' : ''}`}><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-center ${i === 0 ? 'bg-yellow-500 text-slate-950' : i === 1 ? 'bg-slate-300 text-slate-950' : i === 2 ? 'bg-orange-400 text-slate-950' : 'text-slate-500'}`}>{i + 1}</div><div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-lg font-black text-white text-center">{p.Name[0]}</div><div className="flex-1 text-left text-left text-white"><p className="font-bold text-white text-sm text-left">{p.Name}</p><p className="text-[10px] text-slate-500 tracking-widest uppercase text-left">{p.Role}</p></div><div className="text-right text-right"><p className="text-sm font-black text-orange-500 text-right">{p.Exp} 修為</p>{p.TotalFines > 0 && <p className="text-[10px] text-red-500 font-bold text-right">罰款 NT${p.TotalFines}</p>}</div></div>
+                <div key={p.UserID} className={`flex items-center gap-4 p-5 ${i < 3 ? 'bg-white/5' : ''} ${i !== leaderboard.length - 1 ? 'border-b border-slate-800' : ''}`}><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-center ${i === 0 ? 'bg-yellow-500 text-slate-950' : i === 1 ? 'bg-slate-300 text-slate-950' : i === 2 ? 'bg-orange-400 text-slate-950' : 'text-slate-500'}`}>{i + 1}</div><div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-lg font-black text-white text-center">{p.Name[0]}</div><div className="flex-1 text-left text-white"><p className="font-bold text-white text-sm text-left">{p.Name}</p><p className="text-[10px] text-slate-500 tracking-widest uppercase text-left">{p.Role}</p></div><div className="text-right text-right"><p className="text-sm font-black text-orange-500 text-right">{p.Exp} 修為</p>{p.TotalFines > 0 && <p className="text-[10px] text-red-500 font-bold text-right">罰款 NT${p.TotalFines}</p>}</div></div>
               ))}</div>
           </div>
         )}
@@ -593,7 +592,7 @@ export default function App() {
 
       <footer className="fixed bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none text-center z-30">
         <div className="max-w-md mx-auto pointer-events-auto text-center text-white">
-          <button disabled={userData!.EnergyDice < 3} onClick={handleAdventure} className={`w-full py-7 rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 transition-all text-center ${userData!.EnergyDice >= 3 ? 'bg-gradient-to-r from-orange-600 to-yellow-500 text-slate-950 active:scale-95' : 'bg-slate-800 text-slate-600 opacity-50'}`}>
+          <button disabled={userData!.EnergyDice < 3} onClick={handleAdventure} className={`w-full py-7 rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 transition-all text-center ${userData!.EnergyDice >= 3 ? 'bg-gradient-to-r from-orange-600 to-yellow-500 text-slate-950 active:scale-95 text-center' : 'bg-slate-800 text-slate-600 opacity-50 text-center'}`}>
             <Dice5 size={32} />啟動冒險 (🎲 {userData!.EnergyDice})
           </button>
         </div>
