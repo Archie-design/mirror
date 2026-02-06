@@ -19,8 +19,8 @@ interface CharacterStats {
   Name: string;
   Role: string;
   Level: number;
-  Exp: number; // 系統內稱為「修為」
-  EnergyDice: number; // 「能量骰子」
+  Exp: number; // 修為
+  EnergyDice: number; // 能量骰子
   Spirit: number; // 神識
   Physique: number; // 根骨
   Charisma: number; // 魅力
@@ -29,10 +29,9 @@ interface CharacterStats {
   Potential: number; // 潛力
   Streak: number;
   LastCheckIn: string | null;
-  TotalFines: number; // 「定課罰金」
+  TotalFines: number; // 定課罰金
 }
 
-// 定義修行者專屬的六維屬性鍵值類型，避免 TypeScript 指派錯誤
 type StatKey = 'Spirit' | 'Physique' | 'Charisma' | 'Savvy' | 'Luck' | 'Potential';
 
 interface DailyLog {
@@ -141,12 +140,10 @@ export default function App() {
   const [adminAuth, setAdminAuth] = useState(false);
   const [allPlayers, setAllPlayers] = useState<CharacterStats[]>([]);
   
-  // 管理員編輯用暫存狀態
   const [editTopicTitle, setEditTopicTitle] = useState('');
 
   const todayStr = new Date().toDateString();
 
-  // 雙週週期判定
   const currentBiWeeklyMonday = useMemo(() => {
     const now = new Date();
     const monday = new Date(now);
@@ -160,7 +157,6 @@ export default function App() {
     [logs, currentBiWeeklyMonday]
   );
 
-  // 1. 初始化與工作階段管理
   useEffect(() => {
     const init = async () => {
       const savedUid = sessionStorage.getItem('starry_session_uid');
@@ -181,7 +177,6 @@ export default function App() {
     init();
   }, []);
 
-  // 2. 同步法界數據
   useEffect(() => {
     async function fetchData() {
       if (!supabase || view === 'loading') return;
@@ -208,7 +203,6 @@ export default function App() {
     fetchData();
   }, [view, activeTab, isSyncing]);
 
-  // 3. 修行打卡邏輯
   const handleCheckIn = async (quest: Quest) => {
     if (!supabase || !userData) return;
     
@@ -237,7 +231,6 @@ export default function App() {
       let newExp = (userData.Exp || 0) + quest.reward;
       let newLevel = Math.max(1, Math.floor(newExp / 1000) + 1);
       
-      // 修正：使用 Partial 並明確指派，解決原本的編譯類型報錯
       const update: Partial<CharacterStats> = { 
         Exp: newExp, 
         Level: newLevel, 
@@ -247,7 +240,6 @@ export default function App() {
       
       if (isCure && roleInfo) { 
         const f = roleInfo.bonusStat; 
-        // 使用類型斷言確保 assignable
         (update as any)[f] = ((userData[f] as number) || 10) + 2; 
       }
 
@@ -263,7 +255,6 @@ export default function App() {
     }
   };
 
-  // 4. 時光回溯機制
   const handleUndoCheckIn = async (quest: Quest) => {
     if (!supabase || !userData || !quest) return;
     setIsSyncing(true);
@@ -320,7 +311,6 @@ export default function App() {
     }
   };
 
-  // 5. 管理員邏輯
   const handleAdminAuth = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const pw = (new FormData(e.currentTarget)).get('password');
@@ -363,10 +353,75 @@ export default function App() {
         setLogs((userLogs as DailyLog[]) || []);
         setView('app');
       } else {
-        setModalMessage({ text: "查無此修行者印記，請確認姓名與代碼。", type: 'error' });
+        setModalMessage({ text: "查無此修行者印記，請確認姓名與密鑰。", type: 'error' });
       }
     } catch (err) {
       setModalMessage({ text: "法動開示失敗，請檢查連線。", type: 'error' });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // --- 啟動轉生 (註冊邏輯更新) ---
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSyncing(true);
+    const fd = new FormData(e.currentTarget);
+    const name = (fd.get('name') as string).trim();
+    const phoneRaw = (fd.get('phone') as string).replace(/\D/g, '').trim();
+    const phone = (phoneRaw.length === 10 && phoneRaw.startsWith('0')) ? phoneRaw.substring(1) : phoneRaw;
+    
+    // 獲取五運自評分數
+    const scores = {
+      career: parseInt(fd.get('career') as string) || 5,
+      wealth: parseInt(fd.get('wealth') as string) || 5,
+      love: parseInt(fd.get('love') as string) || 5,
+      family: parseInt(fd.get('family') as string) || 5,
+      health: parseInt(fd.get('health') as string) || 5,
+    };
+
+    // 隨機抽取角色模組
+    const roles = Object.keys(ROLE_CURE_MAP);
+    const assignedRole = roles[Math.floor(Math.random() * roles.length)];
+
+    // 根據手冊設定初始數值與自評轉換 (基礎值設為自評分數+5，確保在10上下)
+    const calcBase = (v: number) => Math.max(5, v + 5); 
+
+    const newChar: CharacterStats = {
+      UserID: phone,
+      Name: name,
+      Role: assignedRole,
+      Level: 1,
+      Exp: 0,
+      EnergyDice: 3,
+      Savvy: calcBase(scores.career),      // 事業 -> 悟性
+      Luck: calcBase(scores.wealth),       // 金錢 -> 機緣
+      Charisma: calcBase(scores.love),     // 感情 -> 魅力
+      Spirit: calcBase(scores.family),     // 家庭 -> 神識
+      Physique: calcBase(scores.health),   // 身體 -> 根骨
+      Potential: 10,
+      Streak: 0,
+      LastCheckIn: null,
+      TotalFines: 0
+    };
+
+    // 套用天命對治初始加成 (+2)
+    const bonusKey = ROLE_CURE_MAP[assignedRole].bonusStat;
+    (newChar as any)[bonusKey] += 2;
+
+    try {
+      const { error } = await supabase.from('CharacterStats').insert([newChar]);
+      if (error) {
+        if (error.code === '23505') setModalMessage({ text: "此靈魂印記已存在於法界。", type: 'error' });
+        else throw error;
+      } else {
+        sessionStorage.setItem('starry_session_uid', newChar.UserID);
+        setUserData(newChar);
+        setView('app');
+        setModalMessage({ text: `✨ 轉生儀式完成！你是【${assignedRole}】模組。`, type: 'success' });
+      }
+    } catch (err) {
+      setModalMessage({ text: "轉生儀式中斷，請重試。", type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -413,10 +468,69 @@ export default function App() {
             placeholder="手機末三碼" 
           />
           <button disabled={isSyncing} className="w-full py-7 rounded-4xl bg-orange-600 text-white font-black text-2xl shadow-xl active:scale-95 transition-all">連結靈魂印記</button>
-          <div className="text-center">
+          <div className="flex flex-col gap-4 text-center">
+            <button type="button" onClick={() => setView('register')} className="text-slate-500 text-sm font-bold hover:text-orange-400 transition-colors flex items-center justify-center gap-1">
+              <UserPlus size={16} /> 尚未啟動轉生？立即啟動修行
+            </button>
             <button type="button" onClick={() => setView('admin')} className="text-slate-700 text-xs font-black uppercase tracking-widest hover:text-slate-500">大會中樞入口</button>
           </div>
         </form>
+        {modalMessage && <MessageBox message={modalMessage.text} type={modalMessage.type} onClose={() => setModalMessage(null)} />}
+      </div>
+    );
+  }
+
+  if (view === 'register') {
+    return (
+      <div className="min-h-screen bg-slate-950 p-8 text-slate-200">
+        <div className="max-w-md mx-auto space-y-10 py-12 animate-in slide-in-from-bottom-8 duration-500">
+          <header className="text-center space-y-4">
+            <div className="w-20 h-20 bg-yellow-500 rounded-3xl mx-auto flex items-center justify-center shadow-xl mb-4 text-slate-950">
+              <Sparkles size={40} />
+            </div>
+            <h1 className="text-4xl font-black tracking-tight text-white text-center text-center">啟動轉生儀式</h1>
+            <p className="text-slate-500 font-bold italic text-center text-center text-center">請輸入真實印記以具現化修行資格</p>
+          </header>
+          <form onSubmit={handleRegister} className="space-y-8">
+            <div className="space-y-4">
+              <label className="text-xs font-black text-orange-500 uppercase tracking-widest ml-2 flex items-center gap-2 justify-center"><UserIcon size={14} /> 通訊識別</label>
+              <input name="name" required className="w-full bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 text-white outline-none focus:border-orange-500 transition-all font-bold text-center" placeholder="真實姓名" />
+              <input name="phone" required type="tel" className="w-full bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 text-white outline-none focus:border-orange-500 transition-all font-bold text-center" placeholder="手機號碼 (用於唯一UserID)" />
+            </div>
+
+            <div className="space-y-6">
+              <label className="text-xs font-black text-orange-500 uppercase tracking-widest ml-2 flex items-center gap-2 justify-center text-center text-center"><Target size={14} /> 生命五力自評 (1-10)</label>
+              
+              {[
+                { id: 'career', label: '事業運勢', sub: '對應悟性', icon: <Briefcase size={16}/> },
+                { id: 'wealth', label: '金錢運勢', sub: '對應機緣', icon: <Coins size={16}/> },
+                { id: 'love', label: '感情運勢', sub: '對應魅力', icon: <Heart size={16}/> },
+                { id: 'family', label: '家庭運勢', sub: '對應神識', icon: <Home size={16}/> },
+                { id: 'health', label: '身體運勢', sub: '對應根骨', icon: <HeartPulse size={16}/> }
+              ].map(f => (
+                <div key={f.id} className="space-y-2 bg-slate-900/50 p-4 rounded-3xl border border-slate-800">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="font-bold text-white text-sm flex items-center gap-2">{f.icon} {f.label}</span>
+                    <span className="text-[10px] text-slate-500 font-bold italic">{f.sub}</span>
+                  </div>
+                  <input name={f.id} type="range" min="1" max="10" defaultValue="5" className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                  <div className="flex justify-between text-[10px] text-slate-600 font-bold px-1 uppercase tracking-widest text-center">
+                    <span>1 困頓</span>
+                    <span>5 平衡</span>
+                    <span>10 圓滿</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-6 space-y-4 text-center">
+              <button disabled={isSyncing} className="w-full py-6 rounded-4xl bg-orange-600 text-white font-black text-xl shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all text-center text-center text-center">
+                {isSyncing ? <Loader2 className="animate-spin" /> : "確認轉生"} <ArrowRight size={24} />
+              </button>
+              <button type="button" onClick={() => setView('login')} className="w-full py-2 text-slate-500 font-bold text-sm text-center">返回登入門戶</button>
+            </div>
+          </form>
+        </div>
         {modalMessage && <MessageBox message={modalMessage.text} type={modalMessage.type} onClose={() => setModalMessage(null)} />}
       </div>
     );
@@ -427,12 +541,12 @@ export default function App() {
       <div className="min-h-screen bg-slate-950 text-slate-200 p-8">
         {!adminAuth ? (
           <div className="max-w-sm mx-auto mt-32 space-y-8 animate-in zoom-in-95">
-             <header className="text-center space-y-4 text-center mx-auto">
+             <header className="text-center space-y-4 text-center mx-auto text-center">
                <div className="w-20 h-20 bg-slate-800 rounded-3xl mx-auto flex items-center justify-center shadow-xl border border-slate-700 text-orange-500"><Lock size={40} /></div>
                <h1 className="text-3xl font-black text-white text-center">管理員驗證</h1>
                <p className="text-slate-500 font-bold text-sm text-center">請輸入修行中樞密令</p>
              </header>
-             <form onSubmit={handleAdminAuth} className="space-y-6 text-center">
+             <form onSubmit={handleAdminAuth} className="space-y-6 text-center text-center">
                 <input name="password" type="password" required className="w-full bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 text-white text-center text-xl outline-none focus:border-orange-500 transition-all font-bold" placeholder="密令" autoFocus />
                 <div className="flex gap-4 text-center">
                   <button type="button" onClick={() => setView('login')} className="flex-1 py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl text-center">取消</button>
@@ -442,15 +556,15 @@ export default function App() {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto space-y-12 animate-in fade-in pb-20">
-             <header className="flex justify-between items-center text-center">
+             <header className="flex justify-between items-center text-center text-center">
                <div className="flex items-center gap-3">
                  <div className="p-3 bg-orange-600 rounded-2xl text-white shadow-lg"><Settings size={24} /></div>
-                 <h1 className="text-3xl font-black text-white">大會管理後台</h1>
+                 <h1 className="text-3xl font-black text-white text-center">大會管理後台</h1>
                </div>
                <button onClick={handleLogout} className="p-3 bg-slate-900 rounded-2xl text-slate-500 border border-slate-800 hover:text-red-400"><X size={20} /></button>
              </header>
 
-             <section className="space-y-6 text-center">
+             <section className="space-y-6 text-center text-center">
                 <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest justify-center"><BarChart3 size={16} /> 修行大會全域設定</div>
                 <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl shadow-xl space-y-8">
                   <div className="space-y-4">
@@ -465,7 +579,7 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1 block text-center">雙週加分主題名稱</label>
-                    <div className="flex gap-2 text-center mx-auto">
+                    <div className="flex gap-2 text-center mx-auto text-center">
                       <input 
                         value={editTopicTitle}
                         onChange={(e) => setEditTopicTitle(e.target.value)}
@@ -483,10 +597,10 @@ export default function App() {
                 </div>
              </section>
 
-             <section className="space-y-6 text-center">
-                <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest justify-center"><Users size={16} /> 冒險者修行數據清單</div>
-                <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden shadow-2xl">
-                   <div className="overflow-x-auto text-center">
+             <section className="space-y-6 text-center text-center">
+                <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest justify-center text-center"><Users size={16} /> 冒險者修行數據清單</div>
+                <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden shadow-2xl text-center">
+                   <div className="overflow-x-auto text-center mx-auto text-center">
                      <table className="w-full text-left border-collapse text-center">
                         <thead className="bg-slate-950/50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
                           <tr>
@@ -497,20 +611,20 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-800 text-white text-center">
                            {allPlayers.map((p) => (
-                             <tr key={p.UserID} className="hover:bg-white/5 transition-colors">
+                             <tr key={p.UserID} className="hover:bg-white/5 transition-colors text-center text-center">
                                <td className="px-6 py-5">
                                  <div className="flex items-center gap-3 text-left">
                                    <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-lg font-black text-white text-center">{p.Name?.[0]}</div>
-                                   <div className="text-left">
+                                   <div className="text-left text-left">
                                      <p className="font-bold text-white leading-tight">{p.Name}</p>
                                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-tighter italic">{p.Role}</p>
                                    </div>
                                  </div>
                                </td>
-                               <td className="px-6 py-5 text-left">
+                               <td className="px-6 py-5 text-left text-center text-center">
                                  <p className="font-black text-blue-400">LV.{p.Level} / {p.Exp}</p>
                                </td>
-                               <td className="px-6 py-5 text-right">
+                               <td className="px-6 py-5 text-right text-center text-center">
                                  <p className={`font-black ${p.TotalFines > 0 ? 'text-red-500' : 'text-slate-600'}`}>NT$ {p.TotalFines}</p>
                                </td>
                              </tr>
@@ -534,18 +648,18 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-40 font-sans text-center">
       <header className="p-8 bg-slate-900 border-b border-slate-800 flex items-center gap-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-6 flex gap-2">
-          <button onClick={handleLogout} className="bg-slate-950/50 border border-slate-800 p-2 rounded-xl text-slate-600 hover:text-red-400 transition-colors"><LogOut size={20} /></button>
+          <button onClick={handleLogout} className="bg-slate-950/50 border border-slate-800 p-2 rounded-xl text-slate-500 hover:text-red-400 transition-colors"><LogOut size={20} /></button>
         </div>
         <div className="relative shrink-0">
           <div className="w-24 h-24 bg-orange-600 rounded-4xl flex items-center justify-center text-white text-5xl font-black shadow-lg">
             {userData?.Name?.[0] || '?'}
           </div>
-          <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-1 rounded-full border-4 border-slate-900">
+          <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-1 rounded-full border-4 border-slate-900 text-center">
             LV.{userData?.Level || 1}
           </div>
         </div>
-        <div className="flex-1 text-left">
-          <div className="flex items-center gap-2 mb-1">
+        <div className="flex-1 text-left text-left text-left">
+          <div className="flex items-center gap-2 mb-1 text-left text-left">
             <h1 className="text-3xl font-black text-white">{userData?.Name || "修行者"}</h1>
             {userData && (
               <span className={`text-[10px] px-2 py-0.5 rounded font-black text-white ${ROLE_CURE_MAP[userData.Role]?.color}`}>
@@ -554,29 +668,28 @@ export default function App() {
             )}
           </div>
           <p className="text-xs text-slate-500 font-bold mb-3 uppercase tracking-widest italic">{userData?.Role} 模組修行中</p>
-          <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700">
-            <div className="h-full bg-orange-500 transition-all duration-1000 shadow-[0_0_8px_rgba(249,115,22,0.6)]" style={{ width: `${((userData?.Exp || 0) % 1000) / 10}%` }}></div>
+          <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden border border-slate-700 text-left">
+            <div className="h-full bg-orange-500 transition-all duration-1000" style={{ width: `${((userData?.Exp || 0) % 1000) / 10}%` }}></div>
           </div>
         </div>
       </header>
 
-      <nav className="sticky top-0 z-20 bg-slate-950/90 backdrop-blur-md flex p-4 gap-2 border-b border-slate-900 shadow-xl overflow-x-auto no-scrollbar text-center">
+      <nav className="sticky top-0 z-20 bg-slate-950/90 backdrop-blur-md flex p-4 gap-2 border-b border-slate-900 shadow-xl overflow-x-auto no-scrollbar text-center text-center text-center">
         <button onClick={() => setActiveTab('daily')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'daily' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500'}`}>修行定課</button>
         <button onClick={() => setActiveTab('weekly')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'weekly' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500'}`}>加分副本</button>
         <button onClick={() => setActiveTab('rank')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'rank' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500'}`}>諸位修為榜</button>
         <button onClick={() => setActiveTab('stats')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'stats' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500'}`}>六維與罰金</button>
       </nav>
 
-      <main className="max-w-md mx-auto p-6 space-y-8 text-center text-center mx-auto">
+      <main className="max-w-md mx-auto p-6 space-y-8 text-center text-center mx-auto text-center text-center">
         {activeTab === 'daily' && (
           <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500 text-center mx-auto">
-            <div className="bg-red-900/20 border-2 border-red-500/40 rounded-4xl p-6 shadow-2xl text-center">
-              <div className="flex items-center gap-2 justify-center text-red-400 font-black text-xs uppercase mb-2 tracking-widest text-center text-center"><Flame size={16}/> 本週指定必修項目</div>
-              <h2 className="text-2xl font-black text-white italic text-center">「{DAILY_QUEST_CONFIG.find(q => q.id === systemSettings.MandatoryQuestId)?.title || "載入中"}」</h2>
-              <div className="mt-4 py-3 bg-red-600/90 text-white rounded-xl text-xs font-black animate-pulse flex items-center justify-center gap-2 shadow-lg text-center mx-auto text-center"><Coins size={14}/> 逾期定課罰金：NT$ 50</div>
+            <div className="bg-red-900/20 border-2 border-red-500/40 rounded-4xl p-6 shadow-2xl text-center text-center">
+              <div className="flex items-center gap-2 justify-center text-red-400 font-black text-xs uppercase mb-2 tracking-widest text-center text-center text-center"><Flame size={16}/> 本週指定必修項目</div>
+              <h2 className="text-2xl font-black text-white italic text-center text-center">「{DAILY_QUEST_CONFIG.find(q => q.id === systemSettings.MandatoryQuestId)?.title || "載入中"}」</h2>
+              <div className="mt-4 py-3 bg-red-600/90 text-white rounded-xl text-xs font-black animate-pulse flex items-center justify-center gap-2 shadow-lg text-center mx-auto text-center text-center text-center"><Coins size={14}/> 逾期定課罰金：NT$ 50</div>
             </div>
 
-            {/* 定課清單 */}
             {DAILY_QUEST_CONFIG.map(q => {
               const isDone = logs.some(l => l.QuestID === q.id && new Date(l.Timestamp).toDateString() === todayStr);
               const isMandatory = q.id === systemSettings.MandatoryQuestId;
@@ -594,9 +707,9 @@ export default function App() {
                     ${isDone ? 'bg-emerald-500 text-white' : 
                       isMandatory ? 'bg-red-600 text-white' : 
                       'bg-slate-800 text-orange-500'}`}>{isDone ? '✓' : '✧'}</div>
-                  <div className="flex-1 text-left">
-                    <h3 className={`font-black text-lg ${isDone ? 'text-emerald-400' : isMandatory ? 'text-red-400' : 'text-white'}`}>{q.title}</h3>
-                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{q.sub}</p>
+                  <div className="flex-1 text-left text-left text-left">
+                    <h3 className={`font-black text-lg text-left ${isDone ? 'text-emerald-400' : isMandatory ? 'text-red-400' : 'text-white'}`}>{q.title}</h3>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest text-left">{q.sub}</p>
                   </div>
                   <div className={`font-black ${isDone ? 'text-emerald-500' : isMandatory ? 'text-red-500' : 'text-orange-500'}`}>+{q.reward}</div>
                 </button>
@@ -606,20 +719,20 @@ export default function App() {
         )}
 
         {activeTab === 'weekly' && (
-          <div className="space-y-8 animate-in slide-in-from-right-8 duration-500 text-center">
-            <div className="p-8 rounded-4xl border-2 border-yellow-500/50 bg-yellow-500/5 shadow-2xl relative overflow-hidden text-center mx-auto text-center">
-              <div className="flex items-center gap-6 mb-6 text-left text-center">
-                <div className="text-6xl text-center">🎯</div>
-                <div className="flex-1 text-left">
+          <div className="space-y-8 animate-in slide-in-from-right-8 duration-500 text-center text-center">
+            <div className="p-8 rounded-4xl border-2 border-yellow-500/50 bg-yellow-500/5 shadow-2xl relative overflow-hidden text-center mx-auto text-center text-center text-center text-center">
+              <div className="flex items-center gap-6 mb-6 text-left text-center text-center">
+                <div className="text-6xl text-center text-center">🎯</div>
+                <div className="flex-1 text-left text-left">
                   <span className="bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase mb-1 inline-block">雙週副本挑戰</span>
-                  <h3 className="text-2xl font-black text-white">主題親證</h3>
-                  <p className="text-sm text-yellow-400 font-bold leading-tight mt-1 italic">「{systemSettings.TopicQuestTitle}」</p>
+                  <h3 className="text-2xl font-black text-white text-left">主題親證</h3>
+                  <p className="text-sm text-yellow-400 font-bold leading-tight mt-1 italic text-left">「{systemSettings.TopicQuestTitle}」</p>
                 </div>
-                <div className="text-sm font-black text-yellow-500 bg-yellow-500/10 px-3 py-1 rounded-xl">+1000</div>
+                <div className="text-sm font-black text-yellow-500 bg-yellow-500/10 px-3 py-1 rounded-xl text-center text-center">+1000</div>
               </div>
               <button 
                 onClick={() => !isTopicDone ? handleCheckIn({ id: 't1', title: '主題親證', reward: 1000 }) : setUndoTarget({ id: 't1', title: '主題親證', reward: 1000 })} 
-                className={`w-full py-4 rounded-2xl font-black text-lg transition-all text-center ${isTopicDone ? 'bg-emerald-600/20 text-emerald-400 shadow-inner' : 'bg-yellow-500 text-slate-950 shadow-lg active:scale-95'}`}
+                className={`w-full py-4 rounded-2xl font-black text-lg transition-all text-center text-center ${isTopicDone ? 'bg-emerald-600/20 text-emerald-400 shadow-inner' : 'bg-yellow-500 text-slate-950 shadow-lg active:scale-95 text-center text-center'}`}
               >
                 {isTopicDone ? "本期已圓滿 (點擊回溯) ✓" : "回報主題修行"}
               </button>
@@ -629,16 +742,16 @@ export default function App() {
               const comps = logs.filter(l => l.QuestID.startsWith(q.id)).length;
               const isMax = q.limit !== 99 && comps >= (q.limit || 0);
               return (
-                <div key={q.id} className={`p-8 rounded-4xl bg-slate-900 border border-slate-800 shadow-2xl text-center ${isMax ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="flex items-center gap-6 mb-8 text-left text-center">
-                    <div className="text-6xl text-center">{q.icon}</div>
-                    <div className="flex-1 text-left text-center">
-                      <h3 className="text-2xl font-black text-white">{q.title}</h3>
-                      <p className="text-sm text-slate-400 font-bold italic">{q.sub}</p>
+                <div key={q.id} className={`p-8 rounded-4xl bg-slate-900 border border-slate-800 shadow-2xl text-center text-center ${isMax ? 'opacity-50 grayscale' : ''}`}>
+                  <div className="flex items-center gap-6 mb-8 text-left text-center text-center text-center text-center">
+                    <div className="text-6xl text-center text-center">{q.icon}</div>
+                    <div className="flex-1 text-left text-center text-center text-center">
+                      <h3 className="text-2xl font-black text-white text-center text-center">{q.title}</h3>
+                      <p className="text-sm text-slate-400 font-bold italic text-center text-center">{q.sub}</p>
                     </div>
-                    <div className="text-sm font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-xl text-center">+$ {q.reward}</div>
+                    <div className="text-sm font-black text-blue-400 bg-blue-400/10 px-3 py-1 rounded-xl text-center text-center">+$ {q.reward}</div>
                   </div>
-                  <div className="flex justify-between items-center px-2 text-center text-center mx-auto">
+                  <div className="flex justify-between items-center px-2 text-center text-center mx-auto text-center text-center">
                     {['一','二','三','四','五','六','日'].map((day, idx) => {
                       const d = new Date();
                       const diff = (d.getDay() || 7) - (idx + 1);
@@ -647,7 +760,7 @@ export default function App() {
                       const qId = `${q.id}|${dStr}`;
                       const isDone = logs.some(l => l.QuestID === qId);
                       return (
-                        <button key={idx} onClick={() => !isDone ? (!isMax && handleCheckIn({ ...q, id: qId })) : setUndoTarget({ ...q, id: qId })} className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all text-center ${isDone ? 'bg-orange-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{day}</button>
+                        <button key={idx} onClick={() => !isDone ? (!isMax && handleCheckIn({ ...q, id: qId })) : setUndoTarget({ ...q, id: qId })} className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all text-center text-center ${isDone ? 'bg-orange-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700 text-center text-center'}`}>{day}</button>
                       );
                     })}
                   </div>
@@ -658,19 +771,19 @@ export default function App() {
         )}
 
         {activeTab === 'rank' && (
-          <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden divide-y divide-slate-800 shadow-2xl animate-in fade-in text-center mx-auto text-center">
-            <div className="p-4 bg-slate-950/50 flex items-center gap-2 text-yellow-500 font-black text-xs uppercase tracking-widest justify-center text-center text-center">
+          <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden divide-y divide-slate-800 shadow-2xl animate-in fade-in text-center mx-auto text-center text-center text-center text-center">
+            <div className="p-4 bg-slate-950/50 flex items-center gap-2 text-yellow-500 font-black text-xs uppercase tracking-widest justify-center text-center text-center text-center text-center text-center">
               <Crown size={14}/> 當前諸位修行者修為榜
             </div>
             {leaderboard.map((p, i) => (
-              <div key={p.UserID} className={`flex items-center gap-4 p-5 ${i < 3 ? 'bg-white/5' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? 'bg-yellow-500 text-slate-950' : i === 1 ? 'bg-slate-300 text-slate-950' : i === 2 ? 'bg-orange-400 text-slate-950' : 'text-slate-500'}`}>{i + 1}</div>
-                <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-white shadow-lg text-center text-center">{p.Name?.[0]}</div>
-                <div className="flex-1 text-left text-left">
+              <div key={p.UserID} className={`flex items-center gap-4 p-5 ${i < 3 ? 'bg-white/5' : ''} text-center text-center`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? 'bg-yellow-500 text-slate-950' : i === 1 ? 'bg-slate-300 text-slate-950' : i === 2 ? 'bg-orange-400 text-slate-950' : 'text-slate-500'} text-center text-center`}>{i + 1}</div>
+                <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-white shadow-lg text-center text-center text-center text-center">{p.Name?.[0]}</div>
+                <div className="flex-1 text-left text-left text-left text-center">
                   <p className="font-bold text-sm text-white">{p.Name}</p>
                   <p className="text-[10px] text-slate-500 uppercase tracking-tighter italic">{p.Role}</p>
                 </div>
-                <div className="text-right text-right">
+                <div className="text-right text-right text-right text-center text-center text-center">
                   <p className="text-sm font-black text-orange-500">{p.Exp} <span className="text-[8px] text-slate-600 tracking-widest">修為</span></p>
                   {p.TotalFines > 0 && <p className="text-[10px] text-red-500 font-black">罰金 NT${p.TotalFines}</p>}
                 </div>
@@ -680,17 +793,17 @@ export default function App() {
         )}
 
         {activeTab === 'stats' && userData && (
-          <div className="space-y-8 animate-in zoom-in-95 duration-500 text-center">
-            <div className="bg-gradient-to-br from-red-950/40 to-slate-900 border-2 border-red-900/50 p-8 rounded-4xl shadow-2xl relative overflow-hidden text-center mx-auto text-center">
-              <div className="flex items-center gap-3 mb-4 justify-center text-red-400 text-center text-center">
-                <Wallet size={24} /><span className="text-sm font-black uppercase tracking-widest text-center text-center">定課罰金累積統計</span>
+          <div className="space-y-8 animate-in zoom-in-95 duration-500 text-center text-center text-center">
+            <div className="bg-gradient-to-br from-red-950/40 to-slate-900 border-2 border-red-900/50 p-8 rounded-4xl shadow-2xl relative overflow-hidden text-center mx-auto text-center text-center text-center text-center text-center">
+              <div className="flex items-center gap-3 mb-4 justify-center text-red-400 text-center text-center text-center text-center">
+                <Wallet size={24} /><span className="text-sm font-black uppercase tracking-widest text-center text-center text-center">定課罰金累積統計</span>
               </div>
-              <div className="flex flex-col items-center text-center text-center text-center">
-                <span className="text-6xl font-black text-white tracking-tighter mb-2 text-center text-center">NT$ {userData.TotalFines || 0}</span>
-                <p className="text-xs text-slate-500 font-bold tracking-widest uppercase text-center text-center text-center">「必修未竟」之累世罰金</p>
+              <div className="flex flex-col items-center text-center text-center text-center text-center text-center">
+                <span className="text-6xl font-black text-white tracking-tighter mb-2 text-center text-center text-center text-center">NT$ {userData.TotalFines || 0}</span>
+                <p className="text-xs text-slate-500 font-bold tracking-widest uppercase text-center text-center text-center text-center text-center text-center">「必修未竟」之累世罰金</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-5 text-center text-center">
+            <div className="grid grid-cols-1 gap-5 text-center text-center text-center">
               <StatCard label="神識 (Spirit)" value={userData.Spirit} icon={<Sparkles size={16} className="text-purple-400" />} color="bg-purple-500" />
               <StatCard label="根骨 (Physique)" value={userData.Physique} icon={<Shield size={16} className="text-red-400" />} color="bg-red-500" />
               <StatCard label="魅力 (Charisma)" value={userData.Charisma} icon={<Heart size={16} className="text-pink-400" />} color="bg-pink-500" />
@@ -702,34 +815,34 @@ export default function App() {
         )}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none z-30 text-center text-center text-center text-center">
-        <div className="max-w-md mx-auto pointer-events-auto text-center text-center text-center text-center">
-          <button disabled={(userData?.EnergyDice || 0) < 3} onClick={() => setModalMessage({ text: "此區域目前雲霧繚繞，請待長老開啟梅花副本。", type: 'info' })} className={`w-full py-7 rounded-[2.5rem] font-black text-2xl shadow-[0_10px_30px_rgba(234,88,12,0.4)] flex items-center justify-center gap-4 transition-all text-center text-center ${ (userData?.EnergyDice || 0) >= 3 ? 'bg-linear-to-r from-orange-600 to-yellow-500 text-slate-950 active:scale-95 text-center' : 'bg-slate-800 text-slate-600 opacity-50 text-center text-center'}`}>
+      <footer className="fixed bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none z-30 text-center text-center text-center text-center text-center text-center">
+        <div className="max-w-md mx-auto pointer-events-auto text-center text-center text-center text-center text-center text-center">
+          <button disabled={(userData?.EnergyDice || 0) < 3} onClick={() => setModalMessage({ text: "此區域目前雲霧繚繞，請待長老開啟梅花副本。", type: 'info' })} className={`w-full py-7 rounded-[2.5rem] font-black text-2xl shadow-[0_10px_30px_rgba(234,88,12,0.4)] flex items-center justify-center gap-4 transition-all text-center text-center text-center text-center ${ (userData?.EnergyDice || 0) >= 3 ? 'bg-linear-to-r from-orange-600 to-yellow-500 text-slate-950 active:scale-95 text-center text-center text-center' : 'bg-slate-800 text-slate-600 opacity-50 text-center text-center text-center text-center text-center'}`}>
             <Dice5 size={32} />啟動探索冒險 (🎲 {userData?.EnergyDice || 0})
           </button>
         </div>
       </footer>
 
       {undoTarget && (
-        <div className="fixed inset-0 z-[310] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-xl animate-in fade-in duration-200">
-          <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center space-y-6 border-b-8 border-b-orange-600 text-center text-center text-center">
-            <div className="w-20 h-20 rounded-full mx-auto flex items-center justify-center bg-orange-500/20 text-orange-500 shadow-inner text-center mx-auto text-center text-center"><RotateCcw size={40} className="animate-spin-slow" /></div>
-            <div className="space-y-2 text-center text-center text-center text-center">
-              <h3 className="text-2xl font-black text-white text-center text-center text-center text-center">發動時光回溯？</h3>
-              <p className="text-slate-400 text-sm font-bold text-center text-center text-center">這將會扣除本次修得的 <span className="text-orange-500">{undoTarget.reward} 修為</span> 與天命增益。</p>
+        <div className="fixed inset-0 z-[310] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-xl animate-in fade-in duration-200 text-center text-center">
+          <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center space-y-6 border-b-8 border-b-orange-600 text-center text-center text-center text-center">
+            <div className="w-20 h-20 rounded-full mx-auto flex items-center justify-center bg-orange-500/20 text-orange-500 shadow-inner text-center mx-auto text-center text-center text-center text-center"><RotateCcw size={40} className="animate-spin-slow" /></div>
+            <div className="space-y-2 text-center text-center text-center text-center text-center text-center text-center">
+              <h3 className="text-2xl font-black text-white text-center text-center text-center text-center text-center text-center text-center">發動時光回溯？</h3>
+              <p className="text-slate-400 text-sm font-bold text-center text-center text-center text-center text-center text-center">這將會扣除本次修得的 <span className="text-orange-500">{undoTarget.reward} 修為</span> 與天命增益。</p>
             </div>
-            <div className="flex gap-4 text-center text-center text-center text-center">
-              <button onClick={() => setUndoTarget(null)} className="flex-1 py-4 bg-slate-800 text-slate-500 font-black rounded-2xl hover:bg-slate-700 transition-colors text-center text-center text-center">保持現狀</button>
-              <button onClick={() => handleUndoCheckIn(undoTarget)} className="flex-1 py-4 bg-orange-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all text-center text-center text-center">確認回溯</button>
+            <div className="flex gap-4 text-center text-center text-center text-center text-center text-center text-center">
+              <button onClick={() => setUndoTarget(null)} className="flex-1 py-4 bg-slate-800 text-slate-500 font-black rounded-2xl hover:bg-slate-700 transition-colors text-center text-center text-center text-center text-center text-center">保持現狀</button>
+              <button onClick={() => handleUndoCheckIn(undoTarget)} className="flex-1 py-4 bg-orange-600 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all text-center text-center text-center text-center text-center text-center">確認回溯</button>
             </div>
           </div>
         </div>
       )}
 
       {isSyncing && (
-        <div className="fixed inset-0 bg-slate-950/60 z-[300] flex flex-col items-center justify-center text-center text-center text-center text-center text-center">
-          <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4 text-center mx-auto text-center text-center" />
-          <p className="text-orange-500 font-black animate-pulse tracking-widest text-center text-center text-center">與法界同步中...</p>
+        <div className="fixed inset-0 bg-slate-950/60 z-[300] flex flex-col items-center justify-center text-center text-center text-center text-center text-center text-center">
+          <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4 text-center mx-auto text-center text-center text-center text-center" />
+          <p className="text-orange-500 font-black animate-pulse tracking-widest text-center text-center text-center text-center text-center">與法界同步中...</p>
         </div>
       )}
 
