@@ -12,11 +12,10 @@ interface CaptainTabProps {
 }
 
 function getCurrentWeekMondayStr(): string {
-    const now = new Date();
-    const day = now.getDay() || 7;
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - (day - 1));
-    monday.setHours(0, 0, 0, 0);
+    const nowTaiwan = new Date(Date.now() + 8 * 3600 * 1000);
+    const day = nowTaiwan.getUTCDay() || 7;
+    const monday = new Date(nowTaiwan);
+    monday.setUTCDate(monday.getUTCDate() - (day - 1));
     return monday.toISOString().slice(0, 10);
 }
 

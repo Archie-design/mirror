@@ -10,11 +10,12 @@ const supabaseActionKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.N
 const ALL_QUEST_IDS = DAILY_QUEST_CONFIG.map(q => q.id).filter(id => id.startsWith('q'));
 
 function getCurrentWeekMondayStr(): string {
-    const now = new Date();
-    const day = now.getDay() || 7;
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - (day - 1));
-    monday.setHours(0, 0, 0, 0);
+    // Always compute relative to Taiwan time (UTC+8) so the stored value
+    // matches what page.tsx compares against on the client side.
+    const nowTaiwan = new Date(Date.now() + 8 * 3600 * 1000);
+    const day = nowTaiwan.getUTCDay() || 7; // 1=Mon … 7=Sun
+    const monday = new Date(nowTaiwan);
+    monday.setUTCDate(monday.getUTCDate() - (day - 1));
     return monday.toISOString().slice(0, 10);
 }
 
