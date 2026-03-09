@@ -1,14 +1,13 @@
 'use server';
 
-import { getPool } from '@/lib/db';
+import { connectDb } from '@/lib/db';
 import { ARTIFACTS_CONFIG } from '@/lib/constants';
 
 export async function purchaseArtifact(userId: string, artifactId: string, teamName: string | null) {
-    const pool = getPool();
     const config = ARTIFACTS_CONFIG.find(a => a.id === artifactId);
     if (!config) return { success: false, error: "未知的法寶 ID" };
 
-    const client = await pool.connect();
+    const client = await connectDb();
     try {
         await client.query('BEGIN');
 
@@ -50,8 +49,8 @@ export async function purchaseArtifact(userId: string, artifactId: string, teamN
             const newCoins = currentCoins - totalPrice;
 
             await client.query(`
-                UPDATE "TeamSettings" 
-                SET "team_coins" = $1, "inventory" = $2::jsonb 
+                UPDATE "TeamSettings"
+                SET "team_coins" = $1, "inventory" = $2::jsonb
                 WHERE "team_name" = $3
             `, [newCoins, JSON.stringify(newInventory), teamName]);
 
@@ -80,8 +79,8 @@ export async function purchaseArtifact(userId: string, artifactId: string, teamN
             const newCoins = currentCoins - config.price;
 
             await client.query(`
-                UPDATE "CharacterStats" 
-                SET "Coins" = $1, "Inventory" = $2::jsonb 
+                UPDATE "CharacterStats"
+                SET "Coins" = $1, "Inventory" = $2::jsonb
                 WHERE "UserID" = $3
             `, [newCoins, JSON.stringify(newInventory), userId]);
         }
@@ -93,15 +92,14 @@ export async function purchaseArtifact(userId: string, artifactId: string, teamN
         await client.query('ROLLBACK');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
 
 export async function transferCoinsToTeam(userId: string, teamName: string, amount: number) {
     if (amount <= 0) return { success: false, error: "捐獻金額必須大於 0" };
 
-    const pool = getPool();
-    const client = await pool.connect();
+    const client = await connectDb();
 
     try {
         await client.query('BEGIN');
@@ -132,7 +130,6 @@ export async function transferCoinsToTeam(userId: string, teamName: string, amou
         await client.query('ROLLBACK');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
-

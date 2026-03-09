@@ -1,17 +1,21 @@
-import { Pool } from 'pg';
+import { Client } from 'pg';
 
-let globalPool: Pool;
-
-export function getPool() {
-    if (!globalPool) {
-        if (!process.env.DATABASE_URL) {
-            throw new Error("DATABASE_URL is not set. Please set it to a PostgreSQL connection string in .env.local");
-        }
-        globalPool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            // Supabase requires SSL for remote connections
-            ssl: { rejectUnauthorized: false }
-        });
+/**
+ * Creates a new PostgreSQL client per request.
+ * Use `client.end()` in the finally block to release the connection.
+ *
+ * pg.Pool holds idle connections open, which exhausts Supabase's connection
+ * limit on Vercel serverless where each invocation may create its own pool.
+ * Per-request Client avoids this entirely.
+ */
+export async function connectDb(): Promise<Client> {
+    if (!process.env.DATABASE_URL) {
+        throw new Error('DATABASE_URL is not set in environment variables.');
     }
-    return globalPool;
+    const client = new Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+    });
+    await client.connect();
+    return client;
 }

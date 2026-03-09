@@ -1,7 +1,7 @@
 'use server';
 
 import { GoogleGenAI } from '@google/genai';
-import { getPool } from '@/lib/db';
+import { connectDb } from '@/lib/db';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -10,8 +10,8 @@ export async function generatePersonalizedEncounter(userId: string) {
         return { success: false, error: "GEMINI_API_KEY 未設定，無法生成動態遭遇。" };
     }
 
-    const pool = getPool();
-    const client = await pool.connect();
+    
+    const client = await connectDb();
 
     try {
         // 1. Fetch User Stats
@@ -97,6 +97,6 @@ ${logs.map(l => `- ${new Date(l.Timestamp).toLocaleDateString()} : ${l.QuestTitl
         console.error("Gemini DDA Error:", error);
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }

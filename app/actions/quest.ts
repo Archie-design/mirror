@@ -1,6 +1,6 @@
 'use server';
 
-import { getPool } from '@/lib/db';
+import { connectDb } from '@/lib/db';
 import { getLogicalDateStr } from '@/lib/utils/time';
 import { ROLE_CURE_MAP, ROLE_GROWTH_RATES, calculateLevelFromExp } from '@/lib/constants';
 
@@ -12,8 +12,7 @@ export async function processCheckInTransaction(
     questReward: number,
     questDice: number = 0
 ) {
-    const pool = getPool();
-    const client = await pool.connect();
+    const client = await connectDb();
 
     try {
         await client.query('BEGIN');
@@ -192,6 +191,6 @@ export async function processCheckInTransaction(
         await client.query('ROLLBACK');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }

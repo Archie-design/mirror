@@ -1,6 +1,6 @@
 'use server';
 
-import { getPool } from '@/lib/db';
+import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -24,8 +24,8 @@ export async function logAdminAction(
 }
 
 export async function triggerWeeklySnapshot() {
-    const pool = getPool();
-    const client = await pool.connect();
+    
+    const client = await connectDb();
     try {
         await client.query('BEGIN');
 
@@ -121,13 +121,13 @@ export async function triggerWeeklySnapshot() {
         await logAdminAction('weekly_snapshot', 'admin', undefined, undefined, { error: error.message }, 'error');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
 
 export async function checkWeeklyW3Compliance(weekMondayISO?: string) {
-    const pool = getPool();
-    const client = await pool.connect();
+    
+    const client = await connectDb();
     try {
         // Determine the week range (Monday 00:00 to Sunday 23:59:59)
         let weekStart: Date;
@@ -190,7 +190,7 @@ export async function checkWeeklyW3Compliance(weekMondayISO?: string) {
         await logAdminAction('w3_compliance', 'admin', undefined, undefined, { error: error.message }, 'error');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
 
@@ -206,8 +206,8 @@ export async function autoAssignSquadsForTesting(
     squadSize = 4,
     squadsPerBattalion = 3
 ) {
-    const pool = getPool();
-    const client = await pool.connect();
+    
+    const client = await connectDb();
     try {
         await client.query('BEGIN');
 
@@ -279,13 +279,13 @@ export async function autoAssignSquadsForTesting(
         await logAdminAction('auto_assign_squads', 'admin', undefined, undefined, { error: error.message }, 'error');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
 
 export async function importRostersData(csvContent: string) {
-    const pool = getPool();
-    const client = await pool.connect();
+    
+    const client = await connectDb();
 
     try {
         await client.query('BEGIN');
@@ -331,6 +331,6 @@ export async function importRostersData(csvContent: string) {
         await logAdminAction('roster_import', 'admin', undefined, undefined, { error: error.message }, 'error');
         return { success: false, error: error.message };
     } finally {
-        client.release();
+        await client.end();
     }
 }
