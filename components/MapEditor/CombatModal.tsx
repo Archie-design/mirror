@@ -74,11 +74,11 @@ export function CombatModal({
     const tacticalColor = flankingMultiplier > 1.0 ? "text-orange-400" : "text-slate-400";
 
     return (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in zoom-in duration-300">
-            <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in zoom-in duration-300 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)] my-auto">
 
                 {/* Header */}
-                <div className="bg-slate-800 p-6 flex flex-col items-center justify-center relative border-b border-white/5 shadow-inner">
+                <div className="bg-slate-800 p-6 flex flex-col items-center justify-center relative border-b border-white/5 shadow-inner flex-shrink-0">
                     <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-500 hover:text-white transition-colors bg-white/5 rounded-full"><AlertTriangle size={16} className="rotate-180 opacity-0" /></button>
                     <h2 className="text-2xl font-black text-white flex items-center gap-3">
                         <Swords className="text-red-500" /> 戰鬥推演預測
@@ -89,13 +89,13 @@ export function CombatModal({
                 </div>
 
                 {/* VS Board */}
-                <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-white/10 bg-slate-900">
+                <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-white/10 bg-slate-900 flex-1 overflow-y-auto min-h-0">
 
                     {/* Player Side */}
-                    <div className="flex-1 p-6 flex flex-col items-center">
-                        <div className="text-5xl drop-shadow-lg mb-4">{roleConfig?.avatar || '👤'}</div>
+                    <div className="flex-1 p-4 md:p-6 flex flex-col items-center">
+                        <div className="text-4xl md:text-5xl drop-shadow-lg mb-2 md:mb-4">{roleConfig?.avatar || '👤'}</div>
                         <h3 className="text-lg font-black text-emerald-400">{player.Name} (Lv.{player.Level})</h3>
-                        <div className="w-full mt-6 space-y-3">
+                        <div className="w-full mt-4 space-y-2 md:space-y-3">
                             <div className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-white/5">
                                 <span className="text-xs font-black text-slate-500 flex items-center gap-2"><Heart size={14} className="text-red-500" /> 血量</span>
                                 <span className="font-bold text-white">{currentHP} / {playerBaseHP}</span>
@@ -119,15 +119,15 @@ export function CombatModal({
                     </div>
 
                     {/* VS divider */}
-                    <div className="flex items-center justify-center p-4 bg-slate-950/30">
+                    <div className="flex items-center justify-center py-2 md:p-4 bg-slate-950/30">
                         <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center font-black text-slate-500 shadow-inner">VS</div>
                     </div>
 
                     {/* Target Side */}
-                    <div className="flex-1 p-6 flex flex-col items-center">
-                        <div className="text-5xl drop-shadow-lg mb-4 filter drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">{monsterIcon}</div>
+                    <div className="flex-1 p-4 md:p-6 flex flex-col items-center">
+                        <div className="text-4xl md:text-5xl drop-shadow-lg mb-2 md:mb-4 filter drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">{monsterIcon}</div>
                         <h3 className="text-lg font-black text-red-400">{monsterName} {isObscured ? '' : `(Lv.${monsterLevel})`}</h3>
-                        <div className="w-full mt-6 space-y-3 relative">
+                        <div className="w-full mt-4 space-y-2 md:space-y-3 relative">
                             {isObscured && (
                                 <div className="absolute inset-0 z-10 bg-slate-950/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center border border-slate-700/50">
                                     <AlertTriangle size={24} className="text-slate-500 mb-2" />
@@ -151,7 +151,7 @@ export function CombatModal({
                 </div>
 
                 {/* AI Predictive Result */}
-                <div className="bg-slate-950 p-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-white/5">
+                <div className="bg-slate-950 p-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-white/5 flex-shrink-0">
                     <div className="text-left w-full md:w-auto">
                         <div className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-1 flex items-center gap-1"><Zap size={12} /> AI 戰局推演</div>
                         <div className={`text-lg font-black ${winColor} tracking-wide`}>{winChance}</div>
