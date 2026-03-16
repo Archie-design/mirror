@@ -4,6 +4,41 @@ import { Quest, DailyLog } from '@/types';
 import { DAILY_QUEST_CONFIG } from '@/lib/constants';
 import { getLogicalDateStr } from '@/lib/utils/time';
 
+// Sprite sheet: 3×3 grid, each icon at (col%, row%)
+const QUEST_ICON_POS: Record<string, string> = {
+    q1: '100% 100%',
+    q2: '0% 100%',
+    q3: '100% 50%',
+    q4: '0% 0%',
+    q5: '50% 100%',
+    q6: '100% 0%',
+    q7: '0% 50%',
+    q8: '50% 0%',
+    q9: '50% 50%',
+};
+
+function QuestIcon({ questId, isDone }: { questId: string; isDone: boolean }) {
+    const pos = QUEST_ICON_POS[questId];
+    if (isDone) {
+        return (
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-emerald-500 text-white">✓</div>
+        );
+    }
+    if (pos) {
+        return (
+            <div className="w-12 h-12 rounded-2xl shrink-0 bg-slate-800" style={{
+                backgroundImage: 'url(/quest-icons.png)',
+                backgroundSize: '300% 300%',
+                backgroundPosition: pos,
+                backgroundRepeat: 'no-repeat',
+            }} />
+        );
+    }
+    return (
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-slate-800 text-orange-500">✧</div>
+    );
+}
+
 
 interface DailyQuestsTabProps {
     weeklyQuestId?: string;
@@ -32,7 +67,7 @@ function Q1Card({ q, isDone, questLog, isDawn, setIsDawn, hasMirror, activeManda
     return (
         <div className={`relative w-full p-6 rounded-3xl border-2 transition-all ${isDone ? 'bg-emerald-500/10 border-emerald-500/40 opacity-70' : q.id === activeMandatoryId ? 'bg-slate-900 border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-900 border-white/5'}`}>
             <button onClick={handleCheckIn} className="flex items-center gap-4 w-full text-left">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-orange-500'}`}>{isDone ? '✓' : '✧'}</div>
+                <QuestIcon questId="q1" isDone={isDone} />
                 <div className="flex-1">
                     <h3 className={`font-black text-lg ${isDone ? 'text-emerald-400' : 'text-white'}`}>{q.title}</h3>
                     <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{q.sub}</p>
@@ -107,7 +142,7 @@ export function DailyQuestsTab({ weeklyQuestId, logs, logicalTodayStr, userInven
                 const isRecommended = q.id === weeklyQuestId;
                 return (
                     <button key={q.id} onClick={() => !isDone ? onCheckIn(q) : onUndo(q)} className={`relative w-full p-6 rounded-3xl border-2 flex items-center gap-4 transition-all ${isDone ? 'bg-emerald-500/10 border-emerald-500/40 opacity-70' : isRecommended ? 'bg-slate-900 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'bg-slate-900 border-white/5'}`}>
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-orange-500'}`}>{isDone ? '✓' : '✧'}</div>
+                        <QuestIcon questId={q.id} isDone={isDone} />
                         <div className="flex-1 text-left"><h3 className={`font-black text-lg ${isDone ? 'text-emerald-400' : 'text-white'}`}>{q.title}</h3><p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{q.sub}</p></div>
                         <div className="text-right">
                             <div className="font-black text-orange-500">+{q.reward} 修為</div>
