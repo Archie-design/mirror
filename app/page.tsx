@@ -782,7 +782,10 @@ export default function App() {
       const { data: settingsData } = await supabase.from('SystemSettings').select('*');
       if (settingsData) {
         const sObj = settingsData.reduce((acc: any, curr: any) => ({ ...acc, [curr.SettingName]: curr.Value }), {});
-        setSystemSettings({ TopicQuestTitle: sObj.TopicQuestTitle || '修行主題載入中' });
+        setSystemSettings({
+          TopicQuestTitle: sObj.TopicQuestTitle || '修行主題載入中',
+          RegistrationMode: (sObj.RegistrationMode as 'open' | 'roster') || 'open',
+        });
       }
 
       const { data: historyData } = await supabase.from('TopicHistory').select('*').order('created_at', { ascending: false });

@@ -150,13 +150,39 @@ export function AdminDashboard({
                                 🎲 測試用：自動隨機分配大隊 / 小隊
                             </button>
                             <div className="border-t border-white/5 pt-4" />
+
+                            {/* 登入模式開關 */}
+                            <div className="space-y-3">
+                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">登入模式</p>
+                                <div className={`flex items-center justify-between p-4 rounded-2xl border-2 ${systemSettings.RegistrationMode === 'roster' ? 'border-indigo-500/50 bg-indigo-950/30' : 'border-emerald-500/50 bg-emerald-950/30'}`}>
+                                    <div>
+                                        <p className={`font-black text-sm ${systemSettings.RegistrationMode === 'roster' ? 'text-indigo-300' : 'text-emerald-300'}`}>
+                                            {systemSettings.RegistrationMode === 'roster' ? '🔐 名單驗證模式' : '🌐 自由註冊模式'}
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">
+                                            {systemSettings.RegistrationMode === 'roster' ? '僅限名冊內信箱登入，新生需由管理員預先匯入' : '任何人可自行填表註冊'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => updateGlobalSetting('RegistrationMode', systemSettings.RegistrationMode === 'roster' ? 'open' : 'roster')}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${systemSettings.RegistrationMode === 'roster' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'}`}
+                                    >
+                                        切換為{systemSettings.RegistrationMode === 'roster' ? '自由註冊' : '名單驗證'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="border-t border-white/5 pt-4" />
                             <form onSubmit={handleImportSubmit} className="space-y-4 text-center">
-                                <p className="text-xs text-slate-400 text-left">請貼上 CSV 格式資料<br />(email,大隊名稱,小隊名稱,是否隊長(true/false))</p>
+                                <p className="text-xs text-slate-400 text-left">
+                                    請貼上 CSV 格式資料（含表頭行將自動略過）<br />
+                                    格式：<span className="text-orange-400 font-mono">email, 姓名, 生日(YYYY-MM-DD), 大隊, 小隊, 是否小隊長, 是否大隊長</span>
+                                </p>
                                 <textarea
                                     value={csvInput}
                                     onChange={(e) => setCsvInput(e.target.value)}
-                                    placeholder={`ex: \nuser1@gmail.com,第一大隊,第一小隊,true\nuser2@gmail.com,第一大隊,第一小隊,false`}
-                                    className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs outline-none focus:border-orange-500 resize-none"
+                                    placeholder={`ex:\nuser1@gmail.com,王小明,1960-03-15,第一大隊,第一小隊,true,false\nuser2@gmail.com,李大華,1985-07-22,第一大隊,第一小隊,false,false`}
+                                    className="w-full h-36 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs outline-none focus:border-orange-500 resize-none"
                                 />
                                 <button disabled={isImporting || !csvInput} className="w-full bg-emerald-600 p-4 rounded-2xl text-white font-black shadow-lg hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50">
                                     {isImporting ? '匯入中...' : '📥 批量匯入名冊'}

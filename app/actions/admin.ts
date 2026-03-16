@@ -323,30 +323,37 @@ export async function importRostersData(csvContent: string) {
 
         for (const row of rows) {
             const cols = row.split(',').map(c => c.trim());
-            // Expecting: email, squad_name, team_name, is_captain
+            // Expecting: email, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
             const email = cols[0]?.toLowerCase();
             if (!email || !email.includes('@')) continue;
 
-            const squad_name = cols[1] || null;
-            const team_name = cols[2] || null;
-            const is_captain = String(cols[3]).toLowerCase() === 'true';
+            const name = cols[1] || null;
+            const birthday = cols[2] && /^\d{4}-\d{2}-\d{2}$/.test(cols[2]) ? cols[2] : null;
+            const squad_name = cols[3] || null;
+            const team_name = cols[4] || null;
+            const is_captain = String(cols[5]).toLowerCase() === 'true';
+            const is_commandant = String(cols[6]).toLowerCase() === 'true';
 
             await client.query(`
-                INSERT INTO "Rosters" (email, squad_name, team_name, is_captain)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (email) 
-                DO UPDATE SET 
+                INSERT INTO "Rosters" (email, name, birthday, squad_name, team_name, is_captain, is_commandant)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (email)
+                DO UPDATE SET
+                    name = EXCLUDED.name,
+                    birthday = EXCLUDED.birthday,
                     squad_name = EXCLUDED.squad_name,
                     team_name = EXCLUDED.team_name,
-                    is_captain = EXCLUDED.is_captain
-            `, [email, squad_name, team_name, is_captain]);
+                    is_captain = EXCLUDED.is_captain,
+                    is_commandant = EXCLUDED.is_commandant
+            `, [email, name, birthday, squad_name, team_name, is_captain, is_commandant]);
 
-            // If they already created a CharacterStat, automatically map their squad info
+            // If they already created a CharacterStat, automatically sync all fields
             await client.query(`
                 UPDATE "CharacterStats"
-                SET "SquadName" = $2, "TeamName" = $3, "IsCaptain" = $4
+                SET "SquadName" = $2, "TeamName" = $3, "IsCaptain" = $4, "IsCommandant" = $5,
+                    "Birthday" = COALESCE($6, "Birthday")
                 WHERE "Email" = $1
-            `, [email, squad_name, team_name, is_captain]);
+            `, [email, squad_name, team_name, is_captain, is_commandant, birthday]);
 
             count++;
         }

@@ -33,13 +33,17 @@ export interface CharacterStats {
   Facing?: number; // 0-5 direction
   GoldenDice?: number;
   Birthday?: string; // ISO date string YYYY-MM-DD
+  IsCommandant?: boolean; // 大隊長
 }
 
 export interface Roster {
   email: string;
-  squad_name?: string;
-  team_name?: string;
-  is_captain?: boolean;
+  name?: string;
+  birthday?: string;
+  squad_name?: string;    // 大隊
+  team_name?: string;     // 小隊
+  is_captain?: boolean;   // 小隊長
+  is_commandant?: boolean; // 大隊長
 }
 
 export interface TeamSettings {
@@ -80,6 +84,7 @@ export interface SystemSettings {
   TopicQuestTitle: string;
   WorldState?: string;
   WorldStateMsg?: string;
+  RegistrationMode?: 'open' | 'roster'; // 'open' = 自由註冊；'roster' = 名單驗證
 }
 
 export interface W4Application {
