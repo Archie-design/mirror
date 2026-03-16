@@ -362,3 +362,16 @@ export async function importRostersData(csvContent: string) {
         await client.end();
     }
 }
+
+// ── 玩家設定生日 ────────────────────────────────────────
+export async function saveBirthday(userId: string, birthday: string) {
+    // Validate format YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return { success: false, error: '日期格式錯誤，請使用 YYYY-MM-DD' };
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { error } = await supabase
+        .from('CharacterStats')
+        .update({ Birthday: birthday })
+        .eq('UserID', userId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}

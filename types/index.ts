@@ -32,6 +32,7 @@ export interface CharacterStats {
   MaxHP?: number;
   Facing?: number; // 0-5 direction
   GoldenDice?: number;
+  Birthday?: string; // ISO date string YYYY-MM-DD
 }
 
 export interface Roster {

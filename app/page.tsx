@@ -25,7 +25,7 @@ import { CaptainTab } from '@/components/Tabs/CaptainTab';
 import { ShopTab } from '@/components/Tabs/ShopTab';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { processCheckInTransaction } from '@/app/actions/quest';
-import { triggerWeeklySnapshot, importRostersData, checkWeeklyW3Compliance, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
+import { triggerWeeklySnapshot, importRostersData, checkWeeklyW3Compliance, autoAssignSquadsForTesting, logAdminAction, saveBirthday } from '@/app/actions/admin';
 import { drawWeeklyQuestForSquad, autoDrawAllSquads } from '@/app/actions/team';
 import { submitW4Application, reviewW4BySquadLeader, reviewW4ByAdmin, getW4Applications, getAdminActivityLog } from '@/app/actions/w4';
 import { generateWeeklyReview, generateCaptainBriefing } from '@/app/actions/gemini';
@@ -943,7 +943,11 @@ export default function App() {
           />
         )}
         {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} />}
-        {activeTab === 'stats' && userData && <StatsTab userData={userData} roleTrait={roleTrait} />}
+        {activeTab === 'stats' && userData && <StatsTab userData={userData} roleTrait={roleTrait} onSaveBirthday={async (birthday) => {
+            const res = await saveBirthday(userData.UserID, birthday);
+            if (res.success) setUserData(prev => prev ? { ...prev, Birthday: birthday } : null);
+            return res;
+          }} />}
         {activeTab === 'shop' && userData && (
           <ShopTab
             userData={userData}

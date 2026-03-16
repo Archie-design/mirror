@@ -75,6 +75,17 @@ export async function purchaseArtifact(userId: string, artifactId: string, teamN
                 throw new Error(`已達到此法寶的最高持有上限 (${config.limit})。`);
             }
 
+            // a5 金剛杖：限 60 歲以上
+            if (artifactId === 'a5') {
+                const birthday = charData.Birthday;
+                if (!birthday) throw new Error('請先在角色面板設定您的生日，系統需確認是否符合 60 歲以上資格。');
+                const ageDays = (Date.now() - new Date(birthday).getTime()) / 86400000;
+                if (ageDays < 60 * 365.25) {
+                    const age = Math.floor(ageDays / 365.25);
+                    throw new Error(`金剛杖僅限 60 歲以上修煉者免費領取，您目前年齡為 ${age} 歲。`);
+                }
+            }
+
             const newInventory = [...currentInventory, artifactId];
             const newCoins = currentCoins - config.price;
 
