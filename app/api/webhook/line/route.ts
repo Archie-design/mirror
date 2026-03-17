@@ -63,13 +63,31 @@ export async function POST(req: Request) {
 
                 const name = testimony.parsedName ?? displayName ?? '您';
 
-                // Reply first — ensure user always gets a response even if DB save fails
+                // Build testimony card image URL
+                const host = req.headers.get('host') ?? '';
+                const baseUrl = `https://${host}`;
+                const cardParams = new URLSearchParams({
+                    name,
+                    ...(testimony.parsedDate     && { date: testimony.parsedDate }),
+                    ...(testimony.parsedCategory && { category: testimony.parsedCategory }),
+                    content: testimony.content.slice(0, 400),
+                });
+                const cardUrl = `${baseUrl}/api/testimony-card?${cardParams.toString()}`;
+
+                // Reply with text + card image
                 await client.replyMessage({
                     replyToken,
-                    messages: [{
-                        type: 'text',
-                        text: `✨ 親證故事已記錄！感謝 ${name} 的分享，這份親證將永久留存在班級記錄中。`,
-                    }],
+                    messages: [
+                        {
+                            type: 'text',
+                            text: `✨ 親證故事已記錄！感謝 ${name} 的分享，這份親證將永久留存在班級記錄中。`,
+                        },
+                        {
+                            type: 'image',
+                            originalContentUrl: cardUrl,
+                            previewImageUrl: cardUrl,
+                        },
+                    ],
                 });
 
                 // Save to DB after replying — await so Vercel doesn't terminate before write completes
