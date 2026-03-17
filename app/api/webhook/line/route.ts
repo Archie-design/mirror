@@ -3,7 +3,7 @@ import { getLineClient } from '@/lib/line/client';
 import { matchKeyword } from '@/lib/line/keywords';
 import { parseTestimony } from '@/lib/line/parser';
 import { saveTestimony, upsertLineGroup } from '@/app/actions/testimony';
-import { generateTestimonyCard } from '@/lib/line/testimony-card';
+import { generateRawMessageCard } from '@/lib/line/testimony-card';
 import { uploadTestimonyCardToDrive } from '@/lib/line/google-drive';
 
 export const runtime = 'nodejs';
@@ -78,13 +78,12 @@ export async function POST(req: Request) {
                 // Save to DB
                 await saveTestimony({ lineUserId, groupId, displayName, rawMessage: text, testimony });
 
-                // Generate card and upload to Google Drive (awaited so Vercel doesn't terminate early)
+                // Generate raw message screenshot and upload to Google Drive (awaited so Vercel doesn't terminate early)
                 try {
-                    const buffer = await generateTestimonyCard({
-                        name,
+                    const buffer = await generateRawMessageCard({
+                        rawMessage: text,
+                        displayName,
                         date: testimony.parsedDate,
-                        category: testimony.parsedCategory,
-                        content: testimony.content,
                     });
                     const safeName = name.replace(/[\\/:*?"<>|]/g, '_');
                     const dateStr = testimony.parsedDate ?? new Date().toISOString().slice(0, 10);

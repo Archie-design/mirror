@@ -2,6 +2,8 @@ import { ImageResponse } from 'next/og';
 
 const W = 1200;
 const H = 630;
+const RAW_W = 800;
+const RAW_H = 1200;
 
 export interface TestimonyCardParams {
     name: string;
@@ -82,6 +84,86 @@ export async function generateTestimonyCard(params: TestimonyCardParams): Promis
             </div>
         ),
         { width: W, height: H, fonts }
+    );
+
+    return Buffer.from(await imageResp.arrayBuffer());
+}
+
+export interface RawMessageCardParams {
+    rawMessage: string;
+    displayName: string | null;
+    date?: string | null;
+}
+
+export async function generateRawMessageCard(params: RawMessageCardParams): Promise<Buffer> {
+    const { rawMessage, displayName, date } = params;
+    const sender = displayName ?? '學員';
+    const today = date ?? new Date().toISOString().slice(0, 10);
+
+    const fontData = await loadFont();
+    const fonts = fontData
+        ? [{ name: 'NotoSansTC', data: fontData, weight: 900 as const, style: 'normal' as const }]
+        : [];
+    const ff = fontData ? 'NotoSansTC' : 'sans-serif';
+
+    const imageResp = new ImageResponse(
+        (
+            <div style={{
+                display: 'flex', flexDirection: 'column',
+                width: RAW_W, height: RAW_H,
+                background: '#EAE9E4',
+                fontFamily: ff,
+            }}>
+                {/* Title bar */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: '#ffffff', padding: '18px 24px',
+                    borderBottom: '1px solid #d0cfc9',
+                }}>
+                    <span style={{ fontSize: 22, color: '#1a1a1a', fontWeight: 900 }}>
+                        星光西遊親證班
+                    </span>
+                    <span style={{ fontSize: 18, color: '#888' }}>{today}</span>
+                </div>
+
+                {/* Message bubble area */}
+                <div style={{
+                    display: 'flex', flex: 1, padding: '28px 20px', flexDirection: 'column', gap: 8,
+                }}>
+                    {/* Sender name */}
+                    <span style={{ fontSize: 18, color: '#4CAF50', fontWeight: 900, marginLeft: 4 }}>
+                        {sender}
+                    </span>
+
+                    {/* Bubble */}
+                    <div style={{
+                        display: 'flex',
+                        background: '#ffffff',
+                        borderRadius: 18,
+                        padding: '20px 24px',
+                        maxWidth: 700,
+                    }}>
+                        <span style={{
+                            fontSize: 22, color: '#1a1a1a',
+                            lineHeight: 1.9, whiteSpace: 'pre-wrap',
+                        }}>
+                            {rawMessage}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Watermark */}
+                <div style={{
+                    display: 'flex', justifyContent: 'center',
+                    padding: '12px 0', background: '#deded8',
+                }}>
+                    <span style={{ fontSize: 16, color: '#888' }}>
+                        ⭐ 星光西遊・親證存檔
+                    </span>
+                </div>
+            </div>
+        ),
+        { width: RAW_W, height: RAW_H, fonts }
     );
 
     return Buffer.from(await imageResp.arrayBuffer());
