@@ -33,7 +33,6 @@ interface AdminDashboardProps {
     onTriggerSnapshot: () => void;
     onCheckW3Compliance: () => void;
     onAutoDrawAllSquads: () => void;
-    onAutoAssignSquads: () => void;
     onImportRoster: (csvData: string) => Promise<void>;
     onFinalReviewW4: (appId: string, approve: boolean, notes: string) => Promise<void>;
     onClose: () => void;
@@ -44,7 +43,7 @@ export function AdminDashboard({
     leaderboard, topicHistory, temporaryQuests,
     squadApprovedW4Apps, adminLogs, testimonies,
     onAddTempQuest, onToggleTempQuest, onDeleteTempQuest,
-    onTriggerSnapshot, onCheckW3Compliance, onAutoDrawAllSquads, onAutoAssignSquads,
+    onTriggerSnapshot, onCheckW3Compliance, onAutoDrawAllSquads,
     onImportRoster, onFinalReviewW4, onClose
 }: AdminDashboardProps) {
     const [csvInput, setCsvInput] = React.useState("");
@@ -147,11 +146,6 @@ export function AdminDashboard({
                     <section className="space-y-6">
                         <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 戰隊名冊管理</div>
                         <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl">
-                            <button onClick={onAutoAssignSquads} className="w-full bg-violet-700 p-4 rounded-2xl text-white font-black shadow-lg hover:bg-violet-600 transition-colors">
-                                🎲 測試用：自動隨機分配大隊 / 小隊
-                            </button>
-                            <div className="border-t border-white/5 pt-4" />
-
                             {/* 登入模式開關 */}
                             <div className="space-y-3">
                                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">登入模式</p>

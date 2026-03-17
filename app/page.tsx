@@ -1058,7 +1058,6 @@ export default function App() {
           onTriggerSnapshot={handleTriggerSnapshot}
           onCheckW3Compliance={handleCheckW3Compliance}
           onAutoDrawAllSquads={handleAutoDrawAllSquads}
-          onAutoAssignSquads={handleAutoAssignSquads}
           onImportRoster={handleImportRoster}
           onFinalReviewW4={handleFinalReviewW4}
           onClose={() => setView('login')}
