@@ -1,8 +1,71 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Coins, Users, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShoppingBag, Coins, Users, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ARTIFACTS_CONFIG } from '@/lib/constants';
 import { purchaseArtifact, transferCoinsToTeam } from '@/app/actions/store';
 import { CharacterStats, TeamSettings } from '@/types';
+
+const ARTIFACT_IMAGES: Record<string, string> = {
+    a1: '/images/artifacts/a1.png',
+    a2: '/images/artifacts/a2.png',
+    a3: '/images/artifacts/a3.png',
+    a4: '/images/artifacts/a4.png',
+    a5: '/images/artifacts/a5.png',
+    a6: '/images/artifacts/a6.png',
+};
+
+const HEX_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)';
+
+function HexIcon({ artifactId, isOwned, isTeamBinding, size = 100 }: { artifactId: string; isOwned: boolean; isTeamBinding: boolean; size?: number }) {
+    const glowColor = isTeamBinding
+        ? 'rgba(99,102,241,0.7)'
+        : 'rgba(234,179,8,0.7)';
+    const bgColor = isOwned
+        ? (isTeamBinding ? '#1e1b4b' : '#422006')
+        : '#1e293b';
+    const imgSize = ['a1', 'a3', 'a4', 'a5'].includes(artifactId) ? '60%' : '78%';
+
+    return (
+        <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+            {isOwned && (
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        clipPath: HEX_CLIP,
+                        background: isTeamBinding
+                            ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                            : 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                        filter: `drop-shadow(0 0 10px ${glowColor})`,
+                    }}
+                />
+            )}
+            <div
+                className="absolute"
+                style={{
+                    clipPath: HEX_CLIP,
+                    background: bgColor,
+                    inset: isOwned ? 4 : 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                }}
+            >
+                {ARTIFACT_IMAGES[artifactId] ? (
+                    <img
+                        src={ARTIFACT_IMAGES[artifactId]}
+                        alt={artifactId}
+                        className="object-contain"
+                        style={{ width: imgSize, height: imgSize }}
+                    />
+                ) : (
+                    <span className={`font-black text-[11px] tracking-widest ${isOwned ? (isTeamBinding ? 'text-indigo-300' : 'text-yellow-300') : 'text-slate-500'}`}>
+                        {artifactId.toUpperCase()}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
 
 interface ShopTabProps {
     userData: CharacterStats;
@@ -36,8 +99,6 @@ export function ShopTab({ userData, teamSettings, teamMemberCount = 1, onPurchas
         }
     };
 
-
-
     const handlePurchase = async (artifactId: string, isTeamBinding: boolean) => {
         setIsBuying(artifactId);
         try {
@@ -50,7 +111,6 @@ export function ShopTab({ userData, teamSettings, teamMemberCount = 1, onPurchas
                 onShowMessage("只有小隊長可以使用團隊修為購買專屬法寶", "error");
                 return;
             }
-
             const res = await purchaseArtifact(userData.UserID, artifactId, teamName || null);
             if (res.success) {
                 onShowMessage(`交易成功！法寶已收入囊中。`, "success");
@@ -65,35 +125,151 @@ export function ShopTab({ userData, teamSettings, teamMemberCount = 1, onPurchas
         }
     };
 
-    const myInventory = typeof userData.Inventory === 'string' ? JSON.parse(userData.Inventory) : (userData.Inventory || []);
-    const teamInventory = teamSettings ? (typeof teamSettings.inventory === 'string' ? JSON.parse(teamSettings.inventory) : (teamSettings.inventory || [])) : [];
+    const myInventory: string[] = typeof userData.Inventory === 'string' ? JSON.parse(userData.Inventory) : (userData.Inventory || []);
+    const teamInventory: string[] = teamSettings ? (typeof teamSettings.inventory === 'string' ? JSON.parse(teamSettings.inventory) : (teamSettings.inventory || [])) : [];
+
+    const ownedArtifacts = ARTIFACTS_CONFIG.filter(a =>
+        a.isTeamBinding ? teamInventory.includes(a.id) : myInventory.includes(a.id)
+    );
+
+    const personalArtifacts = ARTIFACTS_CONFIG.filter(a => !a.isTeamBinding);
+    const teamArtifacts = ARTIFACTS_CONFIG.filter(a => a.isTeamBinding);
+
+    function ArtifactCard({ artifact }: { artifact: typeof ARTIFACTS_CONFIG[0] }) {
+        const isOwned = artifact.isTeamBinding
+            ? teamInventory.includes(artifact.id)
+            : myInventory.includes(artifact.id);
+        const isExclusiveBlocked = !!(artifact.exclusiveWith && myInventory.includes(artifact.exclusiveWith));
+        const isPerMember = artifact.isTeamBinding && artifact.price !== 0;
+        const finalPrice = isPerMember ? artifact.price * teamMemberCount : artifact.price;
+
+        if (isOwned) {
+            return (
+                <div className={`relative rounded-3xl px-4 py-4 border-2 overflow-hidden flex items-center gap-4
+                    ${artifact.isTeamBinding
+                        ? 'bg-gradient-to-br from-indigo-900/60 to-purple-950/80 border-indigo-400/60 shadow-[0_0_24px_rgba(99,102,241,0.35)]'
+                        : 'bg-gradient-to-br from-yellow-900/60 to-amber-950/80 border-yellow-500/60 shadow-[0_0_24px_rgba(234,179,8,0.35)]'
+                    }`}
+                >
+                    <HexIcon artifactId={artifact.id} isOwned={true} isTeamBinding={artifact.isTeamBinding} size={100} />
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <h3 className={`text-base font-black ${artifact.isTeamBinding ? 'text-indigo-200' : 'text-yellow-200'}`}>
+                                {artifact.name}
+                            </h3>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest shrink-0 ${artifact.isTeamBinding ? 'bg-indigo-500/20 text-indigo-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                {artifact.isTeamBinding ? '小隊' : '個人'}
+                            </span>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed mb-2 ${artifact.isTeamBinding ? 'text-indigo-300/80' : 'text-yellow-300/80'}`}>
+                            {artifact.effect}
+                        </p>
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-black text-xs
+                            ${artifact.isTeamBinding ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                            <CheckCircle2 size={11} /> 已裝備
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className="relative rounded-3xl px-4 py-4 border-2 border-slate-700/50 bg-slate-900/80 overflow-hidden flex items-center gap-4">
+                {isExclusiveBlocked && (
+                    <div className="absolute inset-0 bg-slate-950/60 z-10 flex items-center justify-center rounded-3xl">
+                        <span className="text-[10px] text-slate-400 font-black text-center px-4">與已持有的法寶互斥</span>
+                    </div>
+                )}
+                <HexIcon artifactId={artifact.id} isOwned={false} isTeamBinding={artifact.isTeamBinding} size={100} />
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-base font-black text-white">{artifact.name}</h3>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest shrink-0 ${artifact.isTeamBinding ? 'bg-indigo-500/20 text-indigo-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                            {artifact.isTeamBinding ? '小隊' : '個人'}
+                        </span>
+                    </div>
+                    <div className="flex items-start gap-1 bg-slate-950/60 rounded-xl p-2 mb-2">
+                        <AlertCircle size={11} className="text-orange-400 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-orange-300/80 leading-relaxed">{artifact.effect}</p>
+                    </div>
+                    <button
+                        disabled={isExclusiveBlocked || isBuying === artifact.id || (artifact.isTeamBinding && !userData.IsCaptain)}
+                        onClick={() => handlePurchase(artifact.id, artifact.isTeamBinding)}
+                        className={`w-full py-2 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-all
+                            ${artifact.isTeamBinding
+                                ? (userData.IsCaptain ? 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 shadow-lg shadow-indigo-900/30' : 'bg-slate-800 text-slate-500 cursor-not-allowed')
+                                : 'bg-yellow-600 text-white hover:bg-yellow-500 active:scale-95 shadow-lg shadow-yellow-900/30'
+                            }`}
+                    >
+                        <Coins size={11} />
+                        {isBuying === artifact.id ? '煉化中...' : (finalPrice === 0 ? '免費領取（長輩）' : `${finalPrice} 金幣`)}
+                        {isPerMember && <span className="opacity-60 text-[10px]">/人</span>}
+                    </button>
+                    {artifact.isTeamBinding && !userData.IsCaptain && (
+                        <p className="text-[10px] text-slate-500 font-black mt-1 text-center">需由小隊長操作購買</p>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 text-left">
-            <div className="bg-gradient-to-br from-yellow-950/40 to-slate-900 border-2 border-yellow-500/40 rounded-4xl p-6 shadow-2xl text-center mx-auto">
-                <div className="flex items-center justify-center gap-2 text-yellow-500 font-black text-xs uppercase mb-2 tracking-widest">
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+
+            {/* Header */}
+            <div className="bg-gradient-to-br from-yellow-950/40 to-slate-900 border-2 border-yellow-500/40 rounded-4xl p-6 shadow-2xl text-center">
+                <div className="flex items-center justify-center gap-2 text-yellow-500 font-black text-xs uppercase mb-1 tracking-widest">
                     <ShoppingBag size={16} /> 天庭藏寶閣
                 </div>
-                <h2 className="text-2xl font-black text-white italic mx-auto">法寶兌換處</h2>
-                <div className="flex items-center justify-center gap-4 mt-4 text-xs font-black">
+                <h2 className="text-2xl font-black text-white italic mb-4">法寶兌換處</h2>
+                <div className="flex items-center justify-center gap-3 text-xs font-black">
                     <div className="flex items-center gap-1.5 text-yellow-500 bg-yellow-500/10 px-3 py-1.5 rounded-xl">
-                        <User size={14} /> 個人金幣: {userData.Coins || 0}
+                        <User size={13} /> 個人金幣: {userData.Coins || 0}
                     </div>
-
                     {userData.TeamName && (
                         <div className="flex items-center gap-1.5 text-indigo-400 bg-indigo-500/10 px-3 py-1.5 rounded-xl">
-                            <Users size={14} /> 團隊資金: {teamSettings?.team_coins || 0}
+                            <Users size={13} /> 團隊資金: {teamSettings?.team_coins || 0}
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Owned artifacts strip */}
+            {ownedArtifacts.length > 0 && (
+                <div className="bg-slate-900/60 border border-slate-700/40 rounded-3xl p-4">
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">✨ 已裝備法寶</p>
+                    <div className="flex gap-3 flex-wrap">
+                        {ownedArtifacts.map(a => (
+                            <div key={a.id} className="flex flex-col items-center gap-1">
+                                <HexIcon artifactId={a.id} isOwned={true} isTeamBinding={a.isTeamBinding} />
+                                <span className={`text-[9px] font-black ${a.isTeamBinding ? 'text-indigo-300' : 'text-yellow-300'}`}>
+                                    {a.name}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
+            {/* Personal artifacts */}
+            <div>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-3 px-1">個人法寶</p>
+                <div className="flex flex-col gap-3">
+                    {personalArtifacts.map(a => <ArtifactCard key={a.id} artifact={a} />)}
+                </div>
             </div>
 
+            {/* Team artifacts */}
+            <div>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-3 px-1">小隊法寶</p>
+                <div className="flex flex-col gap-3">
+                    {teamArtifacts.map(a => <ArtifactCard key={a.id} artifact={a} />)}
+                </div>
+            </div>
+
+            {/* Coin transfer to team */}
             {userData.TeamName && (
-                <div className="bg-indigo-950/40 border-2 border-indigo-500/30 p-4 rounded-3xl flex items-center justify-between gap-4 mt-2 mb-6">
+                <div className="bg-indigo-950/40 border-2 border-indigo-500/30 p-4 rounded-3xl flex items-center justify-between gap-4">
                     <div className="flex-1">
                         <p className="text-xs text-indigo-300 font-bold mb-2">捐獻個人金幣至團隊</p>
                         <input
@@ -115,66 +291,6 @@ export function ShopTab({ userData, teamSettings, teamMemberCount = 1, onPurchas
                     </button>
                 </div>
             )}
-
-            <div className="space-y-4">
-                {ARTIFACTS_CONFIG.map(artifact => {
-                    const isOwned = artifact.isTeamBinding
-                        ? teamInventory.includes(artifact.id)
-                        : myInventory.includes(artifact.id);
-
-                    // 互斥判斷：a5 金剛杖 與 a1 如意金箍棒互斥（皆為個人法寶）
-                    const isExclusiveBlocked = !!(artifact.exclusiveWith && myInventory.includes(artifact.exclusiveWith));
-
-                    const isPerMember = artifact.isTeamBinding && artifact.price !== 0;
-                    const finalPrice = isPerMember ? artifact.price * teamMemberCount : artifact.price;
-
-                    let buttonText = isOwned ? '已擁有' : (finalPrice === 0 ? '免費領取（長輩）' : `投入 ${finalPrice} 金幣`);
-                    if (isExclusiveBlocked) buttonText = '與已持有的法寶互斥';
-
-                    return (
-                        <div key={artifact.id} className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
-                            {isOwned && (
-                                <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-bl-xl flex items-center gap-1 shadow-lg">
-                                    <CheckCircle2 size={12} /> 已裝備
-                                </div>
-                            )}
-                            <div className="flex justify-between items-start mb-2">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h3 className="text-lg font-black text-white">{artifact.name}</h3>
-                                        <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-widest ${artifact.isTeamBinding ? 'bg-indigo-500/20 text-indigo-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                                            {artifact.isTeamBinding ? '小隊專屬' : '個人法寶'}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-slate-400 leading-relaxed font-bold">{artifact.description}</p>
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-950 p-3 rounded-2xl border border-white/5 mb-4 my-3 text-xs text-orange-400 font-bold flex items-start gap-2">
-                                <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                                <span>效果：{artifact.effect}</span>
-                            </div>
-
-                            <button
-                                disabled={isOwned || isExclusiveBlocked || isBuying === artifact.id || (artifact.isTeamBinding && !userData.IsCaptain)}
-                                onClick={() => handlePurchase(artifact.id, artifact.isTeamBinding)}
-                                className={`w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all ${isOwned || isExclusiveBlocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' :
-                                    artifact.isTeamBinding
-                                        ? (userData.IsCaptain ? 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 shadow-lg shadow-indigo-600/20' : 'bg-slate-800 text-slate-500 cursor-not-allowed')
-                                        : 'bg-yellow-600 text-white hover:bg-yellow-500 active:scale-95 shadow-lg shadow-yellow-600/20'
-                                    }`}
-                            >
-                                {!isOwned && !isExclusiveBlocked && <Coins size={16} />}
-                                {isBuying === artifact.id ? '煉化中...' : buttonText}
-                                {isPerMember && !isOwned && !isExclusiveBlocked && <span className="opacity-70 text-[10px]"> (隊長統一扣款)</span>}
-                            </button>
-                            {artifact.isTeamBinding && !userData.IsCaptain && !isOwned && !isExclusiveBlocked && (
-                                <p className="text-[10px] text-red-400 text-center mt-2 font-bold">需由小隊長操作購買</p>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
         </div>
     );
 }

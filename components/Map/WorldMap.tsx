@@ -110,10 +110,12 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     roleTrait, todayCompletedQuestIds, onShowMessage,
     dbEntities = [], worldState, onEntityTrigger, moveMultiplier = 1, onUpdateMultiplier, onUpdateUserData, onUpdateSteps,
 }) => {
-    // Navigation & Scale
-    const [camX, setCamX] = useState(0);
-    const [camY, setCamY] = useState(0);
+    // Navigation & Scale — initialize camera centered on player to avoid first-render flash
+    const [camX, setCamX] = useState(() => -axialToPixelPos(initialQ, initialR, DEFAULT_CONFIG.HEX_SIZE_WORLD).x);
+    const [camY, setCamY] = useState(() => -axialToPixelPos(initialQ, initialR, DEFAULT_CONFIG.HEX_SIZE_WORLD).y);
     const [zoom, setZoom] = useState(1);
+    // Track container dimensions reactively to avoid stale clientWidth reads during render
+    const [containerSize, setContainerSize] = useState({ w: 400, h: 600 });
     const [rollAmount, setRollAmount] = useState(1);
     const [hoveredHexKey, setHoveredHexKey] = useState<string | null>(null);
     const [interceptTriggeredPos, setInterceptTriggeredPos] = useState<string | null>(null);
@@ -159,12 +161,24 @@ export const WorldMap: React.FC<WorldMapProps> = ({
         return e.key ?? '';
     }, []);
 
-    // Jump to user initially
+    // Recenter camera when player moves (initialQ/R updates from parent)
     useEffect(() => {
         const initPos = axialToPixelPos(initialQ, initialR, HEX_SIZE_WORLD);
         setCamX(-initPos.x);
         setCamY(-initPos.y);
     }, [initialQ, initialR, HEX_SIZE_WORLD]);
+
+    // Track container size reactively for accurate HUD positioning
+    useEffect(() => {
+        const el = mapContainerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(entries => {
+            const { width, height } = entries[0].contentRect;
+            setContainerSize({ w: width, h: height });
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     // Full Grid Calculation (Memoized, only runs once after mapData loads)
     const fullGrid = useMemo(() => {
@@ -606,8 +620,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({
 
                 {/* Player Dice HUD — HTML overlay, avoids SVG foreignObject iOS Safari bug */}
                 {(() => {
-                    const cw = mapContainerRef.current?.clientWidth ?? 400;
-                    const ch = mapContainerRef.current?.clientHeight ?? 600;
+                    const cw = containerSize.w;
+                    const ch = containerSize.h;
                     const hudX = cw / 2 + (playerPixel.x + camX) * zoom;
                     const hudY = ch / 2 + (playerPixel.y + camY) * zoom;
                     return (

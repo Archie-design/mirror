@@ -3,7 +3,15 @@
     "allow": [
       "Bash(npm install @line/bot-sdk)",
       "Bash(npm run build)",
-      "Bash(npm install googleapis)"
+      "Bash(npm install googleapis)",
+      "Bash(pip3 install onnxruntime --quiet)",
+      "Bash(cp a4.png _tmp_a4.png)",
+      "Bash(cp a5.png _tmp_a5.png)",
+      "Bash(cp a6.png _tmp_a6.png)",
+      "Bash(cp _tmp_a4.png a6.png)",
+      "Bash(cp _tmp_a5.png a4.png)",
+      "Bash(cp _tmp_a6.png a5.png)",
+      "Bash(rm _tmp_a4.png _tmp_a5.png _tmp_a6.png)"
     ]
   }
 }
