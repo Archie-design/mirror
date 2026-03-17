@@ -61,9 +61,9 @@ export async function POST(req: Request) {
                     // Non-critical — continue without display name
                 }
 
-                await saveTestimony({ lineUserId, groupId, displayName, rawMessage: text, testimony });
-
                 const name = testimony.parsedName ?? displayName ?? '您';
+
+                // Reply first — ensure user always gets a response even if DB save fails
                 await client.replyMessage({
                     replyToken,
                     messages: [{
@@ -71,6 +71,11 @@ export async function POST(req: Request) {
                         text: `✨ 親證故事已記錄！感謝 ${name} 的分享，這份親證將永久留存在班級記錄中。`,
                     }],
                 });
+
+                // Save to DB after replying (non-blocking for user experience)
+                saveTestimony({ lineUserId, groupId, displayName, rawMessage: text, testimony })
+                    .catch(err => console.error('Testimony save failed:', err));
+
                 continue;
             }
 
