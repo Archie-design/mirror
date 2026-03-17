@@ -3,6 +3,8 @@ import { getLineClient } from '@/lib/line/client';
 import { matchKeyword } from '@/lib/line/keywords';
 import { parseTestimony } from '@/lib/line/parser';
 import { saveTestimony, upsertLineGroup } from '@/app/actions/testimony';
+import { generateTestimonyCard } from '@/lib/line/testimony-card';
+import { uploadTestimonyCardToDrive } from '@/lib/line/google-drive';
 
 export const runtime = 'nodejs';
 
@@ -63,35 +65,32 @@ export async function POST(req: Request) {
 
                 const name = testimony.parsedName ?? displayName ?? '您';
 
-                // Build testimony card image URL
-                const host = req.headers.get('host') ?? '';
-                const baseUrl = `https://${host}`;
-                const cardParams = new URLSearchParams({
-                    name,
-                    ...(testimony.parsedDate     && { date: testimony.parsedDate }),
-                    ...(testimony.parsedCategory && { category: testimony.parsedCategory }),
-                    content: testimony.content.slice(0, 400),
-                });
-                const cardUrl = `${baseUrl}/api/testimony-card?${cardParams.toString()}`;
-
-                // Reply with text + card image
+                // Reply with text confirmation only (no image to group)
                 await client.replyMessage({
                     replyToken,
-                    messages: [
-                        {
-                            type: 'text',
-                            text: `✨ 親證故事已記錄！感謝 ${name} 的分享，這份親證將永久留存在班級記錄中。`,
-                        },
-                        {
-                            type: 'image',
-                            originalContentUrl: cardUrl,
-                            previewImageUrl: cardUrl,
-                        },
-                    ],
+                    messages: [{
+                        type: 'text',
+                        text: `✨ 親證故事已記錄！感謝 ${name} 的分享，這份親證將永久留存在班級記錄中。`,
+                    }],
                 });
 
-                // Save to DB after replying — await so Vercel doesn't terminate before write completes
+                // Save to DB
                 await saveTestimony({ lineUserId, groupId, displayName, rawMessage: text, testimony });
+
+                // Generate card and upload to Google Drive (non-blocking, best-effort)
+                generateTestimonyCard({
+                    name,
+                    date: testimony.parsedDate,
+                    category: testimony.parsedCategory,
+                    content: testimony.content,
+                }).then(buffer => {
+                    const safeName = name.replace(/[\\/:*?"<>|]/g, '_');
+                    const dateStr = testimony.parsedDate ?? new Date().toISOString().slice(0, 10);
+                    const filename = `${safeName}_${dateStr}_${Date.now()}.png`;
+                    return uploadTestimonyCardToDrive(buffer, filename);
+                }).catch(err => {
+                    console.error('Google Drive upload error:', err);
+                });
 
                 continue;
             }
