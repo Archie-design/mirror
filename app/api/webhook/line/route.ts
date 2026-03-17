@@ -77,20 +77,21 @@ export async function POST(req: Request) {
                 // Save to DB
                 await saveTestimony({ lineUserId, groupId, displayName, rawMessage: text, testimony });
 
-                // Generate card and upload to Google Drive (non-blocking, best-effort)
-                generateTestimonyCard({
-                    name,
-                    date: testimony.parsedDate,
-                    category: testimony.parsedCategory,
-                    content: testimony.content,
-                }).then(buffer => {
+                // Generate card and upload to Google Drive (awaited so Vercel doesn't terminate early)
+                try {
+                    const buffer = await generateTestimonyCard({
+                        name,
+                        date: testimony.parsedDate,
+                        category: testimony.parsedCategory,
+                        content: testimony.content,
+                    });
                     const safeName = name.replace(/[\\/:*?"<>|]/g, '_');
                     const dateStr = testimony.parsedDate ?? new Date().toISOString().slice(0, 10);
                     const filename = `${safeName}_${dateStr}_${Date.now()}.png`;
-                    return uploadTestimonyCardToDrive(buffer, filename);
-                }).catch(err => {
+                    await uploadTestimonyCardToDrive(buffer, filename);
+                } catch (err) {
                     console.error('Google Drive upload error:', err);
-                });
+                }
 
                 continue;
             }
