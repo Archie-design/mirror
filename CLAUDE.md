@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## UI Development Rules
+
+**Every UI change must consider both desktop and mobile.** Before finishing any UI task:
+- Use Tailwind responsive prefixes (`md:`, `lg:`) for layout differences
+- Fixed pixel sizes (`w-96`, `p-10`, `text-5xl`) must have mobile-friendly equivalents
+- Touch targets must be ≥ 44px for mobile usability
+- Avoid `fixed`/`absolute` elements that can overlap or cause z-index issues on small screens
+- Test touch event handling: mobile fires `touchstart/touchend` AND synthetic mouse events — use `stopPropagation` + `hudRef.current.contains()` guards where needed
+
 ## Commands
 
 ```bash
