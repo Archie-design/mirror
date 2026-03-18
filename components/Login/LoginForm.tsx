@@ -12,7 +12,7 @@ export function LoginForm({ onLogin, onGoToRegister, onGoToAdmin, isSyncing }: L
     return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-10 space-y-12">
             <div className="animate-in zoom-in duration-700 text-center mx-auto">
-                <div className="w-32 h-32 bg-orange-600 rounded-4xl flex items-center justify-center shadow-2xl border-4 border-white/20 mb-6 mx-auto text-white text-7xl italic text-center mx-auto">🕉️</div>
+                <img src="/images/logo.png" alt="星光西遊" className="w-96 h-96 mx-auto mb-6 drop-shadow-2xl" />
                 <h1 className="text-5xl font-black text-white mb-2 uppercase tracking-widest text-center mx-auto">星光西遊</h1>
                 <p className="text-orange-400 text-lg font-bold uppercase tracking-[0.4em] text-center mx-auto">修行者轉生入口</p>
             </div>
