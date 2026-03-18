@@ -675,7 +675,8 @@ export default function App() {
       if (queryError) throw new Error(queryError.message);
       const match = (allUsers as CharacterStats[])?.find(u => u.Name === name && u.UserID.endsWith(phoneSuffix));
       if (match) {
-        sessionStorage.setItem('starry_session_uid', match.UserID);
+        localStorage.setItem('starry_session_uid', match.UserID);
+        localStorage.setItem('starry_session_expiry', String(Date.now() + 24 * 60 * 60 * 1000));
         const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', match.UserID);
         const logsArray = (userLogs as DailyLog[]) || [];
 
@@ -748,7 +749,8 @@ export default function App() {
       }
 
       await supabase.from('CharacterStats').insert([newChar]);
-      sessionStorage.setItem('starry_session_uid', newChar.UserID);
+      localStorage.setItem('starry_session_uid', newChar.UserID);
+      localStorage.setItem('starry_session_expiry', String(Date.now() + 24 * 60 * 60 * 1000));
       setUserData(newChar);
       setModalMessage({ text: welcomeMessage, type: 'success' });
       setView('app');
@@ -780,7 +782,7 @@ export default function App() {
     setView('map');
   };
 
-  const handleLogout = () => { sessionStorage.removeItem('starry_session_uid'); setUserData(null); setView('login'); };
+  const handleLogout = () => { localStorage.removeItem('starry_session_uid'); localStorage.removeItem('starry_session_expiry'); setUserData(null); setView('login'); };
 
   // One-time static data load — world map terrain, settings, history
   // Separated from the login useEffect so userData changes don't re-fetch and potentially clobber mapData
@@ -852,7 +854,8 @@ export default function App() {
         if (lineUid || lineBound || lineError) {
           window.history.replaceState({}, '', '/');
           if (lineUid) {
-            sessionStorage.setItem('starry_session_uid', decodeURIComponent(lineUid));
+            localStorage.setItem('starry_session_uid', decodeURIComponent(lineUid));
+            localStorage.setItem('starry_session_expiry', String(Date.now() + 24 * 60 * 60 * 1000));
           } else if (lineBound === 'success') {
             setModalMessage({ text: '✅ LINE 帳號綁定成功！下次可直接以 LINE 登入。', type: 'success' });
           } else if (lineError === 'not_bound') {
@@ -867,7 +870,14 @@ export default function App() {
         }
       }
 
-      const savedUid = sessionStorage.getItem('starry_session_uid');
+      const savedUid = (() => {
+        const uid = localStorage.getItem('starry_session_uid');
+        const expiry = Number(localStorage.getItem('starry_session_expiry') || 0);
+        if (uid && Date.now() < expiry) return uid;
+        localStorage.removeItem('starry_session_uid');
+        localStorage.removeItem('starry_session_expiry');
+        return null;
+      })();
       if (savedUid && !userData) {
         // Fetch map entities only once on initial login (not on every userData change)
         try {
