@@ -34,6 +34,7 @@ export interface CharacterStats {
   GoldenDice?: number;
   Birthday?: string; // ISO date string YYYY-MM-DD
   IsCommandant?: boolean; // 大隊長
+  IsGM?: boolean;         // GM 遊戲管理員
 }
 
 export interface Roster {

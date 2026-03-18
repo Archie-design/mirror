@@ -102,7 +102,8 @@ export async function reviewW4BySquadLeader(
 export async function reviewW4ByAdmin(
     appId: string,
     action: 'approve' | 'reject',
-    notes: string = ''
+    notes: string = '',
+    reviewerName: string = 'admin'
 ) {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -121,7 +122,7 @@ export async function reviewW4ByAdmin(
         .from('W4Applications')
         .update({
             status: newStatus,
-            final_review_by: 'admin',
+            final_review_by: reviewerName,
             final_review_at: new Date().toISOString(),
             final_review_notes: notes,
         })
@@ -140,19 +141,19 @@ export async function reviewW4ByAdmin(
         );
         if (!checkInRes.success) {
             // 即使入帳失敗也不回滾審核（避免重複觸發），記錄錯誤
-            await logAdminAction('w4_final_approve', 'admin', appId, app.user_name, {
+            await logAdminAction('w4_final_approve', reviewerName, appId, app.user_name, {
                 interviewTarget: app.interview_target,
                 questId: app.quest_id,
                 checkInError: checkInRes.error,
             }, 'error');
             return { success: true, warning: '審核已核准，但入帳失敗：' + checkInRes.error };
         }
-        await logAdminAction('w4_final_approve', 'admin', appId, app.user_name, {
+        await logAdminAction('w4_final_approve', reviewerName, appId, app.user_name, {
             interviewTarget: app.interview_target,
             questId: app.quest_id,
         });
     } else {
-        await logAdminAction('w4_final_reject', 'admin', appId, app.user_name, {
+        await logAdminAction('w4_final_reject', reviewerName, appId, app.user_name, {
             interviewTarget: app.interview_target,
             notes,
         });

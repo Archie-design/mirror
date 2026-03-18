@@ -22,6 +22,7 @@ import { WeeklyTopicTab } from '@/components/Tabs/WeeklyTopicTab';
 import { StatsTab } from '@/components/Tabs/StatsTab';
 import { RankTab } from '@/components/Tabs/RankTab';
 import { CaptainTab } from '@/components/Tabs/CaptainTab';
+import { CommandantTab } from '@/components/Tabs/CommandantTab';
 import { ShopTab } from '@/components/Tabs/ShopTab';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { processCheckInTransaction } from '@/app/actions/quest';
@@ -50,7 +51,9 @@ const MessageBox = ({ message, onClose, type = 'info' }: { message: string, onCl
 export default function App() {
   const [view, setView] = useState<'login' | 'register' | 'app' | 'loading' | 'admin' | 'map'>('loading');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop' | 'commandant'>('daily');
+  type GmViewMode = 'all' | 'player' | 'captain' | 'commandant';
+  const [gmViewMode, setGmViewMode] = useState<GmViewMode>('all');
   const [userData, setUserData] = useState<CharacterStats | null>(null);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [leaderboard, setLeaderboard] = useState<CharacterStats[]>([]);
@@ -85,6 +88,13 @@ export default function App() {
   const [squadApprovedW4Apps, setSquadApprovedW4Apps] = useState<W4Application[]>([]);
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
   const [testimonies, setTestimonies] = useState<Testimony[]>([]);
+
+  const showCaptainTab = userData?.IsGM
+    ? (gmViewMode === 'all' || gmViewMode === 'captain')
+    : !!userData?.IsCaptain;
+  const showCommandantTab = userData?.IsGM
+    ? (gmViewMode === 'all' || gmViewMode === 'commandant')
+    : !!userData?.IsCommandant;
 
   const formatCheckInTime = (timestamp: string) => {
     const d = new Date(timestamp);
@@ -883,6 +893,12 @@ export default function App() {
             if (pendingRes.success) setPendingW4Apps(pendingRes.applications);
           }
 
+          // If commandant, fetch squad_approved apps for final review
+          if (stats.IsCommandant) {
+            const commandantRes = await getW4Applications({ status: 'squad_approved' });
+            if (commandantRes.success) setSquadApprovedW4Apps(commandantRes.applications);
+          }
+
           setView('app');
         } else { setView(v => v === 'loading' ? 'login' : v); }
       } else if (!savedUid) { setView(v => v === 'loading' ? 'login' : v); }
@@ -908,9 +924,45 @@ export default function App() {
     }
   }, [activeTab, userData?.UserID]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (activeTab === 'captain' && !showCaptainTab) setActiveTab('daily');
+    if (activeTab === 'commandant' && !showCommandantTab) setActiveTab('daily');
+  }, [gmViewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const GmToolbar = () => {
+    if (!userData?.IsGM) return null;
+    const modes: { label: string; value: GmViewMode }[] = [
+      { label: '全部', value: 'all' },
+      { label: '一般修行者', value: 'player' },
+      { label: '小隊長', value: 'captain' },
+      { label: '大隊長', value: 'commandant' },
+    ];
+    return (
+      <div className="bg-amber-950/80 border-b-2 border-amber-500/60 px-4 py-2 flex items-center gap-3 flex-wrap">
+        <span className="text-amber-400 text-[10px] font-black tracking-widest shrink-0">⚙ GM模式</span>
+        <div className="flex gap-2 flex-wrap">
+          {modes.map(m => (
+            <button
+              key={m.value}
+              onClick={() => setGmViewMode(m.value)}
+              className={`px-3 py-1 rounded-xl text-[10px] font-black transition-all ${
+                gmViewMode === m.value
+                  ? 'bg-amber-500 text-black'
+                  : 'bg-slate-800 text-amber-400/70 hover:bg-slate-700'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const HomeView = () => (
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-40 text-center animate-in fade-in">
       <Header userData={userData} onLogout={handleLogout} />
+      <GmToolbar />
 
       <nav className="sticky top-0 z-20 bg-slate-950/90 backdrop-blur-md flex p-4 gap-2 border-b border-white/5 shadow-xl overflow-x-auto no-scrollbar">
         <button onClick={() => setActiveTab('daily')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'daily' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-slate-900 text-slate-500'}`}>修行定課</button>
@@ -918,8 +970,11 @@ export default function App() {
         <button onClick={() => setActiveTab('shop')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'shop' ? 'bg-yellow-600 text-white shadow-lg shadow-yellow-600/20' : 'bg-slate-900 text-slate-50'}`}>🏪藏寶閣</button>
         <button onClick={() => setActiveTab('rank')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'rank' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>修為榜</button>
         <button onClick={() => setActiveTab('stats')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'stats' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>六維與罰金</button>
-        {userData?.IsCaptain && (
+        {showCaptainTab && (
           <button onClick={() => setActiveTab('captain')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'captain' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-900 text-slate-50'}`}>👩‍✈️指揮所</button>
+        )}
+        {showCommandantTab && (
+          <button onClick={() => setActiveTab('commandant')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'commandant' ? 'bg-rose-700 text-white shadow-lg shadow-rose-700/20' : 'bg-slate-900 text-slate-50'}`}>⚔️指揮部</button>
         )}
       </nav>
 
@@ -962,7 +1017,7 @@ export default function App() {
             onShowMessage={(msg, type) => setModalMessage({ text: msg, type })}
           />
         )}
-        {activeTab === 'captain' && userData?.IsCaptain && (
+        {activeTab === 'captain' && showCaptainTab && (
           <CaptainTab
             teamName={userData.TeamName || '未編組'}
             teamSettings={teamSettings}
@@ -972,6 +1027,17 @@ export default function App() {
             onGetAIBriefing={handleGetAIBriefing}
             aiBriefing={aiBriefing}
             isLoadingBriefing={isLoadingBriefing}
+          />
+        )}
+        {activeTab === 'commandant' && showCommandantTab && (
+          <CommandantTab
+            userData={userData}
+            apps={squadApprovedW4Apps}
+            onRefresh={async () => {
+              const res = await getW4Applications({ status: 'squad_approved' });
+              if (res.success) setSquadApprovedW4Apps(res.applications);
+            }}
+            onShowMessage={(msg, type) => setModalMessage({ text: msg, type })}
           />
         )}
       </main>

@@ -233,7 +233,7 @@ export const WEEKLY_QUEST_CONFIG: Quest[] = [
 export const TERRAIN_TYPES: Record<string, any> = {
     grass: { id: 'grass', name: '茵綠草地', url: '/assets/terrains/The Sanctuary/Grassland.png', scale: 1.15, vOffset: 0.0, color: '#1a472a', effect: '【移動】消耗 1 點。安全、歸零。' },
     roots: { id: 'roots', name: '世界樹根', url: '/assets/terrains/The Sanctuary/Roots.png', scale: 1.15, vOffset: 0.0, color: '#064e3b', effect: '【阻擋】無法通行。中心裝飾與障礙。' },
-    spring: { id: 'spring', name: '能量湧泉', url: '/assets/terrains/The Sanctuary/Spring of Energy.png', scale: 1.15, vOffset: 0.0, color: '#38bdf8', effect: '【特殊】回復 10% HP，擲骰 +1。' },
+    spring: { id: 'spring', name: '能量湧泉', url: '/assets/terrains/The Sanctuary/Spring of Energy.png', scale: 1.15, vOffset: -0.05, color: '#1e293b', effect: '【特殊】回復 10% HP，擲骰 +1。' },
     roots_yggdrasil: { id: 'roots_yggdrasil', name: '世界樹盤根', url: '/assets/terrains/The Sanctuary/Roots of Yggdrasil.png', scale: 1.15, vOffset: 0.0, color: '#064e3b', effect: '【地障】自然形成的地形障礙。' },
     snow_path: { id: 'snow_path', name: '積雪山徑', url: '/assets/terrains/Arrogance Peak/Snowy Path.png', scale: 1.15, vOffset: 0.0, color: '#e2e8f0', effect: '【移動】消耗 1 點。' },
     ice_wall: { id: 'ice_wall', name: '冰封絕壁', url: '/assets/terrains/Arrogance Peak/Ice Wall.png', scale: 1.15, vOffset: 0.0, color: '#94a3b8', effect: '【阻擋】高度差 > 2。非飛行無法通過。' },

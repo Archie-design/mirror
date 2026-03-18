@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { ChevronLeft, MapIcon, Dice5, Loader2, Minus, Plus, Footprints, Package, Store } from 'lucide-react';
+import { ChevronLeft, MapIcon, Dice5, Loader2, Minus, Plus, Footprints, Package, Store, LocateFixed } from 'lucide-react';
 import { CharacterStats, HexData } from '@/types';
 import { DEFAULT_CONFIG, TERRAIN_TYPES, ROLE_CURE_MAP, ZONES } from '@/lib/constants';
 import { getHexRegion, axialToPixelPos, getHexDist, pixelToAxial, getCombatMultiplier, getHexDirection, hexLineDraw } from '@/lib/utils/hex';
@@ -114,8 +114,6 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     const [camX, setCamX] = useState(() => -axialToPixelPos(initialQ, initialR, DEFAULT_CONFIG.HEX_SIZE_WORLD).x);
     const [camY, setCamY] = useState(() => -axialToPixelPos(initialQ, initialR, DEFAULT_CONFIG.HEX_SIZE_WORLD).y);
     const [zoom, setZoom] = useState(1);
-    // Track container dimensions reactively to avoid stale clientWidth reads during render
-    const [containerSize, setContainerSize] = useState({ w: 400, h: 600 });
     const [rollAmount, setRollAmount] = useState(1);
     const [hoveredHexKey, setHoveredHexKey] = useState<string | null>(null);
     const [interceptTriggeredPos, setInterceptTriggeredPos] = useState<string | null>(null);
@@ -129,6 +127,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     const [donationTarget, setDonationTarget] = useState<any>(null);
     const [donateAmount, setDonateAmount] = useState(1);
     const [isDonating, setIsDonating] = useState(false);
+    const [plannedPath, setPlannedPath] = useState<{q: number, r: number}[]>([]);
+    const [isPlanningMode, setIsPlanningMode] = useState(false);
 
     const [dismissedCombatKeys, _setDismissedCombatKeys] = useState<Set<string>>(() => {
         try {
@@ -169,17 +169,6 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     }, [initialQ, initialR, HEX_SIZE_WORLD]);
 
     // Track container size reactively for accurate HUD positioning
-    useEffect(() => {
-        const el = mapContainerRef.current;
-        if (!el) return;
-        const ro = new ResizeObserver(entries => {
-            const { width, height } = entries[0].contentRect;
-            setContainerSize({ w: width, h: height });
-        });
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, []);
-
     // Full Grid Calculation (Memoized, only runs once after mapData loads)
     const fullGrid = useMemo(() => {
         const hexes: HexData[] = [];
@@ -320,6 +309,13 @@ export const WorldMap: React.FC<WorldMapProps> = ({
         }
     }, [userData.CurrentQ, userData.CurrentR, stepsRemaining, isCombatModalOpen, dbEntities, onEntityTrigger, dismissedCombatKeys]);
 
+    // Reset planning state when AP runs out
+    useEffect(() => {
+        if (stepsRemaining === 0) {
+            setPlannedPath([]);
+            setIsPlanningMode(false);
+        }
+    }, [stepsRemaining]);
 
     // --- Event Delegation ---
     const getCurrentPointerHex = useCallback((clientX: number, clientY: number) => {
@@ -384,8 +380,12 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     }, []);
 
     const handlePointerUp = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        // Always reset drag state first — prevents stuck-drag when early returns skip the end of function
+        const wasDragging = isDragging.current;
+        isDragging.current = false;
+
         // If it was a click without dragging much, trigger Click logic
-        if (isDragging.current) {
+        if (wasDragging) {
             const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX;
             const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
             const dx = Math.abs(clientX - dragStart.current.x);
@@ -421,6 +421,31 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                             setIsCombatModalOpen(true);
                             return;
                         }
+                    }
+
+                    // PLANNING MODE: build path step by step
+                    if (isPlanningMode && stepsRemaining > 0) {
+                        const lastHex = plannedPath.length > 0
+                            ? plannedPath[plannedPath.length - 1]
+                            : { q: userData.CurrentQ, r: userData.CurrentR };
+                        const stepDist = getHexDist(lastHex.q, lastHex.r, hex.q, hex.r);
+                        // Undo last step by clicking the last planned hex
+                        if (plannedPath.length > 0 && hex.q === lastHex.q && hex.r === lastHex.r) {
+                            setPlannedPath(prev => prev.slice(0, -1));
+                            return;
+                        }
+                        if (stepDist === 1) {
+                            const cursedMultiplier = (roleTrait?.name === '豬八戒' && roleTrait?.isCursed) ? 1.5 : 1;
+                            const newCost = Math.ceil((plannedPath.length + 1) * cursedMultiplier);
+                            if (newCost <= stepsRemaining) {
+                                setPlannedPath(prev => [...prev, { q: hex.q, r: hex.r }]);
+                            } else {
+                                onShowMessage('步數不足，無法繼續規劃！', 'error');
+                            }
+                        } else {
+                            onShowMessage('只能逐格點選相鄰格子', 'info');
+                        }
+                        return;
                     }
 
                     if (stepsRemaining > 0) {
@@ -494,8 +519,40 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                 }
             }
         }
-        isDragging.current = false;
-    }, [getCurrentPointerHex, stepsRemaining, userData, onMoveCharacter, roleTrait, fullGrid, onShowMessage, dbEntities]);
+    }, [getCurrentPointerHex, stepsRemaining, userData, onMoveCharacter, roleTrait, fullGrid, onShowMessage, dbEntities, isPlanningMode, plannedPath]);
+
+    const handleExecutePlannedPath = useCallback(() => {
+        if (plannedPath.length === 0) return;
+
+        let finalPath = [...plannedPath];
+        if (roleTrait?.name === '孫悟空' && roleTrait?.isCursed) {
+            const drifts = [{ q: 1, r: -1 }, { q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 }, { q: -1, r: 0 }, { q: 0, r: -1 }];
+            const rand = drifts[Math.floor(Math.random() * drifts.length)];
+            const last = finalPath[finalPath.length - 1];
+            finalPath[finalPath.length - 1] = { q: last.q + rand.q, r: last.r + rand.r };
+            onShowMessage('🐒 受詛咒的悟空偏離了目標！', 'info');
+        }
+
+        const isCursedPig = roleTrait?.name === '豬八戒' && roleTrait?.isCursed;
+        const activeMonsters = dbEntities.filter(e => e.is_active !== false && e.type === 'monster');
+        let finalIdx = finalPath.length - 1;
+        for (let i = 0; i < finalPath.length; i++) {
+            const step = finalPath[i];
+            const monsterNearby = activeMonsters.find(e => getHexDist(step.q, step.r, e.q, e.r) <= 1);
+            if (monsterNearby) { finalIdx = i; break; }
+        }
+
+        const targetQ = finalPath[finalIdx].q;
+        const targetR = finalPath[finalIdx].r;
+        const rawCost = finalIdx + 1;
+        const actualCost = isCursedPig ? Math.ceil(rawCost * 1.5) : rawCost;
+        const finalHexData = fullGrid.find(h => h.q === targetQ && h.r === targetR);
+        const newFacing = getHexDirection(userData.CurrentQ, userData.CurrentR, targetQ, targetR);
+
+        onMoveCharacter(targetQ, targetR, actualCost, finalHexData?.zoneId, newFacing);
+        setPlannedPath([]);
+        setIsPlanningMode(false);
+    }, [plannedPath, roleTrait, dbEntities, fullGrid, userData, onMoveCharacter, onShowMessage]);
 
     const handleWheel = useCallback((e: React.WheelEvent) => {
         setZoom(prev => Math.min(Math.max(0.3, prev - Math.sign(e.deltaY) * 0.1), 3));
@@ -539,6 +596,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                 onTouchStart={handlePointerDown}
                 onTouchMove={handlePointerMove}
                 onTouchEnd={handlePointerUp}
+                onTouchCancel={() => { isDragging.current = false; }}
                 onWheel={handleWheel}
             >
                 {/* Hardware Accelerated Canvas Container */}
@@ -575,7 +633,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
 
                         {/* 2.5 Entities Layer (Monsters, Chests, Encounters) */}
                         <g style={{ pointerEvents: 'none' }}>
-                            {dbEntities.filter(e => e.type === 'monster' || !e.owner_id || e.owner_id === userData.UserID).map((e) => {
+                            {dbEntities.filter(e => (e.type === 'monster' || !e.owner_id || e.owner_id === userData.UserID) && getHexDist(initialQ, initialR, e.q, e.r) <= 20).map((e) => {
                                 const pos = axialToPixelPos(e.q, e.r, DEFAULT_CONFIG.HEX_SIZE_WORLD);
                                 if (e.type === 'personal') {
                                     return (
@@ -587,7 +645,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                                     );
                                 }
                                 return (
-                                    <text key={`db_ent_${e.id}`} x={pos.x} y={pos.y + 4} textAnchor="middle" fontSize={12} className="drop-shadow-md">
+                                    <text key={`db_ent_${e.id}`} x={pos.x} y={pos.y - 1} textAnchor="middle" fontSize={12} className="drop-shadow-md">
                                         {e.icon}
                                     </text>
                                 );
@@ -607,29 +665,51 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                             })}
                         </g>
 
+                        {/* 2.7 Planned Path Overlay */}
+                        {isPlanningMode && plannedPath.map((ph, idx) => {
+                            const pos = axialToPixelPos(ph.q, ph.r, DEFAULT_CONFIG.HEX_SIZE_WORLD);
+                            const isLast = idx === plannedPath.length - 1;
+                            return (
+                                <g key={`plan_${idx}`} style={{ pointerEvents: 'none' }}>
+                                    <polygon
+                                        points={getHexPointsStr(pos.x, pos.y, DEFAULT_CONFIG.HEX_SIZE_WORLD * 1.01)}
+                                        fill={isLast ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.25)'}
+                                        stroke="rgba(56,189,248,0.9)"
+                                        strokeWidth="1.5"
+                                    />
+                                    <text x={pos.x} y={pos.y + 3} textAnchor="middle" fontSize={6} fill="white" fontWeight="900" style={{ pointerEvents: 'none' }}>
+                                        {idx + 1}
+                                    </text>
+                                </g>
+                            );
+                        })}
+
                         {/* 3. Player Character — avatar & name only; HUD is HTML overlay below */}
                         <g transform={`translate(${playerPixel.x}, ${playerPixel.y})`}>
                             {/* SVG text emoji: stable on all mobile browsers, no foreignObject needed */}
-                            <text y={-8} textAnchor="middle" fontSize={28} dominantBaseline="auto" style={{ userSelect: 'none' }}>
+                            <text y={-4} textAnchor="middle" fontSize={18} dominantBaseline="auto" style={{ userSelect: 'none' }}>
                                 {ROLE_CURE_MAP[userData.Role]?.avatar || '👤'}
                             </text>
-                            <text y={22} textAnchor="middle" fontSize={10} fontWeight="900" fill="white" style={{ textShadow: '0 2px 4px black, 0 -1px 2px black' }}>{userData.Name}</text>
+                            <text y={14} textAnchor="middle" fontSize={8} fontWeight="900" fill="white" style={{ textShadow: '0 2px 4px black, 0 -1px 2px black' }}>{userData.Name}</text>
                         </g>
                     </svg>
                 </div>
 
-                {/* Player Dice HUD — HTML overlay, avoids SVG foreignObject iOS Safari bug */}
+                {/* Player Dice HUD — fixed bottom-right, avoids covering character name */}
                 {(() => {
-                    const cw = containerSize.w;
-                    const ch = containerSize.h;
-                    const hudX = cw / 2 + (playerPixel.x + camX) * zoom;
-                    const hudY = ch / 2 + (playerPixel.y + camY) * zoom;
                     return (
                         <div
-                            className="absolute pointer-events-none z-20 flex flex-col items-center"
-                            style={{ left: hudX, top: hudY, transform: 'translateX(-50%)' }}
+                            className="absolute pointer-events-none z-20 flex flex-col items-end"
+                            style={{ right: 12, bottom: 12 }}
                         >
-                            <div className={`mt-6 p-3 rounded-[2rem] bg-slate-900/80 border ${moveMultiplier && moveMultiplier > 1 ? 'border-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] animate-pulse' : 'border-white/10 shadow-2xl'} backdrop-blur-xl flex flex-col gap-3 items-center pointer-events-auto relative`} style={{ width: 200 }}>
+                            <div
+                                className={`mt-6 p-3 rounded-[2rem] bg-slate-900/80 border ${moveMultiplier && moveMultiplier > 1 ? 'border-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.5)] animate-pulse' : 'border-white/10 shadow-2xl'} backdrop-blur-xl flex flex-col gap-3 items-center pointer-events-auto relative`}
+                                style={{ width: 200 }}
+                                onMouseDown={e => e.stopPropagation()}
+                                onMouseUp={e => e.stopPropagation()}
+                                onTouchStart={e => e.stopPropagation()}
+                                onTouchEnd={e => e.stopPropagation()}
+                            >
                                 {moveMultiplier && moveMultiplier > 1 && (
                                     <div className="absolute -top-3 bg-yellow-400 text-black px-3 py-0.5 rounded-full text-xs font-black tracking-widest flex items-center gap-1 shadow-lg shadow-yellow-500/50">
                                         ⚡ 衝刺 x{moveMultiplier}
@@ -653,6 +733,46 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                                     <div className="font-black text-emerald-400 tracking-widest text-lg">x {rollAmount}</div>
                                     <button onClick={() => setRollAmount(p => Math.min(userData.EnergyDice, p + 1))} className="w-8 h-8 rounded-full bg-slate-950 border border-white/5 text-slate-400 flex items-center justify-center font-black active:scale-90 hover:bg-slate-800 hover:text-white transition-all"><Plus size={14} /></button>
                                 </div>
+                                {/* Movement mode toggle — only when AP available */}
+                                {stepsRemaining > 0 && (
+                                    <div className="flex gap-2 w-full">
+                                        <button
+                                            onClick={() => { setIsPlanningMode(false); setPlannedPath([]); }}
+                                            className={`flex-1 py-1.5 rounded-xl text-[9px] font-black transition-all ${!isPlanningMode ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                                        >
+                                            🎯 自動
+                                        </button>
+                                        <button
+                                            onClick={() => setIsPlanningMode(true)}
+                                            className={`flex-1 py-1.5 rounded-xl text-[9px] font-black transition-all ${isPlanningMode ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                                        >
+                                            🗺️ 規劃
+                                        </button>
+                                    </div>
+                                )}
+                                {/* Planning controls */}
+                                {isPlanningMode && stepsRemaining > 0 && (
+                                    <div className="w-full space-y-1.5">
+                                        <div className="text-[9px] text-sky-400 font-black text-center tracking-widest">
+                                            已規劃 {plannedPath.length} 步（點最後一格取消）
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPlannedPath([])}
+                                                className="flex-1 py-1.5 rounded-xl text-[9px] font-black bg-slate-800 text-slate-400 active:scale-95 transition-all"
+                                            >
+                                                🗑️ 清除
+                                            </button>
+                                            <button
+                                                disabled={plannedPath.length === 0}
+                                                onClick={handleExecutePlannedPath}
+                                                className="flex-[2] py-1.5 rounded-xl text-[9px] font-black bg-sky-600 text-white shadow-lg active:scale-95 disabled:opacity-40 transition-all"
+                                            >
+                                                ✅ 執行移動
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                                 <button
                                     onClick={() => onRollDice(rollAmount)}
                                     disabled={isRolling || stepsRemaining > 0 || userData.EnergyDice < rollAmount}
@@ -719,6 +839,16 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                         </div>
                     );
                 })()}
+
+                {/* Recenter button — appears when player has panned away from character */}
+                {(Math.abs(camX + playerPixel.x) > 10 || Math.abs(camY + playerPixel.y) > 10) && (
+                    <button
+                        className="absolute bottom-6 right-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-900/90 border border-white/10 text-cyan-400 text-[11px] font-black shadow-xl backdrop-blur-xl active:scale-95 transition-all"
+                        onClick={() => { setCamX(-playerPixel.x); setCamY(-playerPixel.y); }}
+                    >
+                        <LocateFixed size={13} /> 回到角色
+                    </button>
+                )}
             </main>
 
             {/* Hover Tooltip for Entities */}

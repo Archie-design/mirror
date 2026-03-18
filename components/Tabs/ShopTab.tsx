@@ -22,7 +22,7 @@ function HexIcon({ artifactId, isOwned, isTeamBinding, size = 100 }: { artifactI
     const bgColor = isOwned
         ? (isTeamBinding ? '#1e1b4b' : '#422006')
         : '#1e293b';
-    const imgSize = ['a1', 'a3', 'a4', 'a5'].includes(artifactId) ? '60%' : '78%';
+    const imgSize = ['a1', 'a3', 'a4', 'a5', 'a6'].includes(artifactId) ? '60%' : '78%';
 
     return (
         <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
