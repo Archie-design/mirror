@@ -1199,7 +1199,7 @@ export default function App() {
             </p>
             <span className="text-[10px] font-black text-amber-400 shrink-0">⭐ {userData.GoldenDice}</span>
           </div>
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 relative overflow-hidden">
           <WorldMap
           userData={userData}
           mapData={mapData}

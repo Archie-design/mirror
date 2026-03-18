@@ -12,7 +12,8 @@
       "Bash(cp _tmp_a5.png a4.png)",
       "Bash(cp _tmp_a6.png a5.png)",
       "Bash(rm _tmp_a4.png _tmp_a5.png _tmp_a6.png)",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(git -C /Users/keke/starry-westward-journey ls-files public/assets/)"
     ]
   }
 }

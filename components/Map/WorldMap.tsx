@@ -580,7 +580,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     }, [userData.CurrentQ, userData.CurrentR, HEX_SIZE_WORLD]);
 
     return (
-        <div className="h-full bg-slate-950 flex flex-col overflow-hidden relative animate-in fade-in">
+        <div className="absolute inset-0 bg-slate-950 flex flex-col overflow-hidden animate-in fade-in">
             {/* Header */}
             <header className="px-3 py-2 md:px-6 md:py-4 bg-slate-900 border-b border-white/10 flex justify-between items-center z-20 shadow-2xl shrink-0">
                 <div className="hidden md:flex items-center gap-3">
