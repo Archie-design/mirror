@@ -289,7 +289,68 @@ export async function checkSquadW3Compliance(
     }
 }
 
-// ── 6. 查詢小隊歷史繳款紀錄 ──────────────────────────────────────
+// ── 6. 記錄小隊長批次上繳大會 ─────────────────────────────────────
+export async function recordOrgSubmission(
+    captainUserId: string,
+    amount: number,
+    submittedAt: string,  // YYYY-MM-DD
+    notes?: string,
+) {
+    if (amount <= 0) return { success: false, error: '金額必須大於 0' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(submittedAt)) return { success: false, error: '日期格式錯誤，請使用 YYYY-MM-DD' };
+
+    const client = await connectDb();
+    try {
+        const captainRes = await client.query<{ TeamName: string; IsCaptain: boolean }>(
+            `SELECT "TeamName", "IsCaptain" FROM "CharacterStats" WHERE "UserID" = $1`,
+            [captainUserId]
+        );
+        if (!captainRes.rows[0]?.IsCaptain) return { success: false, error: '僅限小隊長使用' };
+        const squadName = captainRes.rows[0].TeamName;
+
+        const insertRes = await client.query<{ id: string }>(
+            `INSERT INTO "SquadFineSubmissions" (squad_name, amount, submitted_at, recorded_by, notes)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id`,
+            [squadName, amount, submittedAt, captainUserId, notes || null]
+        );
+        await logAdminAction('fine_org_submission', captainUserId, undefined, squadName, { amount, submittedAt, notes });
+        return { success: true, id: insertRes.rows[0].id };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    } finally {
+        await client.end();
+    }
+}
+
+// ── 7. 查詢小隊上繳大會紀錄 ──────────────────────────────────────
+export async function getSquadOrgSubmissions(captainUserId: string) {
+    const client = await connectDb();
+    try {
+        const captainRes = await client.query<{ TeamName: string; IsCaptain: boolean }>(
+            `SELECT "TeamName", "IsCaptain" FROM "CharacterStats" WHERE "UserID" = $1`,
+            [captainUserId]
+        );
+        if (!captainRes.rows[0]?.IsCaptain) return { success: false, error: '僅限小隊長使用' };
+        const squadName = captainRes.rows[0].TeamName;
+
+        const res = await client.query(
+            `SELECT id, squad_name, amount, submitted_at::text, recorded_by, notes,
+                    to_char(created_at AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS created_at
+             FROM "SquadFineSubmissions"
+             WHERE squad_name = $1
+             ORDER BY submitted_at DESC`,
+            [squadName]
+        );
+        return { success: true, records: res.rows };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    } finally {
+        await client.end();
+    }
+}
+
+// ── 8. 查詢小隊歷史繳款紀錄 ──────────────────────────────────────
 export async function getSquadFinePaymentHistory(captainUserId: string) {
     const client = await connectDb();
     try {
@@ -302,7 +363,8 @@ export async function getSquadFinePaymentHistory(captainUserId: string) {
         const squadName = captainRes.rows[0].TeamName;
         const histRes = await client.query(
             `SELECT id, user_id, user_name, amount, period_label,
-                    paid_to_captain_at, submitted_to_org_at, recorded_by, created_at
+                    paid_to_captain_at::text, submitted_to_org_at::text,
+                    recorded_by, to_char(created_at AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS created_at
              FROM "FinePayments"
              WHERE squad_name = $1
              ORDER BY created_at DESC

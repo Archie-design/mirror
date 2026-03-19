@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ShieldAlert, Dices, Loader2, ChevronDown, ChevronUp, Banknote, CalendarCheck, CalendarClock } from 'lucide-react';
+import { ShieldAlert, Dices, Loader2, ChevronDown, ChevronUp, Banknote, CalendarCheck, Building2 } from 'lucide-react';
 import { DAILY_QUEST_CONFIG } from '@/lib/constants';
-import { TeamSettings, W4Application, CaptainBriefing, FinePaymentRecord } from '@/types';
+import { TeamSettings, W4Application, CaptainBriefing, FinePaymentRecord, SquadFineSubmission } from '@/types';
+// SquadFineSubmission used in orgSubmissions prop below
 
 interface SquadMemberFine {
     userId: string;
@@ -23,9 +24,10 @@ interface CaptainTabProps {
     // 罰款管理
     squadFineMembers: SquadMemberFine[];
     fineHistory: FinePaymentRecord[];
+    orgSubmissions: SquadFineSubmission[];
     onRecordPayment: (targetUserId: string, amount: number, periodLabel: string, paidToCaptainAt?: string) => Promise<void>;
     onSetPaidToCaptainDate: (paymentId: string, date: string) => Promise<void>;
-    onSetSubmittedToOrgDate: (paymentId: string, date: string) => Promise<void>;
+    onRecordOrgSubmission: (amount: number, submittedAt: string, notes?: string) => Promise<void>;
     isLoadingFines: boolean;
     // w3 違規結算
     onCheckW3Compliance: () => Promise<void>;
@@ -45,7 +47,7 @@ function getCurrentWeekMondayStr(): string {
 export function CaptainTab({
     teamName, teamSettings, pendingW4Apps, onDrawWeeklyQuest, onReviewW4,
     onGetAIBriefing, aiBriefing, isLoadingBriefing,
-    squadFineMembers, fineHistory, onRecordPayment, onSetPaidToCaptainDate, onSetSubmittedToOrgDate, isLoadingFines,
+    squadFineMembers, fineHistory, orgSubmissions, onRecordPayment, onSetPaidToCaptainDate, onRecordOrgSubmission, isLoadingFines,
     onCheckW3Compliance, isCheckingCompliance, complianceResult,
 }: CaptainTabProps) {
     const [isDrawing, setIsDrawing] = useState(false);
@@ -58,7 +60,11 @@ export function CaptainTab({
     const [historyOpen, setHistoryOpen] = useState(false);
     const [updatingDateId, setUpdatingDateId] = useState<string | null>(null);
     const [captainDateInputs, setCaptainDateInputs] = useState<Record<string, string>>({});
-    const [orgDateInputs, setOrgDateInputs] = useState<Record<string, string>>({});
+    // 批次上繳大會
+    const [orgSubmitAmount, setOrgSubmitAmount] = useState('');
+    const [orgSubmitDate, setOrgSubmitDate] = useState('');
+    const [orgSubmitNotes, setOrgSubmitNotes] = useState('');
+    const [isSubmittingOrg, setIsSubmittingOrg] = useState(false);
     const [periodLabel, setPeriodLabel] = useState(() => {
         // 預設產生目前雙週週期標籤（台灣時間）
         const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
@@ -110,12 +116,15 @@ export function CaptainTab({
         setUpdatingDateId(null);
     };
 
-    const handleSetOrgDate = async (paymentId: string) => {
-        const date = orgDateInputs[paymentId];
-        if (!date) return;
-        setUpdatingDateId(paymentId + '_org');
-        await onSetSubmittedToOrgDate(paymentId, date);
-        setUpdatingDateId(null);
+    const handleRecordOrgSubmission = async () => {
+        const amount = parseInt(orgSubmitAmount, 10);
+        if (!amount || amount <= 0 || !orgSubmitDate) return;
+        setIsSubmittingOrg(true);
+        await onRecordOrgSubmission(amount, orgSubmitDate, orgSubmitNotes || undefined);
+        setIsSubmittingOrg(false);
+        setOrgSubmitAmount('');
+        setOrgSubmitDate('');
+        setOrgSubmitNotes('');
     };
 
     return (
@@ -211,6 +220,83 @@ export function CaptainTab({
                         </p>
                     )}
                 </div>
+
+                {/* 收款概覽 + 記錄上繳大會 */}
+                {(() => {
+                    const totalCollected = squadFineMembers.reduce((s, m) => s + m.finePaid, 0);
+                    const totalSubmitted = orgSubmissions.reduce((s, r) => s + r.amount, 0);
+                    const pendingSubmit = Math.max(0, totalCollected - totalSubmitted);
+                    return (
+                        <div className="bg-slate-800/60 rounded-2xl p-4 space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <Building2 size={13} /> 收款概覽
+                            </p>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-slate-700/50 rounded-xl py-3">
+                                    <p className="text-[10px] text-slate-400 font-bold mb-1">已向成員收款</p>
+                                    <p className="text-base font-black text-emerald-400">NT${totalCollected}</p>
+                                </div>
+                                <div className="bg-slate-700/50 rounded-xl py-3">
+                                    <p className="text-[10px] text-slate-400 font-bold mb-1">已上繳大會</p>
+                                    <p className="text-base font-black text-blue-400">NT${totalSubmitted}</p>
+                                </div>
+                                <div className="bg-slate-700/50 rounded-xl py-3">
+                                    <p className="text-[10px] text-slate-400 font-bold mb-1">待上繳</p>
+                                    <p className={`text-base font-black ${pendingSubmit > 0 ? 'text-amber-400' : 'text-slate-500'}`}>NT${pendingSubmit}</p>
+                                </div>
+                            </div>
+
+                            {/* 記錄上繳大會 */}
+                            <div className="space-y-2 pt-1 border-t border-white/5">
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">記錄上繳大會</p>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        placeholder="金額 NT$"
+                                        value={orgSubmitAmount}
+                                        onChange={e => setOrgSubmitAmount(e.target.value)}
+                                        min={1}
+                                        className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={orgSubmitDate}
+                                        onChange={e => setOrgSubmitDate(e.target.value)}
+                                        className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="備註（選填）"
+                                    value={orgSubmitNotes}
+                                    onChange={e => setOrgSubmitNotes(e.target.value)}
+                                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-blue-500"
+                                />
+                                <button
+                                    disabled={isSubmittingOrg || !orgSubmitAmount || !orgSubmitDate}
+                                    onClick={handleRecordOrgSubmission}
+                                    className="w-full flex items-center justify-center gap-2 bg-blue-700/70 hover:bg-blue-600/80 text-white font-black text-sm py-3 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {isSubmittingOrg ? <><Loader2 size={14} className="animate-spin" /> 記錄中…</> : <><Building2 size={14} /> 記錄上繳大會</>}
+                                </button>
+                            </div>
+
+                            {/* 上繳紀錄 */}
+                            {orgSubmissions.length > 0 && (
+                                <div className="space-y-2 pt-1 border-t border-white/5">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">上繳紀錄</p>
+                                    {orgSubmissions.map(r => (
+                                        <div key={r.id} className="flex justify-between items-center text-xs py-1">
+                                            <span className="text-blue-300 font-bold">{r.submitted_at}</span>
+                                            <span className="text-white font-black">NT${r.amount}</span>
+                                            <span className="text-slate-500">{r.notes || '—'}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* 週期標籤 */}
                 <div className="flex items-center gap-3">
@@ -333,29 +419,6 @@ export function CaptainTab({
                                             </button>
                                         </div>
 
-                                        {/* 小隊長→大會日期 */}
-                                        <div className="flex items-center gap-2">
-                                            <CalendarClock size={13} className="text-amber-400 shrink-0" />
-                                            <span className="text-xs text-slate-400 whitespace-nowrap">上繳大會日：</span>
-                                            {rec.submitted_to_org_at
-                                                ? <span className="text-xs text-amber-300 font-bold">{rec.submitted_to_org_at}</span>
-                                                : <span className="text-xs text-slate-600">未記錄</span>
-                                            }
-                                            <input
-                                                type="date"
-                                                title="登錄上繳大會日期"
-                                                value={orgDateInputs[rec.id] || rec.submitted_to_org_at || ''}
-                                                onChange={e => setOrgDateInputs(prev => ({ ...prev, [rec.id]: e.target.value }))}
-                                                className="bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-white text-xs outline-none focus:border-amber-500 ml-auto"
-                                            />
-                                            <button
-                                                disabled={updatingDateId === rec.id + '_org'}
-                                                onClick={() => handleSetOrgDate(rec.id)}
-                                                className="px-2 py-1 bg-amber-700/50 text-amber-300 rounded-lg text-xs font-black disabled:opacity-40 active:scale-95 transition-all"
-                                            >
-                                                {updatingDateId === rec.id + '_org' ? <Loader2 size={10} className="animate-spin" /> : '✓'}
-                                            </button>
-                                        </div>
                                     </div>
                                 ))}
                             </div>

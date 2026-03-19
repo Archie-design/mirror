@@ -32,7 +32,7 @@ import { drawWeeklyQuestForSquad, autoDrawAllSquads } from '@/app/actions/team';
 import { submitW4Application, reviewW4BySquadLeader, reviewW4ByAdmin, getW4Applications, getAdminActivityLog } from '@/app/actions/w4';
 import { generateWeeklyReview, generateCaptainBriefing } from '@/app/actions/gemini';
 import { handleChestOpen } from '@/app/actions/map';
-import { getSquadFineStatus, recordFinePayment, setPaidToCaptainDate, setSubmittedToOrgDate, getSquadFinePaymentHistory, checkSquadW3Compliance } from '@/app/actions/fines';
+import { getSquadFineStatus, recordFinePayment, setPaidToCaptainDate, getSquadFinePaymentHistory, checkSquadW3Compliance, recordOrgSubmission, getSquadOrgSubmissions } from '@/app/actions/fines';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -97,6 +97,7 @@ export default function App() {
   const [squadFineMembers, setSquadFineMembers] = useState<SquadMemberFine[]>([]);
   const [fineHistory, setFineHistory] = useState<FinePaymentRecord[]>([]);
   const [isLoadingFines, setIsLoadingFines] = useState(false);
+  const [orgSubmissions, setOrgSubmissions] = useState<import('@/types').SquadFineSubmission[]>([]);
   const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
   const [complianceResult, setComplianceResult] = useState<{ periodLabel: string; violators: { userId: string; name: string }[]; alreadyRun: boolean } | null>(null);
 
@@ -313,12 +314,14 @@ export default function App() {
     if (!userData?.TeamName) return;
     setIsLoadingFines(true);
     try {
-      const [summaryRes, histRes] = await Promise.all([
+      const [summaryRes, histRes, orgRes] = await Promise.all([
         getSquadFineStatus(userData.UserID),
         getSquadFinePaymentHistory(userData.UserID),
+        getSquadOrgSubmissions(userData.UserID),
       ]);
       if (summaryRes.success && summaryRes.members) setSquadFineMembers(summaryRes.members as SquadMemberFine[]);
       if (histRes.success && histRes.records) setFineHistory(histRes.records as FinePaymentRecord[]);
+      if (orgRes.success && orgRes.records) setOrgSubmissions(orgRes.records as import('@/types').SquadFineSubmission[]);
     } catch (_) { /* silent */ } finally {
       setIsLoadingFines(false);
     }
@@ -341,10 +344,14 @@ export default function App() {
     else setModalMessage({ text: res.error || '更新失敗', type: 'error' });
   };
 
-  const handleSetSubmittedToOrgDate = async (paymentId: string, date: string) => {
-    const res = await setSubmittedToOrgDate(userData?.UserID || '', paymentId, date);
-    if (res.success) await loadFinesData();
-    else setModalMessage({ text: res.error || '更新失敗', type: 'error' });
+  const handleRecordOrgSubmission = async (amount: number, submittedAt: string, notes?: string) => {
+    const res = await recordOrgSubmission(userData?.UserID || '', amount, submittedAt, notes);
+    if (res.success) {
+      setModalMessage({ text: `已記錄上繳大會 NT$${amount}`, type: 'success' });
+      await loadFinesData();
+    } else {
+      setModalMessage({ text: res.error || '記錄失敗', type: 'error' });
+    }
   };
 
   const handleAutoDrawAllSquads = async () => {
@@ -1173,7 +1180,8 @@ export default function App() {
             fineHistory={fineHistory}
             onRecordPayment={handleRecordFinePayment}
             onSetPaidToCaptainDate={handleSetPaidToCaptainDate}
-            onSetSubmittedToOrgDate={handleSetSubmittedToOrgDate}
+            orgSubmissions={orgSubmissions}
+            onRecordOrgSubmission={handleRecordOrgSubmission}
             isLoadingFines={isLoadingFines}
             onCheckW3Compliance={handleCaptainCheckW3Compliance}
             isCheckingCompliance={isCheckingCompliance}

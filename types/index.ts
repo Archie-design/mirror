@@ -199,7 +199,17 @@ export interface FinePaymentRecord {
   amount: number;
   period_label: string;
   paid_to_captain_at: string | null;   // 隊員上繳小隊長日期
-  submitted_to_org_at: string | null;  // 小隊長上繳大會日期
+  submitted_to_org_at: string | null;  // 小隊長上繳大會日期（DB 保留，UI 不顯示）
   recorded_by: string;
+  created_at: string;
+}
+
+export interface SquadFineSubmission {
+  id: string;
+  squad_name: string;
+  amount: number;
+  submitted_at: string;  // YYYY-MM-DD
+  recorded_by: string;
+  notes: string | null;
   created_at: string;
 }
