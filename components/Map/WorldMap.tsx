@@ -157,6 +157,10 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const hudRef = useRef<HTMLDivElement>(null); // dice HUD ref — events from inside are ignored by map
     const statsHudRef = useRef<HTMLDivElement>(null); // stats HUD ref — tap-to-expand on mobile
+    // Pinch-to-zoom state
+    const isPinching = useRef(false);
+    const pinchStartDist = useRef(0);
+    const pinchStartZoom = useRef(1);
 
     // Constants
     const { HEX_SIZE_WORLD, CENTER_SIDE, SUBZONE_SIDE } = DEFAULT_CONFIG;
@@ -348,6 +352,23 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     }, [camX, camY, zoom, HEX_SIZE_WORLD]);
 
     const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        // Two-finger pinch-to-zoom
+        if ('touches' in e && e.touches.length === 2) {
+            const t = e.touches;
+            const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+            if (!isPinching.current) {
+                isPinching.current = true;
+                pinchStartDist.current = dist;
+                pinchStartZoom.current = zoom;
+                isDragging.current = false;
+            } else {
+                const ratio = dist / pinchStartDist.current;
+                setZoom(Math.min(Math.max(0.3, pinchStartZoom.current * ratio), 6));
+            }
+            return;
+        }
+        isPinching.current = false;
+
         if (isDragging.current) {
             const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
             const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
@@ -403,9 +424,10 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     }, []);
 
     const handlePointerUp = useCallback((_e: React.MouseEvent | React.TouchEvent) => {
-        // Always reset drag state first — prevents stuck-drag when early returns skip the end of function
+        // Always reset drag/pinch state first — prevents stuck state when early returns skip the end of function
         const wasDragging = isDragging.current;
         isDragging.current = false;
+        isPinching.current = false;
 
         // If it was a click without dragging much, trigger Click logic
         if (wasDragging) {
