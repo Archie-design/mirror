@@ -1,5 +1,5 @@
 'use client';
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { X, Globe } from 'lucide-react';
 import { CharacterStats } from '@/types';
 import { DEFAULT_CONFIG, TERRAIN_TYPES, ROLE_CURE_MAP, ZONES } from '@/lib/constants';
@@ -39,6 +39,56 @@ const SUB_CENTERS = (S_s: number) => [
 
 export function WorldOverview({ isOpen, onClose, mapData, corridorL, corridorW, dbEntities, userData }: WorldOverviewProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
+    const [viewZoom, setViewZoom] = useState(1);
+    const dragRef = useRef({ active: false, lastX: 0, lastY: 0 });
+    const pinchRef = useRef({ active: false, lastDist: 0 });
+
+    // Reset pan/zoom when modal opens
+    useEffect(() => {
+        if (isOpen) { setViewPan({ x: 0, y: 0 }); setViewZoom(1); }
+    }, [isOpen]);
+
+    const onPanelMouseDown = (e: React.MouseEvent) => {
+        dragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
+    };
+    const onPanelMouseMove = (e: React.MouseEvent) => {
+        if (!dragRef.current.active) return;
+        setViewPan(p => ({ x: p.x + e.clientX - dragRef.current.lastX, y: p.y + e.clientY - dragRef.current.lastY }));
+        dragRef.current.lastX = e.clientX;
+        dragRef.current.lastY = e.clientY;
+    };
+    const onPanelMouseUp = () => { dragRef.current.active = false; };
+    const onPanelTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 1) {
+            dragRef.current = { active: true, lastX: e.touches[0].clientX, lastY: e.touches[0].clientY };
+            pinchRef.current.active = false;
+        } else if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchRef.current = { active: true, lastDist: Math.sqrt(dx * dx + dy * dy) };
+            dragRef.current.active = false;
+        }
+    };
+    const onPanelTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length === 1 && dragRef.current.active) {
+            const dx = e.touches[0].clientX - dragRef.current.lastX;
+            const dy = e.touches[0].clientY - dragRef.current.lastY;
+            setViewPan(p => ({ x: p.x + dx, y: p.y + dy }));
+            dragRef.current.lastX = e.touches[0].clientX;
+            dragRef.current.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2 && pinchRef.current.active) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            setViewZoom(z => Math.min(Math.max(0.3, z * (dist / pinchRef.current.lastDist)), 5));
+            pinchRef.current.lastDist = dist;
+        }
+    };
+    const onPanelTouchEnd = () => { dragRef.current.active = false; pinchRef.current.active = false; };
+    const onPanelWheel = (e: React.WheelEvent) => {
+        setViewZoom(z => Math.min(Math.max(0.3, z - Math.sign(e.deltaY) * 0.15), 5));
+    };
 
     // Build full-world grid (no culling) and zone center positions
     const { overviewGrid, zoneCenters } = useMemo(() => {
@@ -255,9 +305,19 @@ export function WorldOverview({ isOpen, onClose, mapData, corridorL, corridorW, 
 
             {/* Body */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-                {/* Canvas panel */}
-                <div className="flex-1 flex items-center justify-center bg-[#040407] relative overflow-hidden">
-                    <div className="relative" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}>
+                {/* Canvas panel — fixed height on mobile so sidebar has room to scroll */}
+                <div
+                    className="shrink-0 h-[45vh] md:h-auto md:flex-1 flex items-center justify-center bg-[#040407] relative overflow-hidden touch-none cursor-grab active:cursor-grabbing"
+                    onMouseDown={onPanelMouseDown}
+                    onMouseMove={onPanelMouseMove}
+                    onMouseUp={onPanelMouseUp}
+                    onMouseLeave={onPanelMouseUp}
+                    onTouchStart={onPanelTouchStart}
+                    onTouchMove={onPanelTouchMove}
+                    onTouchEnd={onPanelTouchEnd}
+                    onWheel={onPanelWheel}
+                >
+                    <div className="relative" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE, transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})`, transformOrigin: 'center center' }}>
                         <canvas
                             ref={canvasRef}
                             width={CANVAS_SIZE}
@@ -292,8 +352,8 @@ export function WorldOverview({ isOpen, onClose, mapData, corridorL, corridorW, 
                     </div>
                 </div>
 
-                {/* Sidebar */}
-                <div className="w-full md:w-72 shrink-0 border-t md:border-t-0 md:border-l border-white/10 overflow-y-auto bg-slate-900/50 p-4 flex flex-col gap-5">
+                {/* Sidebar — flex-1 + min-h-0 so it fills remaining space and scrolls on mobile */}
+                <div className="flex-1 min-h-0 md:flex-none md:w-72 md:shrink-0 border-t md:border-t-0 md:border-l border-white/10 overflow-y-auto bg-slate-900/50 p-4 flex flex-col gap-5">
                     {/* Zone Legend */}
                     <section>
                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">區域圖例</div>

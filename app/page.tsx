@@ -31,6 +31,7 @@ import { getTestimonies } from '@/app/actions/testimonies_admin';
 import { drawWeeklyQuestForSquad, autoDrawAllSquads } from '@/app/actions/team';
 import { submitW4Application, reviewW4BySquadLeader, reviewW4ByAdmin, getW4Applications, getAdminActivityLog } from '@/app/actions/w4';
 import { generateWeeklyReview, generateCaptainBriefing } from '@/app/actions/gemini';
+import { handleChestOpen } from '@/app/actions/map';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -290,18 +291,16 @@ export default function App() {
 
     setIsSyncing(true);
     try {
-      // Consume in DB if it has an ID (skip monsters — combat server action handles deletion)
-      if (entity.id && entity.type !== 'monster') {
-        await supabase.from('MapEntities').delete().eq('id', entity.id);
-      }
-
       if (entity.type === 'personal') {
+        // Consume in DB
+        if (entity.id) await supabase.from('MapEntities').delete().eq('id', entity.id);
         const enc = entity.data;
         setModalMessage({
           text: `✨ 【${enc.encounterName}】\n\n${enc.narrative}\n\n「${enc.dialogue}」\n\n(修為影響：${enc.effect?.statToModify} ${enc.effect?.value > 0 ? '+' : ''}${enc.effect?.value})`,
           type: enc.effect?.value >= 0 ? 'success' : 'error'
         });
       } else if (entity.type === 'portal') {
+        if (entity.id) await supabase.from('MapEntities').delete().eq('id', entity.id);
         // Validation already happened in WorldMap.tsx
         setModalMessage({
           text: `✨ 【歸心陣】\n\n業力清淨，陣法啟動！即將傳送回本心草原...`,
@@ -311,7 +310,14 @@ export default function App() {
         setTimeout(() => {
           handleMoveCharacter(0, 0, 0, 'center', 0);
         }, 1500);
+      } else if (entity.type === 'chest') {
+        // handleChestOpen handles DB deletion internally
+        if (!userData) throw new Error('用戶資料未載入');
+        const result = await handleChestOpen(userData.UserID, entity.id);
+        setUserData(prev => prev ? { ...prev, EnergyDice: (prev.EnergyDice || 0) + result.lootDice } : prev);
+        setModalMessage({ text: result.message, type: result.isMimic && !result.lootDice ? 'error' : 'success' });
       } else if (entity.type !== 'monster') {
+        if (entity.id) await supabase.from('MapEntities').delete().eq('id', entity.id);
         setModalMessage({
           text: `🎁 你發現了【${entity.name}】！\n「在這漫漫修行路上，天道給予了一份小驚喜。」\n(已自動拾取)`,
           type: 'success'

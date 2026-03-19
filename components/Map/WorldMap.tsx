@@ -131,6 +131,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     const [isDonating, setIsDonating] = useState(false);
     const [plannedPath, setPlannedPath] = useState<{q: number, r: number}[]>([]);
     const [isPlanningMode, setIsPlanningMode] = useState(false);
+    const [isStatsExpanded, setIsStatsExpanded] = useState(false);
 
     const [dismissedCombatKeys, _setDismissedCombatKeys] = useState<Set<string>>(() => {
         try {
@@ -155,6 +156,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     const lastTouchTime = useRef(0); // suppress synthetic mouse events after touch
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const hudRef = useRef<HTMLDivElement>(null); // dice HUD ref — events from inside are ignored by map
+    const statsHudRef = useRef<HTMLDivElement>(null); // stats HUD ref — tap-to-expand on mobile
 
     // Constants
     const { HEX_SIZE_WORLD, CENTER_SIDE, SUBZONE_SIDE } = DEFAULT_CONFIG;
@@ -388,6 +390,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
         // Ignore events originating from within the dice HUD panel
         const nativeTarget = ('touches' in e ? e.touches[0]?.target : (e as React.MouseEvent).target) as Node | null;
         if (nativeTarget && hudRef.current?.contains(nativeTarget)) return;
+        if (nativeTarget && statsHudRef.current?.contains(nativeTarget)) return;
         // Ignore synthetic mouse events that fire after touch (within 500ms)
         if (!isTouch && Date.now() - lastTouchTime.current < 500) return;
         if (isTouch) lastTouchTime.current = Date.now();
@@ -581,8 +584,10 @@ export const WorldMap: React.FC<WorldMapProps> = ({
 
     return (
         <div className="absolute inset-0 bg-slate-950 flex flex-col overflow-hidden animate-in fade-in">
-            {/* Header */}
-            <header className="px-3 py-2 md:px-6 md:py-4 bg-slate-900 border-b border-white/10 flex justify-between items-center z-20 shadow-2xl shrink-0">
+            {/* Header — floats over map on mobile, solid bar on desktop */}
+            <header className="px-3 py-2 md:px-6 md:py-4 border-b border-white/10 flex justify-between items-center z-20 shadow-2xl
+                absolute top-0 left-0 right-0 bg-slate-900/80 backdrop-blur-md
+                md:relative md:bg-slate-900 md:backdrop-blur-none md:shrink-0">
                 <div className="hidden md:flex items-center gap-3">
                     <div className="p-3 bg-emerald-600 rounded-2xl text-white shadow-lg border border-emerald-400/20"><MapIcon size={20} /></div>
                     <div className="text-left text-white font-black text-xl tracking-widest uppercase">心蓮六瓣 <span className="opacity-50 text-xs">// World Map</span></div>
@@ -592,25 +597,25 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                     <div className="p-2 bg-emerald-600 rounded-xl text-white shadow-lg border border-emerald-400/20"><MapIcon size={16} /></div>
                 </div>
                 <div className="flex gap-1.5 md:gap-2">
-                    <button onClick={() => setIsOverviewOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-sky-600/20 text-sky-400 hover:bg-sky-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-sky-500/20 active:scale-95 shadow-lg">
+                    <button aria-label="世界全景" onClick={() => setIsOverviewOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-sky-600/20 text-sky-400 hover:bg-sky-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-sky-500/20 active:scale-95 shadow-lg">
                         <Globe size={18} />
                     </button>
-                    <button onClick={() => setIsShopOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-orange-600/20 text-orange-400 hover:bg-orange-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-orange-500/20 active:scale-95 shadow-lg relative">
+                    <button aria-label="商店" onClick={() => setIsShopOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-orange-600/20 text-orange-400 hover:bg-orange-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-orange-500/20 active:scale-95 shadow-lg relative">
                         <Store size={18} />
                     </button>
-                    <button onClick={() => setIsInventoryOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-indigo-500/20 active:scale-95 shadow-lg relative">
+                    <button aria-label="道具欄" onClick={() => setIsInventoryOpen(true)} className="flex items-center justify-center p-2 md:p-3 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl md:rounded-2xl transition-all border border-indigo-500/20 active:scale-95 shadow-lg relative">
                         <Package size={18} />
                         {userData.GameInventory && userData.GameInventory.length > 0 && (
                             <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
                         )}
                     </button>
-                    <button onClick={onBack} className="flex items-center gap-1.5 px-3 py-2 md:px-6 md:py-3 bg-slate-800 hover:bg-slate-700 text-white font-black rounded-xl md:rounded-2xl transition-all border border-white/10 shadow-xl active:scale-95 text-xs md:text-sm"><ChevronLeft size={14} /> <span className="hidden md:inline">返回定課</span><span className="md:hidden">返回</span></button>
+                    <button aria-label="返回定課" onClick={onBack} className="flex items-center gap-1.5 px-3 py-2 md:px-6 md:py-3 bg-slate-800 hover:bg-slate-700 text-white font-black rounded-xl md:rounded-2xl transition-all border border-white/10 shadow-xl active:scale-95 text-xs md:text-sm"><ChevronLeft size={14} /> <span className="hidden md:inline">返回定課</span><span className="md:hidden">返回</span></button>
                 </div>
             </header>
 
             {/* Main Map Container */}
             <main
-                className="flex-1 bg-[#040407] overflow-hidden relative cursor-grab active:cursor-grabbing text-neutral-100 touch-none"
+                className="flex-1 bg-[#040407] overflow-hidden relative cursor-grab active:cursor-grabbing text-neutral-100 touch-none pt-[42px] md:pt-0"
                 ref={mapContainerRef}
                 onMouseDown={handlePointerDown}
                 onMouseMove={handlePointerMove}
@@ -778,22 +783,22 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3 mt-1">
-                                    <button onClick={() => setRollAmount(p => Math.max(1, p - 1))} className="w-8 h-8 rounded-full bg-slate-950 border border-white/5 text-slate-400 flex items-center justify-center font-black active:scale-90 hover:bg-slate-800 hover:text-white transition-all"><Minus size={14} /></button>
+                                    <button aria-label="減少骰數" onClick={() => setRollAmount(p => Math.max(1, p - 1))} className="w-11 h-11 rounded-full bg-slate-950 border border-white/5 text-slate-400 flex items-center justify-center font-black active:scale-90 hover:bg-slate-800 hover:text-white transition-all"><Minus size={16} /></button>
                                     <div className="font-black text-emerald-400 tracking-widest text-lg">x {rollAmount}</div>
-                                    <button onClick={() => setRollAmount(p => Math.min(userData.EnergyDice, p + 1))} className="w-8 h-8 rounded-full bg-slate-950 border border-white/5 text-slate-400 flex items-center justify-center font-black active:scale-90 hover:bg-slate-800 hover:text-white transition-all"><Plus size={14} /></button>
+                                    <button aria-label="增加骰數" onClick={() => setRollAmount(p => Math.min(userData.EnergyDice, p + 1))} className="w-11 h-11 rounded-full bg-slate-950 border border-white/5 text-slate-400 flex items-center justify-center font-black active:scale-90 hover:bg-slate-800 hover:text-white transition-all"><Plus size={16} /></button>
                                 </div>
                                 {/* Movement mode toggle — only when AP available */}
                                 {stepsRemaining > 0 && (
                                     <div className="flex gap-2 w-full">
                                         <button
                                             onClick={() => { setIsPlanningMode(false); setPlannedPath([]); }}
-                                            className={`flex-1 py-1.5 rounded-xl text-[9px] font-black transition-all ${!isPlanningMode ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                                            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${!isPlanningMode ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
                                         >
                                             🎯 自動
                                         </button>
                                         <button
                                             onClick={() => setIsPlanningMode(true)}
-                                            className={`flex-1 py-1.5 rounded-xl text-[9px] font-black transition-all ${isPlanningMode ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                                            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${isPlanningMode ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400'}`}
                                         >
                                             🗺️ 規劃
                                         </button>
@@ -808,14 +813,14 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => setPlannedPath([])}
-                                                className="flex-1 py-1.5 rounded-xl text-[9px] font-black bg-slate-800 text-slate-400 active:scale-95 transition-all"
+                                                className="flex-1 py-2 rounded-xl text-xs font-black bg-slate-800 text-slate-400 active:scale-95 transition-all"
                                             >
                                                 🗑️ 清除
                                             </button>
                                             <button
                                                 disabled={plannedPath.length === 0}
                                                 onClick={handleExecutePlannedPath}
-                                                className="flex-[2] py-1.5 rounded-xl text-[9px] font-black bg-sky-600 text-white shadow-lg active:scale-95 disabled:opacity-40 transition-all"
+                                                className="flex-[2] py-2 rounded-xl text-xs font-black bg-sky-600 text-white shadow-lg active:scale-95 disabled:opacity-40 transition-all"
                                             >
                                                 ✅ 執行移動
                                             </button>
@@ -853,7 +858,15 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                     const hpPct = Math.max(0, Math.min(1, currentHP / maxHP));
                     const hpColor = hpPct > 0.6 ? 'text-emerald-400' : hpPct > 0.3 ? 'text-yellow-400' : 'text-red-400';
                     return (
-                        <div className="absolute bottom-4 left-3 bg-slate-900/80 p-2.5 md:p-4 rounded-2xl md:rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl select-none pointer-events-none z-30 space-y-2 md:space-y-3 min-w-[130px] md:min-w-[160px]">
+                        <div
+                            ref={statsHudRef}
+                            className="absolute bottom-4 left-3 bg-slate-900/80 p-2.5 md:p-4 rounded-2xl md:rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl select-none pointer-events-auto md:pointer-events-none z-30 space-y-2 md:space-y-3 min-w-[130px] md:min-w-[160px] cursor-pointer md:cursor-default"
+                            onClick={() => setIsStatsExpanded(p => !p)}
+                            onMouseDown={e => e.stopPropagation()}
+                            onMouseUp={e => e.stopPropagation()}
+                            onTouchStart={e => e.stopPropagation()}
+                            onTouchEnd={e => e.stopPropagation()}
+                        >
                             {/* HP bar */}
                             <div>
                                 <div className="flex justify-between items-center mb-1">
@@ -864,8 +877,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                                     <div className={`h-full rounded-full transition-all ${hpPct > 0.6 ? 'bg-emerald-500' : hpPct > 0.3 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${hpPct * 100}%` }} />
                                 </div>
                             </div>
-                            {/* ATK / DEF */}
-                            <div className="flex items-center gap-4">
+                            {/* ATK / DEF — hidden on mobile when collapsed */}
+                            <div className={`${isStatsExpanded ? 'flex' : 'hidden md:flex'} items-center gap-4`}>
                                 <div>
                                     <div className="text-[9px] font-black uppercase text-slate-500 tracking-widest mb-0.5">⚔️ 攻擊</div>
                                     <div className="text-sm font-black text-orange-400">{atk}</div>
@@ -885,6 +898,10 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                             <div className="hidden md:flex items-center gap-1.5 text-[9px] text-slate-600 font-mono">
                                 <Footprints size={10} /> {userData.CurrentQ}, {userData.CurrentR}
                             </div>
+                            {/* Mobile expand hint */}
+                            <div className="flex md:hidden justify-center mt-0.5">
+                                <span className="text-[8px] text-slate-600">{isStatsExpanded ? '▲ 收合' : '▼ 展開'}</span>
+                            </div>
                         </div>
                     );
                 })()}
@@ -892,7 +909,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                 {/* Recenter button — appears when player has panned away from character */}
                 {(Math.abs(camX + playerPixel.x) > 10 || Math.abs(camY + playerPixel.y) > 10) && (
                     <button
-                        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-900/90 border border-white/10 text-cyan-400 text-[11px] font-black shadow-xl backdrop-blur-xl active:scale-95 transition-all"
+                        className="absolute top-[52px] md:bottom-6 md:top-auto left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-900/90 border border-white/10 text-cyan-400 text-[11px] font-black shadow-xl backdrop-blur-xl active:scale-95 transition-all"
                         onClick={() => { setCamX(-playerPixel.x); setCamY(-playerPixel.y); }}
                     >
                         <LocateFixed size={13} /> 回到角色
