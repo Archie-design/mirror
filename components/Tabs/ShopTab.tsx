@@ -202,8 +202,8 @@ export function ShopTab({ userData, teamSettings, teamMemberCount = 1, onPurchas
                             }`}
                     >
                         <Coins size={11} />
-                        {isBuying === artifact.id ? '煉化中...' : (finalPrice === 0 ? '免費領取（長輩）' : `${finalPrice} 金幣`)}
-                        {isPerMember && <span className="opacity-60 text-[10px]">/人</span>}
+                        {isBuying === artifact.id ? '煉化中...' : (finalPrice === 0 ? '免費領取（長輩）' : `${artifact.price} 金幣`)}
+                        {isPerMember && <span className="opacity-60 text-[10px]">/人（共 {finalPrice} 金幣）</span>}
                     </button>
                     {artifact.isTeamBinding && !userData.IsCaptain && (
                         <p className="text-[10px] text-slate-500 font-black mt-1 text-center">需由小隊長操作購買</p>
