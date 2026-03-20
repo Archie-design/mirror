@@ -131,7 +131,12 @@ export async function triggerWeeklySnapshot() {
                     const isElite = level >= 10 && Math.random() < 0.25;
                     const hp = isElite ? Math.round((50 + level * 15) * 1.5) : 50 + level * 15;
                     const zoneId = getZoneId(q, r);
-                    const monsterName = isElite ? '精英妖獸' : '野生妖獸';
+                    const zoneMonsterNames: Record<string, string> = {
+                        pride: '慢心魔', doubt: '疑心魔', anger: '嗔心魔',
+                        greed: '貪心魔', delusion: '痴心魔', chaos: '亂心魔',
+                    };
+                    const baseName = zoneMonsterNames[zoneId] ?? '野生妖獸';
+                    const monsterName = isElite ? `精英${baseName}` : baseName;
                     const monsterIcon = isElite ? '👹' : '🐉';
                     const monsterData = isElite ? { level, hp, zone: zoneId, type: 'elite' } : { level, hp, zone: zoneId };
                     await client.query(`
