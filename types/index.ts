@@ -213,3 +213,8 @@ export interface SquadFineSubmission {
   notes: string | null;
   created_at: string;
 }
+
+export interface AchievementRecord {
+  achievement_id: string;
+  unlocked_at: string;
+}

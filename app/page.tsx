@@ -8,7 +8,7 @@ import {
   Dice5, Loader2, RotateCcw
 } from 'lucide-react';
 
-import { CharacterStats, DailyLog, Quest, SystemSettings, TopicHistory, TemporaryQuest, W4Application, AdminLog, Testimony, FinePaymentRecord } from '@/types';
+import { CharacterStats, DailyLog, Quest, SystemSettings, TopicHistory, TemporaryQuest, W4Application, AdminLog, Testimony, FinePaymentRecord, AchievementRecord } from '@/types';
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
 import { standardizePhone } from '@/lib/utils/phone';
 import { ROLE_CURE_MAP, DEFAULT_CONFIG, ADVENTURE_COST, ADMIN_PASSWORD, calculateLevelFromExp, ROLE_GROWTH_RATES } from '@/lib/constants';
@@ -24,6 +24,9 @@ import { RankTab } from '@/components/Tabs/RankTab';
 import { CaptainTab } from '@/components/Tabs/CaptainTab';
 import { CommandantTab } from '@/components/Tabs/CommandantTab';
 import { ShopTab } from '@/components/Tabs/ShopTab';
+import { AchievementsTab } from '@/components/Tabs/AchievementsTab';
+import { ACHIEVEMENT_MAP, RARITY_STYLE, type AchievementDef } from '@/lib/achievements';
+import { getUserAchievements } from '@/app/actions/achievements';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { processCheckInTransaction } from '@/app/actions/quest';
 import { triggerWeeklySnapshot, importRostersData, checkWeeklyW3Compliance, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
@@ -54,7 +57,7 @@ export default function App() {
   const [view, setView] = useState<'login' | 'register' | 'app' | 'loading' | 'admin' | 'map'>('loading');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lineBannerDismissed, setLineBannerDismissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop' | 'commandant'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop' | 'commandant' | 'achievements'>('daily');
   type GmViewMode = 'all' | 'player' | 'captain' | 'commandant';
   const [gmViewMode, setGmViewMode] = useState<GmViewMode>('all');
   const [userData, setUserData] = useState<CharacterStats | null>(null);
@@ -98,6 +101,8 @@ export default function App() {
   const [fineHistory, setFineHistory] = useState<FinePaymentRecord[]>([]);
   const [isLoadingFines, setIsLoadingFines] = useState(false);
   const [orgSubmissions, setOrgSubmissions] = useState<import('@/types').SquadFineSubmission[]>([]);
+  const [userAchievements, setUserAchievements] = useState<AchievementRecord[]>([]);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementDef[]>([]);
   const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
   const [complianceResult, setComplianceResult] = useState<{ periodLabel: string; violators: { userId: string; name: string }[]; alreadyRun: boolean } | null>(null);
 
@@ -677,6 +682,14 @@ export default function App() {
           ? { text: "破咒打卡完成，今日三項修為已滿，本次不計修為。", type: 'info' }
           : { text: "修為提升，法喜充滿！", type: 'success' }
         );
+        if (res.newAchievements && res.newAchievements.length > 0) {
+          const newDefs = res.newAchievements
+            .map((id: string) => ACHIEVEMENT_MAP.get(id))
+            .filter(Boolean) as AchievementDef[];
+          if (newDefs.length > 0) setAchievementQueue(prev => [...prev, ...newDefs]);
+          const achRecords = await getUserAchievements(userData.UserID);
+          setUserAchievements(achRecords);
+        }
       } else {
         // Sync logs so client state reflects server state (e.g. quest already done)
         const { data: syncedLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
@@ -1031,6 +1044,10 @@ export default function App() {
             if (commandantRes.success) setSquadApprovedW4Apps(commandantRes.applications);
           }
 
+          // Load achievements
+          const achRecords = await getUserAchievements(stats.UserID);
+          setUserAchievements(achRecords);
+
           setView('app');
         } else { setView(v => v === 'loading' ? 'login' : v); }
       } else if (!savedUid) { setView(v => v === 'loading' ? 'login' : v); }
@@ -1122,6 +1139,7 @@ export default function App() {
         <button onClick={() => setActiveTab('shop')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'shop' ? 'bg-yellow-600 text-white shadow-lg shadow-yellow-600/20' : 'bg-slate-900 text-slate-50'}`}>🏪藏寶閣</button>
         <button onClick={() => setActiveTab('rank')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'rank' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>修為榜</button>
         <button onClick={() => setActiveTab('stats')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'stats' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>六維與罰金</button>
+        <button onClick={() => setActiveTab('achievements')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'achievements' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'bg-slate-900 text-slate-50'}`}>🏆成就</button>
         {showCaptainTab && (
           <button onClick={handleOpenCaptainTab} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'captain' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-900 text-slate-50'}`}>👩‍✈️指揮所</button>
         )}
@@ -1204,7 +1222,35 @@ export default function App() {
             onShowMessage={(msg, type) => setModalMessage({ text: msg, type })}
           />
         )}
+        {activeTab === 'achievements' && userData && (
+          <AchievementsTab achievements={userAchievements} userData={userData} />
+        )}
       </main>
+
+      {/* Achievement Unlock Modal */}
+      {achievementQueue.length > 0 && (() => {
+        const def = achievementQueue[0];
+        const style = RARITY_STYLE[def.rarity];
+        return (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="w-full max-w-sm space-y-4 text-center">
+              <p className="text-white font-black text-lg">✨ 成就解鎖！</p>
+              <div className={`p-6 rounded-3xl border-2 ${style.border} ${style.bg} shadow-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)]`}>
+                <div className="text-5xl mb-3">{def.icon}</div>
+                <h3 className={`text-2xl font-black ${style.text}`}>{def.name}</h3>
+                <p className={`text-xs font-bold uppercase tracking-widest mt-1 ${style.text} opacity-70`}>{style.label}</p>
+                <p className="text-slate-300 text-sm mt-3 leading-relaxed">{def.description}</p>
+              </div>
+              <button
+                onClick={() => setAchievementQueue(prev => prev.slice(1))}
+                className="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg"
+              >
+                領旨！
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       <footer className="fixed bottom-0 left-0 right-0 p-10 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pointer-events-none z-30 flex justify-center text-center mx-auto">
         <button

@@ -17,7 +17,10 @@
       "Bash(for f in /Users/keke/starry-westward-journey/supabase/migrations/*.sql)",
       "Bash(do echo \"=== $f ===\")",
       "Read(//Users/keke/starry-westward-journey/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(npm run lint)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(grep -A5 \"achievements.ts$\")"
     ]
   }
 }

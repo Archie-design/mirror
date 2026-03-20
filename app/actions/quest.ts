@@ -3,6 +3,7 @@
 import { connectDb } from '@/lib/db';
 import { getLogicalDateStr } from '@/lib/utils/time';
 import { ROLE_CURE_MAP, ROLE_GROWTH_RATES, calculateLevelFromExp } from '@/lib/constants';
+import { checkAndUnlockAchievements } from './achievements';
 
 // We import ROLE_CURE_MAP directly from constants now
 export async function processCheckInTransaction(
@@ -196,7 +197,10 @@ export async function processCheckInTransaction(
         // Commit transaction
         await client.query('COMMIT');
 
-        return { success: true, rewardCapped, user: updatedStatsRes.rows[0] };
+        // Check achievements after commit (uses its own pg client, does not affect this transaction)
+        const newAchievements = await checkAndUnlockAchievements(userId, questId);
+
+        return { success: true, rewardCapped, user: updatedStatsRes.rows[0], newAchievements };
     } catch (error: any) {
         await client.query('ROLLBACK');
         return { success: false, error: error.message };
