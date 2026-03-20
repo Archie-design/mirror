@@ -26,6 +26,7 @@ export default function Scanner({ courseKey, onCheckedIn }: ScannerProps) {
     useEffect(() => {
         const html5QrCode = new Html5Qrcode('qr-reader');
         scannerRef.current = html5QrCode;
+        let isRunning = false;
 
         html5QrCode.start(
             { facingMode: 'environment' },
@@ -53,12 +54,14 @@ export default function Scanner({ courseKey, onCheckedIn }: ScannerProps) {
                 }, 3000);
             },
             () => { /* ignore scan errors (non-QR frames) */ }
-        ).then(() => setScanning(true)).catch(() => {
+        ).then(() => { isRunning = true; setScanning(true); }).catch(() => {
             setScanResult({ type: 'error', message: '無法啟動相機，請確認已授予相機權限' });
         });
 
         return () => {
-            html5QrCode.stop().catch(() => {});
+            if (isRunning) {
+                html5QrCode.stop().catch(() => {});
+            }
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [courseKey]);

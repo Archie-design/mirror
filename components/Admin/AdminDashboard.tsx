@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode } from 'lucide-react';
 import { SystemSettings, CharacterStats, TopicHistory, TemporaryQuest, W4Application, AdminLog, Testimony } from '@/types';
 
 import { ADMIN_PASSWORD } from '@/lib/constants';
@@ -103,6 +103,8 @@ export function AdminDashboard({
     const [isImporting, setIsImporting] = React.useState(false);
     const [w4Notes, setW4Notes] = React.useState<Record<string, string>>({});
     const [reviewingW4Id, setReviewingW4Id] = React.useState<string | null>(null);
+    const [volunteerPwd, setVolunteerPwd] = React.useState('');
+    const [volPwdSaved, setVolPwdSaved] = React.useState(false);
 
     const handleImportSubmit = async (e: { preventDefault: () => void }) => {
         e.preventDefault();
@@ -341,6 +343,42 @@ export function AdminDashboard({
                                 </div>
                             ))
                         )}
+                    </div>
+                </section>
+
+                {/* 志工掃碼授權 */}
+                <section className="space-y-6">
+                    <div className="flex items-center gap-2 text-teal-500 font-black text-sm uppercase tracking-widest"><QrCode size={16} /> 志工掃碼授權</div>
+                    <div className="bg-slate-900 border-2 border-teal-500/20 p-8 rounded-4xl space-y-5 shadow-xl">
+                        <p className="text-xs text-slate-400">設定志工專屬密碼，讓報到志工可在主頁「課程」分頁輸入密碼後開啟掃碼介面，無需管理員帳號。</p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <span>目前狀態：</span>
+                            {systemSettings.VolunteerPassword
+                                ? <span className="text-teal-400 font-black">✅ 已設定</span>
+                                : <span className="text-slate-500 font-black">⚠️ 尚未設定</span>
+                            }
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={volunteerPwd}
+                                onChange={e => { setVolunteerPwd(e.target.value); setVolPwdSaved(false); }}
+                                placeholder="輸入新的志工密碼"
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-teal-500"
+                            />
+                            <button
+                                onClick={() => {
+                                    if (!volunteerPwd.trim()) return;
+                                    updateGlobalSetting('VolunteerPassword', volunteerPwd.trim());
+                                    setVolPwdSaved(true);
+                                }}
+                                disabled={!volunteerPwd.trim()}
+                                className="bg-teal-600 px-6 rounded-2xl text-white font-black hover:bg-teal-500 transition-colors disabled:opacity-40"
+                            >
+                                <Save size={18} />
+                            </button>
+                        </div>
+                        {volPwdSaved && <p className="text-xs text-teal-400 font-bold text-center">✅ 志工密碼已儲存</p>}
                     </div>
                 </section>
 

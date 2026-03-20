@@ -25,6 +25,7 @@ import { CaptainTab } from '@/components/Tabs/CaptainTab';
 import { CommandantTab } from '@/components/Tabs/CommandantTab';
 import { ShopTab } from '@/components/Tabs/ShopTab';
 import { AchievementsTab } from '@/components/Tabs/AchievementsTab';
+import CourseTab from '@/components/Tabs/CourseTab';
 import { AchievementIcon } from '@/components/AchievementIcon';
 import { ACHIEVEMENT_MAP, RARITY_STYLE, type AchievementDef } from '@/lib/achievements';
 import { getUserAchievements } from '@/app/actions/achievements';
@@ -58,7 +59,7 @@ export default function App() {
   const [view, setView] = useState<'login' | 'register' | 'app' | 'loading' | 'admin' | 'map'>('loading');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lineBannerDismissed, setLineBannerDismissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop' | 'commandant' | 'achievements'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'shop' | 'commandant' | 'achievements' | 'course'>('daily');
   type GmViewMode = 'all' | 'player' | 'captain' | 'commandant';
   const [gmViewMode, setGmViewMode] = useState<GmViewMode>('all');
   const [userData, setUserData] = useState<CharacterStats | null>(null);
@@ -418,7 +419,7 @@ export default function App() {
   const updateGlobalSetting = async (key: string, value: string) => {
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('SystemSettings').update({ Value: value }).eq('SettingName', key);
+      const { error } = await supabase.from('SystemSettings').upsert({ SettingName: key, Value: value }, { onConflict: 'SettingName' });
       if (error) throw error;
       setSystemSettings(prev => ({ ...prev, [key]: value }));
 
@@ -906,6 +907,9 @@ export default function App() {
         setSystemSettings({
           TopicQuestTitle: sObj.TopicQuestTitle || '修行主題載入中',
           RegistrationMode: (sObj.RegistrationMode as 'open' | 'roster') || 'open',
+          WorldState: sObj.WorldState,
+          WorldStateMsg: sObj.WorldStateMsg,
+          VolunteerPassword: sObj.VolunteerPassword,
         });
       }
 
@@ -1133,6 +1137,7 @@ export default function App() {
         <button onClick={() => setActiveTab('rank')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'rank' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>修為榜</button>
         <button onClick={() => setActiveTab('stats')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'stats' ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-50'}`}>六維與罰金</button>
         <button onClick={() => setActiveTab('achievements')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'achievements' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'bg-slate-900 text-slate-50'}`}>🏆成就</button>
+        <button onClick={() => setActiveTab('course')} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'course' ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/20' : 'bg-slate-900 text-slate-50'}`}>📅課程</button>
         {showCaptainTab && (
           <button onClick={handleOpenCaptainTab} className={`shrink-0 px-6 py-4 rounded-2xl text-xs font-black transition-all ${activeTab === 'captain' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-900 text-slate-50'}`}>👩‍✈️指揮所</button>
         )}
@@ -1217,6 +1222,9 @@ export default function App() {
         )}
         {activeTab === 'achievements' && userData && (
           <AchievementsTab achievements={userAchievements} userData={userData} />
+        )}
+        {activeTab === 'course' && userData && (
+          <CourseTab userData={userData} volunteerPassword={systemSettings.VolunteerPassword ?? ''} />
         )}
       </main>
 
