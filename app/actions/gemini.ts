@@ -47,7 +47,11 @@ export async function generateWeeklyReview(
             [userId, weekLabel]
         );
         if ((cachedRes.rowCount ?? 0) > 0) {
-            return { success: true, review: cachedRes.rows[0].content as WeeklyReview, weekLabel };
+            const cached = cachedRes.rows[0].content as WeeklyReview;
+            // Skip stale 0% cache — regenerate if user now has check-ins
+            if ((cached.weeklyRate ?? 0) > 0) {
+                return { success: true, review: cached, weekLabel };
+            }
         }
 
         // 4. Fetch this week's daily quest logs (q1~q7 only)  [fresh — no cache]
@@ -133,12 +137,14 @@ ${thisLogs.map(l => `- ${new Date(l.Timestamp).toLocaleDateString('zh-TW', { mon
         // Ensure trend is one of the valid values
         if (!['up', 'down', 'stable'].includes(review.trend)) review.trend = trend;
 
-        // 7. Upsert to WeeklyReviews
-        await client.query(`
-            INSERT INTO "WeeklyReviews" (user_id, week_label, content)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id, week_label) DO UPDATE SET content = EXCLUDED.content
-        `, [userId, weekLabel, JSON.stringify(review)]);
+        // 7. Upsert to WeeklyReviews (skip caching empty weeks so future visits can regenerate)
+        if (thisLogs.length > 0) {
+            await client.query(`
+                INSERT INTO "WeeklyReviews" (user_id, week_label, content)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id, week_label) DO UPDATE SET content = EXCLUDED.content
+            `, [userId, weekLabel, JSON.stringify(review)]);
+        }
 
         return { success: true, review, weekLabel };
 
