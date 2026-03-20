@@ -28,7 +28,11 @@
       "Bash(for f in *.png)",
       "Bash(do echo \"Processing $f...\")",
       "Bash(rembg i \"$f\" \"$f\")",
-      "Bash(xargs sed -i '' 's/大無限開運西遊/大無限開運西遊/g')"
+      "Bash(xargs sed -i '' 's/大無限開運西遊/大無限開運西遊/g')",
+      "Bash(du -sh /Users/keke/starry-westward-journey/public/images/achievements/*.png)",
+      "Bash(convert --version)",
+      "Bash(magick --version)",
+      "Bash(sips --version)"
     ]
   }
 }
