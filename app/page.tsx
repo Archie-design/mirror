@@ -678,6 +678,9 @@ export default function App() {
           : { text: "修為提升，法喜充滿！", type: 'success' }
         );
       } else {
+        // Sync logs so client state reflects server state (e.g. quest already done)
+        const { data: syncedLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
+        if (syncedLogs) setLogs(syncedLogs as DailyLog[]);
         setModalMessage({ text: res.error || "記錄失敗，靈通中斷。", type: 'error' });
       }
     } catch (err) {

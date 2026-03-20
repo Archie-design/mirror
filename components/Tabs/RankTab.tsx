@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Crown, Users, User } from 'lucide-react';
 import { CharacterStats } from '@/types';
-import { ROLE_CURE_MAP } from '@/lib/constants';
 
 interface RankTabProps {
     leaderboard: CharacterStats[];
@@ -95,7 +94,6 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                     ) : (
                         personalRank.map((p, i) => {
                             const isSelf = p.UserID === currentUserId;
-                            const avatar = ROLE_CURE_MAP[p.Role]?.avatar;
                             return (
                                 <div
                                     key={p.UserID}
@@ -106,8 +104,8 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                                         {i + 1}
                                     </div>
                                     {/* 頭像 */}
-                                    <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-white shadow-md text-lg">
-                                        {avatar ?? p.Name?.[0]}
+                                    <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md bg-slate-800 shrink-0">
+                                        <img src={`/images/avatars/${p.Role}.png`} alt={p.Role} className="w-full h-full object-cover object-top" />
                                     </div>
                                     {/* 名字 */}
                                     <div className="flex-1 text-left">
@@ -140,7 +138,6 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                         <div className="p-10 text-slate-500 italic">小隊數據感應中...</div>
                     ) : (
                         squadRank.map((sq, i) => {
-                            const topAvatar = ROLE_CURE_MAP[sq.topMember.Role]?.avatar;
                             const avgExp = Math.round(sq.totalExp / sq.memberCount);
                             return (
                                 <div key={sq.squadName} className={`p-5 ${i < 3 ? 'bg-white/5' : ''}`}>
@@ -150,8 +147,8 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                                             {i + 1}
                                         </div>
                                         {/* 隊長頭像（最高修為成員） */}
-                                        <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-lg shadow-md">
-                                            {topAvatar ?? sq.topMember.Name?.[0]}
+                                        <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md bg-slate-800 shrink-0">
+                                            <img src={`/images/avatars/${sq.topMember.Role}.png`} alt={sq.topMember.Role} className="w-full h-full object-cover object-top" />
                                         </div>
                                         {/* 小隊名稱 */}
                                         <div className="flex-1 text-left">
@@ -173,7 +170,7 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                                             .sort((a, b) => b.Exp - a.Exp)
                                             .map(m => (
                                                 <div key={m.UserID} className="flex items-center gap-1 bg-slate-800/60 rounded-lg px-2 py-1 text-[10px]">
-                                                    <span>{ROLE_CURE_MAP[m.Role]?.avatar ?? '👤'}</span>
+                                                    <img src={`/images/avatars/${m.Role}.png`} alt={m.Role} className="w-4 h-4 rounded-sm object-cover object-top" />
                                                     <span className="text-slate-300 font-bold">{m.Name}</span>
                                                     <span className="text-slate-500">{m.Exp.toLocaleString()}</span>
                                                 </div>
