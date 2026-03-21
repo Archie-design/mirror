@@ -38,7 +38,7 @@ Requires `.env.local` with:
 
 `app/page.tsx` is a large monolithic client component (`"use client"`) that owns all game state and orchestrates every tab. It's intentionally a single page — do not split it into separate routes.
 
-Tab navigation: `daily | weekly | stats | rank | captain | shop` rendered under `<main>` via `activeTab` state.
+Tab navigation: `daily | weekly | stats | rank | captain | shop | commandant | achievements | course` rendered under `<main>` via `activeTab` state.
 
 ### Two Database Access Patterns
 
@@ -85,7 +85,11 @@ The codebase uses **both** database clients for different purposes:
 | `team.ts` | Supabase RPC | Player-to-player dice donation |
 | `items.ts` | Supabase | Buy/use GameGold items (`GameInventory`) |
 | `gemini.ts` | Gemini API | AI-generated encounters (DDA), `gemini-2.5-flash` |
-| `admin.ts` | Supabase | Weekly snapshot, roster import |
+| `admin.ts` | pg transaction | Weekly snapshot, roster import, procedural map entity generation |
+| `course.ts` | Supabase | Course registration (`registerForCourse`), attendance marking (`markAttendance`), list query |
+| `fines.ts` | Supabase | Squad fine tracking, org submission records |
+| `w4.ts` | Supabase | 傳愛分數 application lifecycle (submit → squad review → admin final) |
+| `achievements.ts` | Supabase | Achievement unlock checks, `getUserAchievements` |
 
 ### Currency Separation
 
@@ -94,8 +98,30 @@ Three separate currencies — **never mix them**:
 - `CharacterStats.GameGold`: Earned from combat (`monsterLevel × 20`), used exclusively for `GameInventory` items (i1–i10)
 - `EnergyDice` / `GoldenDice`: Movement AP and special dice
 
+### SystemSettings — Adding New Global Keys
+
+`updateGlobalSetting(key, value)` in `page.tsx` uses **upsert** (`onConflict: 'SettingName'`), so any new key is automatically created on first save. When adding a new key:
+1. Add the field to `SystemSettings` interface in `types/index.ts`
+2. Add it to the `setSystemSettings({...})` call in the data-load block (~line 907 of `page.tsx`) — **this block explicitly lists fields, so new keys must be added here or they'll be silently dropped on load**
+
+### Course Registration System
+
+`CourseTab` (`components/Tabs/CourseTab.tsx`) integrates student registration, QR code display, and volunteer scanner in one tab:
+- Student flow: select course → form (name + phone last 3 digits) → QR code (persisted in `localStorage` with keys `course_class_b_reg` / `course_class_c_reg`)
+- Volunteer flow: "志工入口" button → password input → scanner (`app/class/checkin/Scanner.tsx` via dynamic import) + attendance list
+- Volunteer password stored in `SystemSettings.VolunteerPassword`; set via Admin Dashboard → 志工掃碼授權 section
+- Original standalone pages (`/class/b`, `/class/c`, `/class/checkin`) are kept and still functional
+
+### Monster System
+
+Monster names are zone-based (set in `admin.ts` weekly generation): 慢心魔/疑心魔/嗔心魔/貪心魔/痴心魔/亂心魔, prefix 精英 for elites.
+- Level formula: `min(20, max(1, ceil(dist × 1.3)))` — radius-15 map produces Lv1–20
+- Elite: 25% chance for Lv≥10; rewards ×2 coins, +2 energy dice, 10% golden dice
+- `effectiveLevel = max(monsterLevel, floor(playerLevel × 0.75))` — applied to ATK/DEF/coinReward to prevent triviality at high player levels
+- Monster images: `public/images/monsters/monster_{zone|elite|wild|demon}.png`; path logic in `lib/utils/monster.ts`
+
 ### Database Schema Reference
 
-Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `MapEntities`, `temporaryquests`, `MandatoryQuestHistory`
+Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `MapEntities`, `temporaryquests`, `MandatoryQuestHistory`, `CourseRegistrations`, `CourseAttendance`, `SystemSettings`
 
 Supabase RPC functions defined in `supabase/migrations/`: `add_combat_rewards`, `transfer_dice`, `transfer_golden_dice`, `global_dice_bonus`
