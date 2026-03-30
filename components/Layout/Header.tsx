@@ -1,7 +1,7 @@
 import React from 'react';
-import { LogOut, Coins } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { CharacterStats } from '@/types';
-import { ROLE_CURE_MAP, getExpForNextLevel } from '@/lib/constants';
+import { getExpForNextLevel } from '@/lib/constants';
 
 interface HeaderProps {
     userData: CharacterStats | null;
@@ -24,51 +24,42 @@ export function Header({ userData, onLogout }: HeaderProps) {
     }
 
     return (
-        <header className="px-6 py-8 bg-slate-900 border-b border-white/10 flex items-center gap-6 relative justify-center">
-            <button
-                onClick={onLogout}
-                className="absolute top-6 right-6 bg-slate-950/50 border border-white/5 p-2 rounded-xl text-slate-600 hover:text-red-400">
-                <LogOut size={20} />
-            </button>
-
-            <div className="relative shrink-0 mx-auto text-center">
-                {userData?.Role && ROLE_CURE_MAP[userData.Role] ? (
-                    <img
-                        src={`/images/avatars/${userData.Role}.png`}
-                        alt={userData.Role}
-                        className="w-24 h-24 rounded-4xl shadow-lg mx-auto object-cover"
-                    />
-                ) : (
-                    <div className="w-24 h-24 bg-orange-600 rounded-4xl flex items-center justify-center text-white text-5xl font-black shadow-lg mx-auto">
-                        {userData?.Name?.[0]}
-                    </div>
-                )}
-                <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-slate-950 text-[10px] font-black px-2 py-1 rounded-full border-4 border-slate-900">
+        <header className="px-6 py-6 bg-black border-b border-[#1a1a1a] flex items-center gap-4 relative">
+            {/* 登出按鈕移至右側 Flex 容器中而非 absolute，避免覆蓋標籤 */}
+            <div className="relative shrink-0">
+                <div className="w-16 h-16 bg-orange-600 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-lg">
+                    {userData?.Name?.[0]}
+                </div>
+                <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded-full border-2 border-black">
                     LV.{userData?.Level}
                 </div>
             </div>
 
-            <div className="flex-1 text-left">
-                <div className="flex items-center gap-2 mb-1">
-                    <h1 className="text-3xl font-black text-white">{userData?.Name}</h1>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-black text-white ${userData ? ROLE_CURE_MAP[userData.Role]?.color : ''}`}>
-                        {userData ? ROLE_CURE_MAP[userData.Role]?.poison : ''}
-                    </span>
-                </div>
-                <div className="flex justify-between items-end mb-2">
-                    <div className="flex items-center gap-2">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest italic">{userData?.Role} 修行中</p>
-                        <div className="flex items-center gap-1.5 bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-lg text-[10px] font-black shadow-inner border border-yellow-500/20">
-                            <Coins size={12} /> {userData?.Coins || 0}
-                        </div>
-
+            <div className="flex-1 min-w-0 pr-12"> {/* 預留右側空間給按鈕 */}
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h1 className="text-xl font-black text-white truncate">{userData?.Name}</h1>
+                    <div className="bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-lg shrink-0">
+                        <span className="text-[9px] font-black text-orange-400">票房累積中</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-mono tracking-tighter mix-blend-screen">{userData?.Level! >= 99 ? 'MAX' : `${expInCurrentLevel} / ${nextLevelExp}`}</p>
                 </div>
-                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-white/5 relative shadow-inner">
-                    <div className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 shadow-[0_0_10px_rgba(249,115,22,0.5)] transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+                <div className="flex justify-between items-end mb-1.5">
+                    <p className="text-[9px] text-[rgba(255,255,255,0.35)] font-bold uppercase tracking-widest italic truncate">{userData?.SquadName} 劇組</p>
+                    <p className="text-[10px] text-[rgba(255,255,255,0.45)] font-mono tracking-tighter mix-blend-screen shrink-0">{userData?.Level! >= 99 ? 'MAX' : `${expInCurrentLevel} / ${nextLevelExp} 票房`}</p>
+                </div>
+                <div className="w-full bg-[#1a1a1a] h-1.5 rounded-full overflow-hidden border border-[#2a2a2a] relative shadow-inner">
+                    <div
+                        className="h-full bg-gradient-to-r from-orange-500 to-yellow-400 shadow-[0_0_10px_rgba(249,115,22,0.5)] transition-all duration-1000"
+                        style={{ width: `${progressPercent}%` }}
+                    />
                 </div>
             </div>
+
+            <button
+                onClick={onLogout}
+                aria-label="登出"
+                className="absolute top-1/2 -translate-y-1/2 right-6 bg-[#111] border border-[#2a2a2a] p-2.5 rounded-xl text-[rgba(255,255,255,0.35)] hover:text-red-400 hover:border-red-900/40 transition-all duration-150 cursor-pointer active:scale-95 shadow-md">
+                <LogOut size={18} />
+            </button>
         </header>
     );
 }

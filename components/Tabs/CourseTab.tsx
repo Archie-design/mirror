@@ -123,7 +123,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                         <ChevronLeft size={18} />
                     </button>
                     <div>
-                        <p className="text-[10px] text-teal-400 font-black uppercase tracking-widest">志工模式</p>
+                        <p className="text-[10px] text-red-400 font-black uppercase tracking-widest">劇組人員模式</p>
                         <h2 className="text-lg font-black text-white">掃碼報到</h2>
                     </div>
                 </div>
@@ -136,7 +136,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                             onClick={() => handleVolCourseChange(key)}
                             className={`flex-1 py-2.5 rounded-2xl text-xs font-black transition-all ${
                                 volCourseKey === key
-                                    ? 'bg-teal-600 text-white shadow-lg shadow-teal-900/30'
+                                    ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
                                     : 'bg-slate-800 text-slate-400'
                             }`}
                         >
@@ -155,7 +155,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
 
                 {/* Attendance list */}
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-teal-400 font-black text-xs uppercase tracking-widest">
+                    <div className="flex items-center gap-2 text-red-400 font-black text-xs uppercase tracking-widest">
                         <UserCheck size={13} /> 已報到（{attendanceList.length} 人）
                     </div>
                     {attendanceList.length === 0 ? (
@@ -186,28 +186,28 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                         <ChevronLeft size={18} />
                     </button>
                     <div>
-                        <p className="text-[10px] text-teal-400 font-black uppercase tracking-widest">志工專區</p>
+                        <p className="text-[10px] text-red-400 font-black uppercase tracking-widest">劇組後台</p>
                         <h2 className="text-lg font-black text-white">掃碼報到入口</h2>
                     </div>
                 </div>
 
                 <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-6 space-y-4">
-                    <p className="text-xs text-slate-400">請輸入活動志工密碼以開啟掃碼功能。</p>
+                    <p className="text-xs text-slate-400">請輸入工作人員密碼以開啟掃碼功能。</p>
                     <form onSubmit={handleVolLogin} className="space-y-4">
                         <input
                             type="password"
                             value={volPassword}
                             onChange={e => { setVolPassword(e.target.value); setVolAuthError(''); }}
-                            placeholder="志工密碼"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white text-center font-bold outline-none focus:border-teal-500"
+                            placeholder="工作人員密碼"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white text-center font-bold outline-none focus:border-red-500"
                             autoFocus
                         />
                         {volAuthError && <p className="text-xs text-red-400 text-center font-bold">{volAuthError}</p>}
                         <button
                             type="submit"
-                            className="w-full bg-teal-600 py-3 rounded-2xl text-white font-black hover:bg-teal-500 active:scale-95 transition-all shadow-lg"
+                            className="w-full bg-red-600 py-3 rounded-2xl text-white font-black hover:bg-red-500 active:scale-95 transition-all shadow-lg"
                         >
-                            <QrCode size={14} className="inline mr-2" />進入掃碼模式
+                            <QrCode size={14} className="inline mr-2" />進入場務掃描模式
                         </button>
                     </form>
                 </div>
@@ -226,7 +226,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                         <ChevronLeft size={18} />
                     </button>
                     <div>
-                        <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">報名完成</p>
+                        <p className="text-[10px] text-amber-400 font-black uppercase tracking-widest">報名完成</p>
                         <h2 className="text-lg font-black text-white">{info.name}・入場 QR 碼</h2>
                     </div>
                 </div>
@@ -241,7 +241,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                         </div>
                     </div>
                     <p className="text-[10px] text-slate-400 leading-relaxed">
-                        請截圖保存此 QR 碼<br />報到當天出示給志工掃描
+                        請截圖保存此入場券<br />場次當天出示給場務人員掃描
                     </p>
                 </div>
 
@@ -273,7 +273,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                         <ChevronLeft size={18} />
                     </button>
                     <div>
-                        <p className="text-[10px] text-amber-400 font-black uppercase tracking-widest">課程報名</p>
+                        <p className="text-[10px] text-red-400 font-black uppercase tracking-widest">活動報名</p>
                         <h2 className="text-lg font-black text-white">{info.name}</h2>
                     </div>
                 </div>
@@ -322,9 +322,9 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                     <button
                         type="submit"
                         disabled={submitting || !name.trim() || phone3.length !== 3}
-                        className="w-full bg-amber-600 py-4 rounded-2xl text-white font-black shadow-lg hover:bg-amber-500 active:scale-95 transition-all disabled:opacity-50"
+                        className="w-full bg-red-600 py-4 rounded-2xl text-white font-black shadow-lg hover:bg-red-500 active:scale-95 transition-all disabled:opacity-50"
                     >
-                        {submitting ? '報名中...' : '確認報名・取得 QR 碼'}
+                        {submitting ? '領取中...' : '確認報名・取得入場券'}
                     </button>
                 </form>
             </div>
@@ -335,8 +335,8 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
     return (
         <div className="px-4 pb-8 space-y-5 max-w-lg mx-auto pt-4">
             <div>
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">2026 大無限開運親證班</p>
-                <h2 className="text-xl font-black text-white">課程報名</h2>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">2026 年度方圓影展</p>
+                <h2 className="text-xl font-black text-white">影展場次領票</h2>
             </div>
 
             <div className="space-y-3">
@@ -350,7 +350,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                             key={key}
                             className={`rounded-3xl border-2 p-5 space-y-3 transition-all ${
                                 isRegistered
-                                    ? 'bg-gradient-to-br from-emerald-950/60 to-slate-900 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.1)]'
+                                    ? 'bg-gradient-to-br from-amber-950/60 to-slate-900 border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.1)]'
                                     : 'bg-slate-900 border-slate-700/50'
                             }`}
                         >
@@ -359,7 +359,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                                     <div className="flex items-center gap-2 mb-1">
                                         <h3 className="font-black text-white text-base">{info.name}</h3>
                                         {isRegistered && (
-                                            <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 font-black rounded-lg shrink-0">已報名</span>
+                                            <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 font-black rounded-lg shrink-0">已報名</span>
                                         )}
                                     </div>
                                     <div className="space-y-1 text-xs text-slate-400">
@@ -374,8 +374,8 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                                 onClick={() => handleSelectCourse(key)}
                                 className={`w-full py-3 rounded-2xl font-black text-sm transition-all active:scale-95 ${
                                     isRegistered
-                                        ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/30'
-                                        : 'bg-amber-600 text-white hover:bg-amber-500 shadow-lg shadow-amber-900/20'
+                                        ? 'bg-amber-600 text-white hover:bg-amber-500 shadow-lg shadow-amber-900/30'
+                                        : 'bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-900/20'
                                 }`}
                             >
                                 {isRegistered
@@ -391,9 +391,9 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
             <div className="pt-2 text-center">
                 <button
                     onClick={() => setTabView('volunteer_login')}
-                    className="text-[11px] text-slate-600 hover:text-teal-400 font-bold transition-colors underline underline-offset-2"
+                    className="text-[11px] text-slate-600 hover:text-red-400 font-bold transition-colors underline underline-offset-2"
                 >
-                    志工報到入口
+                    工作人員掃碼入口
                 </button>
             </div>
         </div>

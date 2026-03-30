@@ -1,21 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "大無限開運西遊",
-  description: "修行者轉生入口 — 2026 大無限開運親證班",
+  title: "觀影歷程系統",
+  description: "你的專屬電影追蹤平台",
 };
 
 export default function RootLayout({
@@ -24,10 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="zh-TW" className="dark">
+      <body className={`${inter.className} antialiased bg-black text-white`}>
         {children}
         <Analytics />
       </body>

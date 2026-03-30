@@ -1,10 +1,10 @@
 {
-  "name": "starry-westward-journey",
+  "name": "real-take",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },

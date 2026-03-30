@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ShieldAlert, Dices, Loader2, ChevronDown, ChevronUp, Banknote, CalendarCheck, Building2 } from 'lucide-react';
-import { DAILY_QUEST_CONFIG } from '@/lib/constants';
-import { TeamSettings, W4Application, CaptainBriefing, FinePaymentRecord, SquadFineSubmission } from '@/types';
+import { DAILY_QUEST_CONFIG, SQUAD_ROLES } from '@/lib/constants';
+import { TeamSettings, W4Application, FinePaymentRecord, SquadFineSubmission } from '@/types';
 // SquadFineSubmission used in orgSubmissions prop below
 
 interface SquadMemberFine {
@@ -12,15 +12,21 @@ interface SquadMemberFine {
     balance: number;
 }
 
+interface SquadMemberRole {
+    userId: string;
+    name: string;
+    squadRole?: string;
+}
+
 interface CaptainTabProps {
     teamName: string;
     teamSettings?: TeamSettings;
     pendingW4Apps: W4Application[];
     onDrawWeeklyQuest: () => Promise<void>;
     onReviewW4: (appId: string, approve: boolean, notes: string) => Promise<void>;
-    onGetAIBriefing: () => Promise<void>;
-    aiBriefing: CaptainBriefing | null;
-    isLoadingBriefing: boolean;
+    // 小隊角色指派
+    squadMembersForRoles?: SquadMemberRole[];
+    onSetSquadRole?: (targetUserId: string, role: string | null) => Promise<void>;
     // 罰款管理
     squadFineMembers: SquadMemberFine[];
     fineHistory: FinePaymentRecord[];
@@ -29,12 +35,54 @@ interface CaptainTabProps {
     onSetPaidToCaptainDate: (paymentId: string, date: string) => Promise<void>;
     onRecordOrgSubmission: (amount: number, submittedAt: string, notes?: string) => Promise<void>;
     isLoadingFines: boolean;
-    // w3 違規結算
+    // 違規結算
     onCheckW3Compliance: () => Promise<void>;
     isCheckingCompliance: boolean;
-    complianceResult: { periodLabel: string; violators: { userId: string; name: string }[]; alreadyRun: boolean } | null;
+    complianceResult: { periodLabel: string; violators: { userId: string; name: string; missingSum?: number; fineAdded?: number }[]; alreadyRun: boolean } | null;
 }
 
+
+// ── 角色選擇卡片 ──────────────────────────────────────────────────────────
+function RolePicker({ member, onSet }: {
+    member: { userId: string; name: string; squadRole?: string };
+    onSet: (role: string | null) => Promise<void>;
+}) {
+    const [saving, setSaving] = useState(false);
+
+    const handleSelect = async (role: string) => {
+        const next = member.squadRole === role ? null : role; // 再點一次取消
+        setSaving(true);
+        await onSet(next);
+        setSaving(false);
+    };
+
+    return (
+        <div className="bg-slate-800 rounded-2xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+                <span className="font-bold text-white text-sm">{member.name}</span>
+                {member.squadRole
+                    ? <span className="text-[10px] font-black text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full">{member.squadRole}</span>
+                    : <span className="text-[10px] text-slate-500">未指派</span>
+                }
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+                {SQUAD_ROLES.map(role => (
+                    <button
+                        key={role}
+                        disabled={saving}
+                        onClick={() => handleSelect(role)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95
+                            ${member.squadRole === role
+                                ? 'bg-violet-600 text-white'
+                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                    >
+                        {saving && member.squadRole === role ? '…' : role}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
 
 function getCurrentWeekMondayStr(): string {
     const nowTaiwan = new Date(Date.now() + 8 * 3600 * 1000);
@@ -46,7 +94,7 @@ function getCurrentWeekMondayStr(): string {
 
 export function CaptainTab({
     teamName, teamSettings, pendingW4Apps, onDrawWeeklyQuest, onReviewW4,
-    onGetAIBriefing, aiBriefing, isLoadingBriefing,
+    squadMembersForRoles = [], onSetSquadRole,
     squadFineMembers, fineHistory, orgSubmissions, onRecordPayment, onSetPaidToCaptainDate, onRecordOrgSubmission, isLoadingFines,
     onCheckW3Compliance, isCheckingCompliance, complianceResult,
 }: CaptainTabProps) {
@@ -66,16 +114,14 @@ export function CaptainTab({
     const [orgSubmitNotes, setOrgSubmitNotes] = useState('');
     const [isSubmittingOrg, setIsSubmittingOrg] = useState(false);
     const [periodLabel, setPeriodLabel] = useState(() => {
-        // 預設產生目前雙週週期標籤（台灣時間）
+        // 預設為上週週期（與 checkSquadFineCompliance 預設行為一致）
         const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
         const day = nowTW.getUTCDay() || 7;
         const thisMonday = new Date(nowTW);
         thisMonday.setUTCDate(nowTW.getUTCDate() - (day - 1));
-        const prevMonday = new Date(thisMonday);
-        prevMonday.setUTCDate(thisMonday.getUTCDate() - 14);
-        const prevPrevMonday = new Date(thisMonday);
-        prevPrevMonday.setUTCDate(thisMonday.getUTCDate() - 7);
-        return `${prevMonday.toISOString().slice(0, 10)}~${prevPrevMonday.toISOString().slice(0, 10)}`;
+        const lastMonday = new Date(thisMonday);
+        lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+        return `${lastMonday.toISOString().slice(0, 10)}~${thisMonday.toISOString().slice(0, 10)}`;
     });
 
     const weekMondayStr = getCurrentWeekMondayStr();
@@ -131,63 +177,10 @@ export function CaptainTab({
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
             <div className="bg-indigo-950/40 border-2 border-indigo-500/40 rounded-4xl p-6 shadow-2xl text-center mx-auto">
                 <div className="flex items-center justify-center gap-2 text-indigo-400 font-black text-xs uppercase mb-2 tracking-widest"><ShieldAlert size={16} /> 隊長權限指揮所</div>
-                <h2 className="text-2xl font-black text-white italic mx-auto">{teamName || '未知小隊'}</h2>
+                <h2 className="text-2xl font-black text-white italic mx-auto">{teamName || '未知劇組'}</h2>
                 <p className="text-xs text-indigo-300 mt-2 font-black">你擁有點亮同伴前行的提燈。請謹慎決策。</p>
             </div>
 
-            {/* ── AI 隊務分析 ── */}
-            <section className="bg-slate-900 border-2 border-purple-500/30 p-8 rounded-4xl space-y-5 shadow-xl">
-                <h3 className="text-lg font-black text-white border-b border-white/10 pb-4 text-left">🤖 AI 隊務分析</h3>
-                <p className="text-xs text-slate-400 font-bold leading-relaxed text-left">
-                    即時分析本小隊近 7 天修行表現，識別表現之星與需要關懷的隊員。
-                </p>
-                <button
-                    disabled={isLoadingBriefing}
-                    onClick={onGetAIBriefing}
-                    className="w-full flex items-center justify-center gap-3 bg-purple-600 p-4 rounded-2xl text-white font-black text-base shadow-lg hover:bg-purple-500 active:scale-95 transition-all disabled:opacity-50"
-                >
-                    {isLoadingBriefing
-                        ? <><Loader2 size={20} className="animate-spin" /> 分析中，請稍候…</>
-                        : <>🤖 開始分析</>
-                    }
-                </button>
-
-                {aiBriefing && (
-                    <div className="space-y-4 pt-1 animate-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex items-center gap-2">
-                            <span className={`text-xs font-black px-3 py-1 rounded-lg ${
-                                aiBriefing.teamMorale === 'high' ? 'bg-emerald-500/20 text-emerald-400' :
-                                aiBriefing.teamMorale === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-red-500/20 text-red-400'
-                            }`}>
-                                {aiBriefing.teamMorale === 'high' ? '士氣高昂 ↑' :
-                                 aiBriefing.teamMorale === 'medium' ? '士氣持平 →' : '士氣低迷 ↓'}
-                            </span>
-                        </div>
-                        <p className="text-sm text-slate-300 leading-relaxed text-left">{aiBriefing.teamSummary}</p>
-                        <div className="bg-slate-800 rounded-2xl p-4 space-y-1 text-left">
-                            <p className="text-xs font-black text-emerald-400 uppercase tracking-widest">本週之星</p>
-                            <p className="text-sm text-white font-bold">{aiBriefing.topPerformer}</p>
-                        </div>
-                        {aiBriefing.needsSupport.length > 0 && (
-                            <div className="bg-slate-800 rounded-2xl p-4 space-y-2 text-left">
-                                <p className="text-xs font-black text-yellow-400 uppercase tracking-widest">需要關懷</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {aiBriefing.needsSupport.map(name => (
-                                        <span key={name} className="px-3 py-1 bg-yellow-500/10 text-yellow-300 text-xs font-bold rounded-lg">
-                                            {name}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-4 text-left">
-                            <p className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">本週建議</p>
-                            <p className="text-xs text-slate-300 leading-relaxed">{aiBriefing.suggestion}</p>
-                        </div>
-                    </div>
-                )}
-            </section>
 
             {/* ── 💸 罰款管理 ── */}
             <section className="bg-slate-900 border-2 border-amber-500/30 p-8 rounded-4xl space-y-6 shadow-xl">
@@ -195,9 +188,9 @@ export function CaptainTab({
                     <Banknote size={18} className="text-amber-400" /> 罰款管理
                 </h3>
 
-                {/* w3 違規結算 */}
+                {/* 定課違規結算 */}
                 <div className="bg-slate-800/60 rounded-2xl p-4 space-y-3">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">📋 上週 w3 違規結算</p>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">📋 定課未達標結算</p>
                     <button
                         disabled={isCheckingCompliance || complianceResult?.alreadyRun === true}
                         onClick={onCheckW3Compliance}
@@ -207,14 +200,14 @@ export function CaptainTab({
                             ? <><Loader2 size={14} className="animate-spin" /> 結算中…</>
                             : complianceResult?.alreadyRun
                             ? `✅ 本週已結算（${complianceResult.periodLabel}）`
-                            : '計算上週 w3 違規'}
+                            : '計算指定期間定課違規'}
                     </button>
                     {complianceResult && !complianceResult.alreadyRun && (
                         <p className="text-xs text-center animate-in slide-in-from-top-2 duration-300">
                             {complianceResult.violators.length === 0
-                                ? <span className="text-emerald-400 font-black">🎉 上週全員達標！</span>
+                                ? <span className="text-emerald-400 font-black">🎉 結算期間內全員達標！</span>
                                 : <span className="text-red-400 font-bold">
-                                    {complianceResult.violators.map(v => v.name).join('、')} 未完成 w3，各 +NT$200
+                                    {complianceResult.violators.map(v => `${v.name}(缺${v.missingSum}次，+NT$${v.fineAdded})`).join('、')}
                                   </span>
                             }
                         </p>
@@ -313,7 +306,7 @@ export function CaptainTab({
                 {isLoadingFines ? (
                     <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-amber-400" /></div>
                 ) : squadFineMembers.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">小隊暫無罰款紀錄</p>
+                    <p className="text-sm text-slate-500 text-center py-4">劇組暫無罰款紀錄</p>
                 ) : (
                     <div className="space-y-3">
                         {squadFineMembers.map(m => (
@@ -345,7 +338,7 @@ export function CaptainTab({
                                             />
                                             <input
                                                 type="date"
-                                                title="隊員交款給小隊長的日期（選填）"
+                                                title="隊員交款給劇組長的日期（選填）"
                                                 value={paymentInput[m.userId]?.date || ''}
                                                 onChange={e => setPaymentInput(prev => ({
                                                     ...prev,
@@ -395,7 +388,7 @@ export function CaptainTab({
                                             <span className="text-[10px] text-slate-500 bg-slate-700 px-2 py-1 rounded-lg">{rec.period_label}</span>
                                         </div>
 
-                                        {/* 隊員→小隊長日期 */}
+                                        {/* 隊員→劇組長日期 */}
                                         <div className="flex items-center gap-2">
                                             <CalendarCheck size={13} className="text-blue-400 shrink-0" />
                                             <span className="text-xs text-slate-400 whitespace-nowrap">隊員交款日：</span>
@@ -428,7 +421,7 @@ export function CaptainTab({
             </section>
 
             <section className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl text-center">
-                <h3 className="text-lg font-black text-white border-b border-white/10 pb-4 text-left">🎲 本週推薦定課抽籤</h3>
+                <h3 className="text-lg font-black text-white border-b border-white/10 pb-4 text-left">🎲 本週推薦通告抽籤</h3>
 
                 {alreadyDrawnThisWeek && currentQuestName ? (
                     <div className="space-y-3">
@@ -442,15 +435,15 @@ export function CaptainTab({
                 ) : (
                     <div className="space-y-4">
                         <p className="text-xs text-slate-400 font-bold leading-relaxed">
-                            每週一 12:00 前抽選本週推薦定課。<br />
-                            已抽過的定課不重複，{remaining.length > 0 ? `尚餘 ${remaining.length} 項可抽` : '本輪已全部抽完，下次抽籤將重置循環'}。
+                            每週一 12:00 前抽選本週推薦通告。<br />
+                            已抽過的通告不重複，{remaining.length > 0 ? `尚餘 ${remaining.length} 項可抽` : '本輪已全部抽完，下次抽籤將重置循環'}。
                         </p>
                         <button
                             disabled={isDrawing}
                             onClick={handleDraw}
                             className="w-full flex items-center justify-center gap-3 bg-indigo-600 p-5 rounded-2xl text-white font-black text-lg shadow-lg hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-50"
                         >
-                            <Dices size={22} /> {isDrawing ? '命運抽籤中...' : '🎲 抽選本週定課'}
+                            <Dices size={22} /> {isDrawing ? '命運抽籤中...' : '🎲 抽選本週通告'}
                         </button>
                     </div>
                 )}
@@ -472,9 +465,30 @@ export function CaptainTab({
                 )}
             </section>
 
-            {/* ❤️ 傳愛分數初審 */}
+            {/* 🎭 小隊角色職稱指派 */}
+            {squadMembersForRoles.length > 0 && onSetSquadRole && (
+                <section className="bg-slate-900 border-2 border-violet-500/30 p-6 rounded-4xl space-y-4 shadow-xl">
+                    <h3 className="text-lg font-black text-white border-b border-white/10 pb-3 flex items-center gap-2">
+                        🎭 小隊角色職稱指派
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                        為每位成員指派職稱。職稱僅為管理性質，不影響計分與任務類型。
+                    </p>
+                    <div className="space-y-2">
+                        {squadMembersForRoles.map(m => (
+                            <RolePicker
+                                key={m.userId}
+                                member={m}
+                                onSet={(role) => onSetSquadRole(m.userId, role)}
+                            />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* ❤️ 電影推廣分數初審 */}
             <section className="bg-slate-900 border-2 border-pink-500/30 p-8 rounded-4xl space-y-6 shadow-xl">
-                <h3 className="text-lg font-black text-white border-b border-white/10 pb-4">❤️ 傳愛分數審核（小隊長初審）</h3>
+                <h3 className="text-lg font-black text-white border-b border-white/10 pb-4">❤️ 傳愛申請審核（小隊長初審）</h3>
 
                 {pendingW4Apps.length === 0 ? (
                     <p className="text-sm text-slate-500 text-center py-4">目前無待審申請</p>

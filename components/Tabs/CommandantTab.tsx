@@ -22,7 +22,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage }: Comm
             const res = await reviewW4ByAdmin(appId, action, notes[appId] || '', userData.Name);
             if (res.success) {
                 onShowMessage(
-                    action === 'approve' ? '✅ 已核准入帳，傳愛修為已發放！' : '已駁回此申請。',
+                    action === 'approve' ? '✅ 已核准入帳，電影推廣票房已發放！' : '已駁回此申請。',
                     action === 'approve' ? 'success' : 'info'
                 );
                 onRefresh();
@@ -44,10 +44,10 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage }: Comm
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-2 text-rose-400 font-black text-xs uppercase mb-1 tracking-widest">
-                            <Sword size={14} /> 大隊長指揮部
+                            <Sword size={14} /> 發行商長指揮部
                         </div>
-                        <h2 className="text-2xl font-black text-white italic">傳愛申請終審</h2>
-                        <p className="text-xs text-slate-400 mt-1">以下為已通過小隊長初審、待終審的傳愛申請</p>
+                        <h2 className="text-2xl font-black text-white italic">電影推廣終審</h2>
+                        <p className="text-xs text-slate-400 mt-1">以下為已通過劇組長初審、待終審的電影推廣申請</p>
                     </div>
                     <button
                         onClick={onRefresh}
@@ -78,7 +78,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage }: Comm
                                     <p className="text-xs text-slate-500 mt-0.5">日期：{app.interview_date}</p>
                                     {app.squad_review_notes && (
                                         <p className="text-xs text-indigo-400 mt-1.5 bg-indigo-500/10 px-2 py-1 rounded-lg">
-                                            小隊長備註：{app.squad_review_notes}
+                                            劇組長備註：{app.squad_review_notes}
                                         </p>
                                     )}
                                     {app.description && (

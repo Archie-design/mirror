@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { type CourseKey } from '@/lib/courseConfig';
 
-const supabase = createClient(
+const getSupabase = () => createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
@@ -27,7 +27,7 @@ export async function registerForCourse(
     }
 
     // Match against CharacterStats (UserID ends with phone3)
-    const { data: users, error: fetchErr } = await supabase
+    const { data: users, error: fetchErr } = await getSupabase()
         .from('CharacterStats')
         .select('UserID, Name')
         .eq('Name', trimmedName)
@@ -41,7 +41,7 @@ export async function registerForCourse(
     const user = users[0];
 
     // Check for existing registration (ON CONFLICT DO NOTHING pattern)
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabase()
         .from('CourseRegistrations')
         .select('id')
         .eq('user_id', user.UserID)
@@ -53,7 +53,7 @@ export async function registerForCourse(
     }
 
     // Create new registration
-    const { data: newReg, error: insertErr } = await supabase
+    const { data: newReg, error: insertErr } = await getSupabase()
         .from('CourseRegistrations')
         .insert({ user_id: user.UserID, course_key: courseKey })
         .select('id')
@@ -78,7 +78,7 @@ export async function markAttendance(
     | { success: false; error: string }
 > {
     // Look up the registration
-    const { data: reg, error: regErr } = await supabase
+    const { data: reg, error: regErr } = await getSupabase()
         .from('CourseRegistrations')
         .select('user_id, course_key')
         .eq('id', registrationId)
@@ -89,7 +89,7 @@ export async function markAttendance(
     }
 
     // Get user name
-    const { data: user } = await supabase
+    const { data: user } = await getSupabase()
         .from('CharacterStats')
         .select('Name')
         .eq('UserID', reg.user_id)
@@ -99,7 +99,7 @@ export async function markAttendance(
     const courseKey = reg.course_key as CourseKey;
 
     // Check if already checked in
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabase()
         .from('CourseAttendance')
         .select('id')
         .eq('user_id', reg.user_id)
@@ -111,7 +111,7 @@ export async function markAttendance(
     }
 
     // Insert attendance record
-    const { error: attendErr } = await supabase
+    const { error: attendErr } = await getSupabase()
         .from('CourseAttendance')
         .insert({ user_id: reg.user_id, course_key: courseKey, checked_in_by: note });
 
@@ -128,7 +128,7 @@ export async function markAttendance(
 export async function getCourseAttendanceList(
     courseKey: CourseKey
 ): Promise<{ userId: string; userName: string; attendedAt: string }[]> {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
         .from('CourseAttendance')
         .select('user_id, attended_at')
         .eq('course_key', courseKey)
@@ -139,7 +139,7 @@ export async function getCourseAttendanceList(
     const userIds = data.map(r => r.user_id);
     if (userIds.length === 0) return [];
 
-    const { data: users } = await supabase
+    const { data: users } = await getSupabase()
         .from('CharacterStats')
         .select('UserID, Name')
         .in('UserID', userIds);

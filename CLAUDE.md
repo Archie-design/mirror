@@ -28,25 +28,24 @@ Requires `.env.local` with:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `DATABASE_URL` (direct PostgreSQL connection string to Supabase)
-- `GEMINI_API_KEY`
 
 ## Architecture
 
-**大無限開運西遊** is a gamified check-in system for a real-life cultivation class (2026 大無限開運親證班). Players complete daily/weekly quests, move on a hex map, and engage in combat. Game design spec is in `docs/GAME_DESIGN.md` and `docs/MAP_DESIGN.md` — always treat these as the authoritative source of truth.
+**real-take（大方圓開運親證班：這不是電影）** is a gamified check-in system for a real-life cultivation class (2026 大方圓開運親證班). Members complete daily/weekly quests and track personal growth goals. Game design spec is in `docs/GAME_DESIGN.md` — always treat this as the authoritative source of truth.
 
 ### App Structure
 
 `app/page.tsx` is a large monolithic client component (`"use client"`) that owns all game state and orchestrates every tab. It's intentionally a single page — do not split it into separate routes.
 
-Tab navigation: `daily | weekly | stats | rank | captain | shop | commandant | achievements | course` rendered under `<main>` via `activeTab` state.
+Tab navigation: `daily(每日觀影) | weekly(導演報表) | stats(觀影分析) | rank(票房榜) | captain(製片總部) | commandant(片商總部) | course(首映曆)` rendered under `<main>` via `activeTab` state.
 
 ### Two Database Access Patterns
 
 The codebase uses **both** database clients for different purposes:
 
-1. **`lib/db.ts` → `pg` (node-postgres)**: Used in server actions that require **explicit transactions** (`BEGIN/COMMIT/ROLLBACK`). Used for: `quest.ts` (check-in), `store.ts` (artifact purchase, coin transfer). Always acquire a client with `pool.connect()`, wrap in try/catch, and release in `finally`.
+1. **`lib/db.ts` → `pg` (node-postgres)**: Used in server actions that require **explicit transactions** (`BEGIN/COMMIT/ROLLBACK`). Used for: `quest.ts` (check-in). Always acquire a client with `connectDb()`, wrap in try/catch, and call `client.end()` in `finally`.
 
-2. **`@supabase/supabase-js`**: Used for simple reads/upserts without transaction guarantees. Used in: `combat.ts`, `items.ts`, `dice.ts`, `team.ts`, `gemini.ts`, and all client-side reads in `page.tsx`.
+2. **`@supabase/supabase-js`**: Used for simple reads/upserts without transaction guarantees. Used in: `items.ts`, `dice.ts`, `team.ts`, and all client-side reads in `page.tsx`.
 
 ### Key Design Conventions
 
@@ -57,46 +56,57 @@ The codebase uses **both** database clients for different purposes:
 - `q1_dawn`: Special variant of q1 (破曉打拳). Mutually exclusive with `q1` on the same day.
 - `w1`–`w4`: Weekly quests. QuestID format: `w1|YYYY-MM-DD`
 - `t1`: Bi-weekly topic quest
-- `t`-prefixed: System activity quests (幌金繩 a4 bonus applies)
-- `bd_yuanmeng|YYYY-MM-DD`: 定風珠 a6 親證圓夢計劃 (max 3 per week)
+- `t`-prefixed: System activity quests
 - `temp_TIMESTAMP|YYYY-MM-DD`: Temporary quests from admin
-
-**Artifact System** (`lib/constants.tsx` → `ARTIFACTS_CONFIG`):
-- `a1` 如意金箍棒: personal, ×1.2 exp, 1200 coins, limit 1
-- `a2` 照妖鏡: personal, +150 exp on `q1_dawn` only, 250 coins
-- `a3` 七彩袈裟: team, ×1.5 exp on `q1`/`q1_dawn`, 550/member
-- `a4` 幌金繩: team, ×1.5 exp on `t`-prefix quests, 700/member
-- `a5` 金剛杖: personal, ×1.2 exp (exclusive with a1), free for elders
-- `a6` 定風珠: personal, unlocks 親證圓夢計劃 打卡 UI (bd_yuanmeng prefix), 650 coins
-- Personal inventory: `CharacterStats.Inventory` (string[] JSON)
-- Team inventory: `TeamSettings.inventory` (string[] JSON)
-
-**Hex Map**: Axial coordinate `(Q, R)`, pointy-topped. Origin `(0,0)` = 本心草原 (safe zone). Zone detection via `getHexRegion()` in `lib/utils/hex.ts`. Seven zones: center, pride(N), doubt(NE), anger(SE), greed(S), delusion(SW), chaos(NW).
 
 ### Server Actions (`app/actions/`)
 
 | File | Pattern | Purpose |
 |------|---------|---------|
-| `quest.ts` | pg transaction | Daily check-in, artifact exp multipliers, duplicate prevention |
-| `store.ts` | pg transaction | Artifact purchase, coin transfer to team |
-| `combat.ts` | Supabase RPC | Combat resolution, `add_combat_rewards` RPC |
-| `map.ts` | Supabase | Chest opening, Mimic Savvy check |
+| `quest.ts` | pg transaction | Daily check-in, duplicate prevention, dice/exp awards |
 | `dice.ts` | Supabase RPC | `transfer_dice`, `transfer_golden_dice` RPCs |
 | `team.ts` | Supabase RPC | Player-to-player dice donation |
 | `items.ts` | Supabase | Buy/use GameGold items (`GameInventory`) |
-| `gemini.ts` | Gemini API | AI-generated encounters (DDA), `gemini-2.5-flash` |
 | `admin.ts` | pg transaction | Weekly snapshot, roster import, procedural map entity generation |
 | `course.ts` | Supabase | Course registration (`registerForCourse`), attendance marking (`markAttendance`), list query |
 | `fines.ts` | Supabase | Squad fine tracking, org submission records |
 | `w4.ts` | Supabase | 傳愛分數 application lifecycle (submit → squad review → admin final) |
-| `achievements.ts` | Supabase | Achievement unlock checks, `getUserAchievements` |
+| `testimony.ts` | Supabase | Member testimony submission |
+| `testimonies_admin.ts` | Supabase | Admin review of testimonies |
 
 ### Currency Separation
 
-Three separate currencies — **never mix them**:
-- `CharacterStats.Coins`: Earned from quests (10% of exp), used for personal artifacts (a1, a2, a6) and team donation
-- `CharacterStats.GameGold`: Earned from combat (`monsterLevel × 20`), used exclusively for `GameInventory` items (i1–i10)
-- `EnergyDice` / `GoldenDice`: Movement AP and special dice
+Primary gameplay currency:
+- `EnergyDice` / `GoldenDice`: Dice earned from quests and events, used for gameplay mechanics
+
+### Key Constants (`lib/constants.tsx`)
+
+- `BASE_START_DATE_STR` / `END_DATE`: Season date range (Feb 1 – Jun 28, 2026)
+- `PENALTY_PER_DAY`: Fine amount per missed day (50)
+- `ADMIN_PASSWORD`: Hardcoded to `"123"` — dev-only, not a security boundary
+- `ZONES`: The 6 zone definitions (pride/doubt/anger/greed/delusion/chaos)
+- `IN_GAME_ITEMS` (`i1`–`i10`): Purchasable shop items with `GameGold`
+- `MONSTER_DROP_ITEMS` (`d1`–`d7`): Monster-only drops stored in `CharacterStats.GameInventory`
+
+### API Routes (`app/api/`)
+
+| Route | Purpose |
+|-------|---------|
+| `POST /api/webhook/line` | LINE Bot webhook — verifies signature, routes keyword commands, parses/saves testimonies, uploads cards to Google Drive |
+| `GET /api/auth/line` | Initiates LINE Login OAuth (`?action=login` or `?action=bind&uid=USER_ID`) |
+| `GET /api/auth/line/callback` | OAuth callback — creates/binds account, sets session cookie |
+| `GET /api/cron/auto-draw` | Vercel Cron (Mon 04:00 UTC = 12:00 TW) — auto-draws mandatory quest for all squads; requires `CRON_SECRET` bearer token |
+| `POST /api/admin/setup-richmenu` | Sets up LINE Rich Menu via Messaging API |
+
+Additional LINE-related env vars: `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_DRIVE_FOLDER_ID`
+
+### LINE Bot Integration (`lib/line/`)
+
+- `client.ts`: LINE Messaging API client factory
+- `keywords.ts`: Keyword → tutorial response map (slash-prefixed, e.g. `/打卡`)
+- `parser.ts`: Parses free-text messages into structured testimony data
+- `testimony-card.tsx`: Renders testimony cards as React → image
+- `google-drive.ts`: Uploads generated card images to Google Drive
 
 ### SystemSettings — Adding New Global Keys
 
@@ -112,16 +122,10 @@ Three separate currencies — **never mix them**:
 - Volunteer password stored in `SystemSettings.VolunteerPassword`; set via Admin Dashboard → 志工掃碼授權 section
 - Original standalone pages (`/class/b`, `/class/c`, `/class/checkin`) are kept and still functional
 
-### Monster System
-
-Monster names are zone-based (set in `admin.ts` weekly generation): 慢心魔/疑心魔/嗔心魔/貪心魔/痴心魔/亂心魔, prefix 精英 for elites.
-- Level formula: `min(20, max(1, ceil(dist × 1.3)))` — radius-15 map produces Lv1–20
-- Elite: 25% chance for Lv≥10; rewards ×2 coins, +2 energy dice, 10% golden dice
-- `effectiveLevel = max(monsterLevel, floor(playerLevel × 0.75))` — applied to ATK/DEF/coinReward to prevent triviality at high player levels
-- Monster images: `public/images/monsters/monster_{zone|elite|wild|demon}.png`; path logic in `lib/utils/monster.ts`
-
 ### Database Schema Reference
 
-Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `MapEntities`, `temporaryquests`, `MandatoryQuestHistory`, `CourseRegistrations`, `CourseAttendance`, `SystemSettings`
+Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `temporaryquests`, `MandatoryQuestHistory`, `CourseRegistrations`, `CourseAttendance`, `SystemSettings`, `Testimonies`, `TopicHistory`, `W4Applications`, `AdminLogs`, `FinePayments`
 
-Supabase RPC functions defined in `supabase/migrations/`: `add_combat_rewards`, `transfer_dice`, `transfer_golden_dice`, `global_dice_bonus`
+Supabase RPC functions defined in `supabase/migrations/`: `transfer_dice`, `transfer_golden_dice`, `checkin_rpc`
+
+One-off migration/repair scripts live in `scripts/` — run with `npx ts-node scripts/<name>.ts`. These are idempotent DB fixups and data migrations, not part of the normal deployment pipeline.

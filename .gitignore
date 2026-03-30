@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# reference design assets (local only)
+reference/
+
+# external tools (separate projects)
+ui-ux-pro-max-skill/
+
+# local claude settings
+.claude/settings.local.json

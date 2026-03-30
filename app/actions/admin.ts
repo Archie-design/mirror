@@ -23,145 +23,6 @@ export async function logAdminAction(
     } catch (_) { /* log failure should never break the main flow */ }
 }
 
-export async function triggerWeeklySnapshot() {
-    
-    const client = await connectDb();
-    try {
-        await client.query('BEGIN');
-
-        // 1. Calculate past 7 days boundary
-        const today = new Date();
-        const past7Date = new Date();
-        past7Date.setDate(today.getDate() - 7);
-        const past7ISO = past7Date.toISOString();
-
-        // 2. Find active users (who have logged anything in the last 7 days)
-        const activeUsersRes = await client.query(`
-            SELECT DISTINCT "UserID" FROM "DailyLogs"
-            WHERE "Timestamp" >= $1
-        `, [past7ISO]);
-
-        const activeUsersCount = activeUsersRes.rowCount || 0;
-
-        if (activeUsersCount === 0) {
-            await client.query('COMMIT');
-            return { success: true, worldState: 'normal', rate: 0, message: "過去 7 天無活躍使用者，環境保持平衡。" };
-        }
-
-        // 3. Count total daily quests (q1~q7) completed by these active users in last 7 days
-        const logsRes = await client.query(`
-            SELECT COUNT(*) as count FROM "DailyLogs"
-            WHERE "Timestamp" >= $1 AND "QuestID" LIKE 'q%'
-        `, [past7ISO]);
-
-        const totalQuests = parseInt(logsRes.rows[0].count, 10);
-
-        // 4. Calculate Rate (Max 3 quests/day per active user * 7 days = 21 max per user)
-        const maxPossible = activeUsersCount * 21;
-        const rate = totalQuests / maxPossible;
-
-        // 5. Determine new World State
-        let worldState = 'normal';
-        let stateMsg = "【世俗】眾生修行平平，三界維持恐怖平衡。";
-        if (rate > 0.8) {
-            worldState = 'good';
-            stateMsg = "【共好】全服精進達標！靈氣復甦，天降祥瑞與寶箱。";
-        } else if (rate < 0.5) {
-            worldState = 'bad';
-            stateMsg = "【共業】全服懈怠！妖氣沖天，西北混沌區「世界王」結界鬆動。";
-        }
-
-        // 6. Update SystemSettings
-        await client.query(`
-            INSERT INTO "SystemSettings" ("SettingName", "Value") 
-            VALUES ('WorldState', $1)
-            ON CONFLICT ("SettingName") DO UPDATE SET "Value" = EXCLUDED."Value"
-        `, [worldState]);
-
-        await client.query(`
-            INSERT INTO "SystemSettings" ("SettingName", "Value") 
-            VALUES ('WorldStateMsg', $1)
-            ON CONFLICT ("SettingName") DO UPDATE SET "Value" = EXCLUDED."Value"
-        `, [stateMsg]);
-
-        // 7. Clear old global entities
-        await client.query(`DELETE FROM "MapEntities" WHERE type NOT IN ('monster', 'chest', 'portal')`);
-
-        // 8. Generate new procedural entities based on worldState
-        const chanceChest = worldState === 'good' ? 0.05 : worldState === 'bad' ? 0.01 : 0.02;
-        const chanceMonster = worldState === 'good' ? 0.01 : worldState === 'bad' ? 0.08 : 0.02;
-
-        // Global caps to prevent flooding
-        const MAX_MONSTERS = worldState === 'bad' ? 60 : worldState === 'normal' ? 30 : 12;
-        const MAX_CHESTS   = worldState === 'good' ? 40 : worldState === 'normal' ? 25 : 10;
-        let monsterCount = 0;
-        let chestCount = 0;
-
-        // Zone direction lookup (same order as ZONES in constants.tsx)
-        // pride=N, doubt=NE, anger=SE, greed=S, delusion=SW, chaos=NW
-        const getZoneId = (q: number, r: number): string => {
-            const s = -q - r;
-            if (r < 0 && s > 0 && Math.abs(q) <= Math.abs(r)) return 'pride';
-            if (q > 0 && r < 0) return 'doubt';
-            if (q > 0 && s < 0) return 'anger';
-            if (r > 0 && s < 0 && Math.abs(q) <= Math.abs(r)) return 'greed';
-            if (q < 0 && r > 0) return 'delusion';
-            if (q < 0 && s > 0) return 'chaos';
-            return 'center';
-        };
-
-        // We simulate a grid area of radius ~15 to scatter entities
-        const R = 15;
-        for (let q = -R; q <= R; q++) {
-            for (let r = Math.max(-R, -q - R); r <= Math.min(R, -q + R); r++) {
-                if (q === 0 && r === 0) continue; // Safe hub
-                if (monsterCount >= MAX_MONSTERS && chestCount >= MAX_CHESTS) break;
-
-                const rand = Math.random();
-                if (rand < chanceChest && chestCount < MAX_CHESTS) {
-                    await client.query(`
-                        INSERT INTO "MapEntities" (q, r, type, name, icon)
-                        VALUES ($1, $2, 'treasure', '神秘寶箱', '🎁')
-                    `, [q, r]);
-                    chestCount++;
-                } else if (rand < chanceChest + chanceMonster && monsterCount < MAX_MONSTERS) {
-                    // Level scales with axial distance from center (Lv1 near hub, Lv20 at edges)
-                    const dist = (Math.abs(q) + Math.abs(r) + Math.abs(-q - r)) / 2;
-                    const level = Math.min(20, Math.max(1, Math.ceil(dist * 1.3)));
-                    const isElite = level >= 10 && Math.random() < 0.25;
-                    const hp = isElite ? Math.round((50 + level * 15) * 1.5) : 50 + level * 15;
-                    const zoneId = getZoneId(q, r);
-                    const zoneMonsterNames: Record<string, string> = {
-                        pride: '慢心魔', doubt: '疑心魔', anger: '嗔心魔',
-                        greed: '貪心魔', delusion: '痴心魔', chaos: '亂心魔',
-                    };
-                    const baseName = zoneMonsterNames[zoneId] ?? '野生妖獸';
-                    const monsterName = isElite ? `精英${baseName}` : baseName;
-                    const monsterIcon = isElite ? '👹' : '🐉';
-                    const monsterData = isElite ? { level, hp, zone: zoneId, type: 'elite' } : { level, hp, zone: zoneId };
-                    await client.query(`
-                        INSERT INTO "MapEntities" (q, r, type, name, icon, data)
-                        VALUES ($1, $2, 'monster', $3, $4, $5)
-                    `, [q, r, monsterName, monsterIcon, JSON.stringify(monsterData)]);
-                    monsterCount++;
-                }
-            }
-            if (monsterCount >= MAX_MONSTERS && chestCount >= MAX_CHESTS) break;
-        }
-
-        await client.query('COMMIT');
-        await logAdminAction('weekly_snapshot', 'admin', undefined, undefined, { worldState, rate: Math.round(rate * 100) + '%' });
-        return { success: true, worldState, rate, message: stateMsg };
-
-    } catch (error: any) {
-        await client.query('ROLLBACK');
-        await logAdminAction('weekly_snapshot', 'admin', undefined, undefined, { error: error.message }, 'error');
-        return { success: false, error: error.message };
-    } finally {
-        await client.end();
-    }
-}
-
 export async function checkWeeklyW3Compliance(startMondayISO?: string, endMondayISO?: string) {
 
     const client = await connectDb();
@@ -250,8 +111,8 @@ const ZH_NUMS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', 
     '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
 
 /**
- * 測試用：將現有玩家隨機分配到大隊 / 小隊，並自動設定隊長與 TeamSettings。
- * 每支小隊 SQUAD_SIZE 人，每個大隊 SQUADS_PER_BATTALION 支小隊。
+ * 測試用：將現有玩家隨機分配到發行商 / 劇組，並自動設定隊長與 TeamSettings。
+ * 每支劇組 SQUAD_SIZE 人，每個發行商 SQUADS_PER_BATTALION 支劇組。
  * 可重複執行（覆蓋舊值）。
  */
 export async function autoAssignSquadsForTesting(
@@ -284,8 +145,8 @@ export async function autoAssignSquadsForTesting(
             const squadIdx = squads.length;
             const battalionIdx = Math.floor(squadIdx / squadsPerBattalion);
             const squadInBattalion = (squadIdx % squadsPerBattalion) + 1;
-            const battalionName = `第${ZH_NUMS[battalionIdx] ?? battalionIdx + 1}大隊`;
-            const squadName = `${battalionName}-小隊${ZH_NUMS[squadInBattalion - 1] ?? squadInBattalion}`;
+            const battalionName = `第${ZH_NUMS[battalionIdx] ?? battalionIdx + 1}發行商`;
+            const squadName = `${battalionName}-劇組${ZH_NUMS[squadInBattalion - 1] ?? squadInBattalion}`;
             squads.push({ battalionName, squadName, members: allUsers.slice(i, i + squadSize) });
         }
 
@@ -347,7 +208,7 @@ export async function importRostersData(csvContent: string) {
 
         for (const row of rows) {
             const cols = row.split(',').map(c => c.trim());
-            // Expecting: email, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
+            // Expecting: email, name, birthday, squad_name(發行商), team_name(劇組), is_captain, is_commandant
             const email = cols[0]?.toLowerCase();
             if (!email || !email.includes('@')) continue;
 
@@ -392,6 +253,69 @@ export async function importRostersData(csvContent: string) {
     } finally {
         await client.end();
     }
+}
+
+// ── 全服天使通話配對抽籤 ──────────────────────────────────
+export async function runAngelCallPairing() {
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    // 取得所有有隸屬小隊的成員
+    const { data: users, error } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name, TeamName')
+        .not('TeamName', 'is', null);
+
+    if (error || !users) {
+        return { success: false, error: error?.message || '無法取得成員資料' };
+    }
+
+    // 依小隊分組
+    const teamMap = new Map<string, Array<{ id: string; name: string }>>();
+    for (const u of users) {
+        if (!u.TeamName) continue;
+        if (!teamMap.has(u.TeamName)) teamMap.set(u.TeamName, []);
+        teamMap.get(u.TeamName)!.push({ id: u.UserID, name: u.Name });
+    }
+
+    const allPairings: Array<{ teamName: string; group: Array<{ id: string; name: string }> }> = [];
+
+    for (const [teamName, members] of teamMap) {
+        if (members.length < 2) continue;
+
+        // 隨機洗牌
+        const shuffled = [...members].sort(() => Math.random() - 0.5);
+
+        let i = 0;
+        while (i < shuffled.length) {
+            const remaining = shuffled.length - i;
+            if (remaining <= 1) break;
+            // 剩3人或2人：整組配對
+            if (remaining <= 3) {
+                allPairings.push({ teamName, group: shuffled.slice(i) });
+                break;
+            }
+            // 一般情況：兩兩配對
+            allPairings.push({ teamName, group: shuffled.slice(i, i + 2) });
+            i += 2;
+        }
+    }
+
+    // 取本週週一日期作為 key
+    const now = new Date();
+    const day = now.getDay() || 7;
+    now.setDate(now.getDate() - (day - 1));
+    const weekOf = now.toISOString().slice(0, 10);
+
+    const pairingsJson = JSON.stringify({ weekOf, pairings: allPairings });
+    const { error: saveErr } = await supabase.from('SystemSettings').upsert(
+        { SettingName: 'AngelCallPairings', Value: pairingsJson },
+        { onConflict: 'SettingName' }
+    );
+    if (saveErr) return { success: false, error: '儲存失敗：' + saveErr.message };
+
+    await logAdminAction('angel_call_pairing', 'admin', undefined, undefined, { weekOf, pairCount: allPairings.length });
+
+    return { success: true, weekOf, pairings: allPairings };
 }
 
 // ── 玩家設定生日 ────────────────────────────────────────

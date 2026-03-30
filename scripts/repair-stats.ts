@@ -3,11 +3,11 @@ config({ path: '.env.local' });
 import { createClient } from '@supabase/supabase-js';
 
 const ROLE_GROWTH_RATES = {
-    '孫悟空': { Physique: 3, Potential: 2, Charisma: 1, Luck: 1, Savvy: 1, Spirit: 0 },
-    '豬八戒': { Luck: 4, Charisma: 1, Potential: 1, Spirit: 1, Savvy: 1, Physique: 0 },
-    '沙悟淨': { Spirit: 2, Physique: 2, Charisma: 1, Potential: 2, Luck: 1, Savvy: 0 },
-    '白龍馬': { Charisma: 3, Luck: 3, Savvy: 1, Spirit: 1, Potential: 0, Physique: 0 },
-    '唐三藏': { Spirit: 4, Potential: 3, Savvy: 1, Charisma: 0, Luck: 0, Physique: 0 }
+    '動作巨星': { Physique: 3, Potential: 2, Charisma: 1, Luck: 1, Savvy: 1, Spirit: 0 },
+    '喜劇泰斗': { Luck: 4, Charisma: 1, Potential: 1, Spirit: 1, Savvy: 1, Physique: 0 },
+    '特效大師': { Spirit: 2, Physique: 2, Charisma: 1, Potential: 2, Luck: 1, Savvy: 0 },
+    '偶像明星': { Charisma: 3, Luck: 3, Savvy: 1, Spirit: 1, Potential: 0, Physique: 0 },
+    '文藝名導': { Spirit: 4, Potential: 3, Savvy: 1, Charisma: 0, Luck: 0, Physique: 0 }
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

@@ -9,9 +9,9 @@ const W = 2500;
 const H = 843;
 
 const BUTTONS = [
-    { label: '參加定課', sub: '查看今日定課說明', bg: '#FDF0D5', fg: '#7a4a00', border: true },
-    { label: '完成定課', sub: '打卡．記錄修為', bg: '#7a5200', fg: '#FFFFFF', border: false },
-    { label: '個人統計', sub: '修為與排行查詢', bg: '#FDF0D5', fg: '#7a4a00', border: true },
+    { label: '參加通告', sub: '查看今日通告說明', bg: '#FDF0D5', fg: '#7a4a00', border: true },
+    { label: '完成通告', sub: '打卡．記錄票房', bg: '#7a5200', fg: '#FFFFFF', border: false },
+    { label: '個人統計', sub: '票房與排行查詢', bg: '#FDF0D5', fg: '#7a4a00', border: true },
     { label: '今日請假', sub: '申請當日缺席', bg: '#FDF0D5', fg: '#7a4a00', border: false },
 ];
 
@@ -93,10 +93,10 @@ export async function GET(req: NextRequest) {
         const { richMenuId } = await client.createRichMenu({
             size: { width: W, height: H },
             selected: true,
-            name: '大無限開運西遊定課選單',
-            chatBarText: '定課選單',
+            name: '大無限開運西遊通告選單',
+            chatBarText: '通告選單',
             areas: [
-                { bounds: { x: 0,    y: 0,   width: 1250, height: 421 }, action: { type: 'message', text: '定課' } },
+                { bounds: { x: 0,    y: 0,   width: 1250, height: 421 }, action: { type: 'message', text: '通告' } },
                 { bounds: { x: 1250, y: 0,   width: 1250, height: 421 }, action: { type: 'message', text: '打卡' } },
                 { bounds: { x: 0,    y: 422, width: 1250, height: 421 }, action: { type: 'message', text: '排行' } },
                 { bounds: { x: 1250, y: 422, width: 1250, height: 421 }, action: { type: 'message', text: '請假' } },
