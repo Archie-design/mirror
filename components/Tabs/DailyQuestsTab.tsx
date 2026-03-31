@@ -153,8 +153,17 @@ interface RelationshipQuestSectionProps {
     hasFineReminder?: boolean;
 }
 
+const RELATIONSHIP_OPTIONS = [
+    '爸爸',
+    '媽媽',
+    '師長',
+    '上級',
+    '伴侶',
+    '替代功課（親近的長輩）'
+];
+
 function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheckIn, hasFineReminder }: RelationshipQuestSectionProps) {
-    const [personName, setPersonName] = useState('');
+    const [selectedPerson, setSelectedPerson] = useState('');
     const [isOpen, setIsOpen] = useState(false);
 
     const todayR1Logs = logs.filter(
@@ -163,9 +172,9 @@ function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheck
     const isFull = todayR1Count >= 3;
 
     const handleSubmit = () => {
-        if (!personName.trim()) return;
-        onCheckIn(personName.trim());
-        setPersonName('');
+        if (!selectedPerson) return;
+        onCheckIn(selectedPerson);
+        setSelectedPerson('');
         setIsOpen(false);
     };
 
@@ -218,7 +227,7 @@ function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheck
                 </div>
             )}
 
-            {/* Input form */}
+            {/* Dropdown form */}
             {!isFull && (
                 <>
                     <button
@@ -231,17 +240,20 @@ function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheck
                     </button>
                     {isOpen && (
                         <div className="flex gap-3 animate-in slide-in-from-top-2 duration-200">
-                            <input
+                            <select
                                 autoFocus
-                                value={personName}
-                                onChange={e => setPersonName(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                                placeholder="互動對象姓名…"
-                                className="flex-1 bg-[#222] border border-[#444] rounded-xl px-4 py-2.5 text-white text-sm font-bold outline-none focus:border-emerald-500 placeholder:text-gray-600"
-                            />
+                                value={selectedPerson}
+                                onChange={e => setSelectedPerson(e.target.value)}
+                                className="flex-1 bg-[#222] border border-[#444] rounded-xl px-4 py-2.5 text-white text-sm font-bold outline-none focus:border-emerald-500 appearance-none cursor-pointer"
+                            >
+                                <option value="">選擇互動對象…</option>
+                                {RELATIONSHIP_OPTIONS.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
                             <button
                                 onClick={handleSubmit}
-                                disabled={!personName.trim()}
+                                disabled={!selectedPerson}
                                 className="px-5 py-2.5 bg-emerald-600 text-white font-black rounded-xl active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 ＋

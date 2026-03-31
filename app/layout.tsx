@@ -6,8 +6,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "觀影歷程系統",
-  description: "你的專屬電影追蹤平台",
+  title: "大方圓開運親證班",
+  description: "",
 };
 
 export default function RootLayout({
