@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CheckCircle2, XCircle, RefreshCw, Sword } from 'lucide-react';
-import { CharacterStats, BonusApplication } from '@/types';
+import { CheckCircle2, XCircle, RefreshCw, Sword, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
 import { reviewBonusByAdmin } from '@/app/actions/bonus';
 
 interface CommandantTabProps {
@@ -10,11 +10,25 @@ interface CommandantTabProps {
     apps: BonusApplication[];
     onRefresh: () => void;
     onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+    battalionMembers?: Record<string, SquadMemberStats[]>;
 }
 
-export function CommandantTab({ userData, apps, onRefresh, onShowMessage }: CommandantTabProps) {
+function isActive(lastCheckIn?: string): boolean {
+    if (!lastCheckIn) return false;
+    const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
+    const todayStr = nowTW.toISOString().slice(0, 10);
+    const yest = new Date(nowTW);
+    yest.setUTCDate(yest.getUTCDate() - 1);
+    return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
+}
+
+export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battalionMembers = {} }: CommandantTabProps) {
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [notes, setNotes] = useState<Record<string, string>>({});
+    const [expandedSquads, setExpandedSquads] = useState<Record<string, boolean>>({});
+
+    const toggleSquad = (name: string) => setExpandedSquads(prev => ({ ...prev, [name]: !prev[name] }));
+    const squadEntries = Object.entries(battalionMembers);
 
     const handleReview = async (appId: string, action: 'approve' | 'reject') => {
         setReviewingId(appId);
@@ -57,6 +71,59 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage }: Comm
                     </button>
                 </div>
             </div>
+
+            {/* Battalion member overview */}
+            {squadEntries.length > 0 && (
+                <div className="bg-slate-900 border-2 border-rose-500/20 rounded-3xl p-5 space-y-4">
+                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        <Users size={15} className="text-rose-400" /> 各隊成員票房總覽
+                    </h3>
+                    <div className="space-y-3">
+                        {squadEntries.map(([squadName, members]) => {
+                            const activeCount = members.filter(m => isActive(m.lastCheckIn)).length;
+                            const rate = members.length > 0 ? Math.round(activeCount / members.length * 100) : 0;
+                            const rateColor = rate >= 70 ? 'text-emerald-400' : rate >= 40 ? 'text-amber-400' : 'text-red-400';
+                            const rateBg = rate >= 70 ? 'bg-emerald-500/10' : rate >= 40 ? 'bg-amber-500/10' : 'bg-red-500/10';
+                            const isOpen = expandedSquads[squadName];
+                            return (
+                                <div key={squadName} className="bg-slate-800/60 rounded-2xl overflow-hidden">
+                                    <button
+                                        onClick={() => toggleSquad(squadName)}
+                                        className="w-full flex items-center justify-between px-4 py-3 text-left active:bg-slate-700/40 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="font-black text-white text-sm truncate">{squadName}</span>
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rateColor} ${rateBg}`}>
+                                                {activeCount}/{members.length} 活躍 · {rate}%
+                                            </span>
+                                        </div>
+                                        {isOpen ? <ChevronUp size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
+                                    </button>
+                                    {isOpen && (
+                                        <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-2">
+                                            {members.map(m => (
+                                                <div key={m.UserID} className="flex items-center gap-2">
+                                                    <span className="text-xs text-white font-bold flex-1 truncate">
+                                                        {m.Name}
+                                                        {m.IsCaptain && <span className="text-indigo-400 ml-1 text-[10px]">隊長</span>}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-500">Lv.{m.Level}</span>
+                                                    {m.Streak > 0 && <span className="text-[10px] text-orange-400">🔥{m.Streak}</span>}
+                                                    {isActive(m.lastCheckIn) ? (
+                                                        <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full shrink-0">活躍</span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black text-slate-600 bg-slate-700/50 px-1.5 py-0.5 rounded-full shrink-0">沉寂</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Application list */}
             {apps.length === 0 ? (

@@ -28,7 +28,8 @@ import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { processCheckInTransaction, clearTodayLogs } from '@/app/actions/quest';
 import { importRostersData, autoAssignSquadsForTesting, logAdminAction, runAngelCallPairing } from '@/app/actions/admin';
 import { getTestimonies } from '@/app/actions/testimonies_admin';
-import { drawWeeklyQuestForSquad, autoDrawAllSquads } from '@/app/actions/team';
+import { drawWeeklyQuestForSquad, autoDrawAllSquads, getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
+import { SquadMemberStats } from '@/types';
 import { submitInterviewApplication, reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog, submitBonusApplication } from '@/app/actions/bonus';
 import { getSquadFineStatus, recordFinePayment, setPaidToCaptainDate, getSquadFinePaymentHistory, checkSquadFineCompliance, recordOrgSubmission, getSquadOrgSubmissions, getLastComplianceRun } from '@/app/actions/fines';
 
@@ -83,6 +84,9 @@ export default function App() {
   const [orgSubmissions, setOrgSubmissions] = useState<import('@/types').SquadFineSubmission[]>([]);
   const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
   const [complianceResult, setComplianceResult] = useState<{ periodLabel: string; violators: { userId: string; name: string; missingSum?: number; fineAdded?: number }[]; alreadyRun: boolean } | null>(null);
+
+  const [squadMembers, setSquadMembers] = useState<SquadMemberStats[]>([]);
+  const [battalionMembers, setBattalionMembers] = useState<Record<string, SquadMemberStats[]>>({});
 
   // LINE login progress flag to prevent flash of login page during async DB work
   const lineLoginInProgress = useRef(false);
@@ -253,8 +257,21 @@ export default function App() {
 
   const handleOpenCaptainTab = () => {
     setActiveTab('captain');
-    // 每次切回 captain tab 時重新載入罰款資料
-    if (userData?.IsCaptain || userData?.IsGM) loadFinesData();
+    if (userData?.IsCaptain || userData?.IsGM) {
+      loadFinesData();
+      getSquadMembersStats(userData.UserID).then(res => {
+        if (res.success && res.members) setSquadMembers(res.members);
+      });
+    }
+  };
+
+  const handleOpenCommandantTab = () => {
+    setActiveTab('commandant');
+    if ((userData?.IsCommandant || userData?.IsGM) && userData?.UserID) {
+      getBattalionMembersStats(userData.UserID).then(res => {
+        if (res.success && res.members) setBattalionMembers(res.members);
+      });
+    }
   };
 
   const handleAutoAssignSquads = async () => {
@@ -840,7 +857,7 @@ export default function App() {
         )}
         {showCommandantTab && (
           <button
-            onClick={() => setActiveTab('commandant')}
+            onClick={handleOpenCommandantTab}
             className={`shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer
               ${activeTab === 'commandant'
                 ? 'bg-[#D4AF37] text-black shadow-[0_0_15px_rgba(212,175,55,0.4)]'
@@ -902,6 +919,7 @@ export default function App() {
             onCheckW3Compliance={handleCaptainCheckW3Compliance}
             isCheckingCompliance={isCheckingCompliance}
             complianceResult={complianceResult}
+            squadMembers={squadMembers}
           />
         )}
         {activeTab === 'commandant' && showCommandantTab && userData && (
@@ -913,6 +931,7 @@ export default function App() {
               if (res.success) setPendingFinalReviewApps(res.applications);
             }}
             onShowMessage={(msg, type) => setModalMessage({ text: msg, type })}
+            battalionMembers={battalionMembers}
           />
         )}
         {activeTab === 'course' && userData && (

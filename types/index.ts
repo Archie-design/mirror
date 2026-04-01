@@ -177,6 +177,17 @@ export interface CourseRegistration {
   registered_at: string;
 }
 
+export interface SquadMemberStats {
+  UserID: string;
+  Name: string;
+  Level: number;
+  Exp: number;
+  Streak: number;
+  TeamName?: string;
+  IsCaptain: boolean;
+  lastCheckIn?: string; // 最近一筆 DailyLogs Timestamp（YYYY-MM-DD）
+}
+
 export interface AngelCallPairing {
   teamName: string;
   group: Array<{ id: string; name: string }>;

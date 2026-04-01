@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ShieldAlert, Dices, Loader2, ChevronDown, ChevronUp, Banknote, CalendarCheck, Building2 } from 'lucide-react';
+import { ShieldAlert, Dices, Loader2, ChevronDown, ChevronUp, Banknote, CalendarCheck, Building2, Users } from 'lucide-react';
 import { DAILY_QUEST_CONFIG, SQUAD_ROLES } from '@/lib/constants';
-import { TeamSettings, BonusApplication, FinePaymentRecord, SquadFineSubmission } from '@/types';
+import { TeamSettings, BonusApplication, FinePaymentRecord, SquadFineSubmission, SquadMemberStats } from '@/types';
 // SquadFineSubmission used in orgSubmissions prop below
 
 interface SquadMemberFine {
@@ -39,6 +39,8 @@ interface CaptainTabProps {
     onCheckW3Compliance: () => Promise<void>;
     isCheckingCompliance: boolean;
     complianceResult: { periodLabel: string; violators: { userId: string; name: string; missingSum?: number; fineAdded?: number }[]; alreadyRun: boolean } | null;
+    // 成員總覽
+    squadMembers?: SquadMemberStats[];
 }
 
 
@@ -92,11 +94,21 @@ function getCurrentWeekMondayStr(): string {
     return monday.toISOString().slice(0, 10);
 }
 
+function isActive(lastCheckIn?: string): boolean {
+    if (!lastCheckIn) return false;
+    const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
+    const todayStr = nowTW.toISOString().slice(0, 10);
+    const yest = new Date(nowTW);
+    yest.setUTCDate(yest.getUTCDate() - 1);
+    return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
+}
+
 export function CaptainTab({
     teamName, teamSettings, pendingBonusApps, onDrawWeeklyQuest, onReviewBonus,
     squadMembersForRoles = [], onSetSquadRole,
     squadFineMembers, fineHistory, orgSubmissions, onRecordPayment, onSetPaidToCaptainDate, onRecordOrgSubmission, isLoadingFines,
     onCheckW3Compliance, isCheckingCompliance, complianceResult,
+    squadMembers = [],
 }: CaptainTabProps) {
     const [isDrawing, setIsDrawing] = useState(false);
     const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
@@ -181,6 +193,48 @@ export function CaptainTab({
                 <p className="text-xs text-indigo-300 mt-2 font-black">你擁有點亮同伴前行的提燈。請謹慎決策。</p>
             </div>
 
+
+            {/* ── 👥 小隊成員總覽 ── */}
+            <section className="bg-slate-900 border-2 border-indigo-500/20 p-6 rounded-4xl space-y-3 shadow-xl">
+                <h3 className="text-lg font-black text-white border-b border-white/10 pb-3 flex items-center gap-2">
+                    <Users size={18} className="text-indigo-400" /> 小隊成員總覽
+                </h3>
+                {squadMembers.length === 0 ? (
+                    <p className="text-sm text-slate-500 text-center py-4">載入中…</p>
+                ) : (
+                    <div className="space-y-2">
+                        {squadMembers.map(m => (
+                            <div key={m.UserID} className="flex items-center gap-3 bg-slate-800/60 rounded-2xl px-4 py-3">
+                                <div className="w-9 h-9 rounded-full bg-indigo-900/50 flex items-center justify-center text-sm font-black text-indigo-300 shrink-0">
+                                    {m.Name.slice(0, 1)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-black text-white text-sm">{m.Name}</span>
+                                        {m.IsCaptain && (
+                                            <span className="text-[10px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-full">隊長</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <span className="text-[10px] text-slate-500">Lv.{m.Level}</span>
+                                        <span className="text-[10px] text-slate-500">{m.Exp.toLocaleString()} 票房</span>
+                                        {m.Streak > 0 && <span className="text-[10px] text-orange-400">🔥 {m.Streak}</span>}
+                                    </div>
+                                </div>
+                                <div className="shrink-0">
+                                    {isActive(m.lastCheckIn) ? (
+                                        <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">活躍</span>
+                                    ) : m.lastCheckIn ? (
+                                        <span className="text-[10px] font-black text-slate-500 bg-slate-700/50 px-2 py-1 rounded-full">{m.lastCheckIn}</span>
+                                    ) : (
+                                        <span className="text-[10px] font-black text-slate-600 bg-slate-800/50 px-2 py-1 rounded-full">未打卡</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
 
             {/* ── 💸 罰款管理 ── */}
             <section className="bg-slate-900 border-2 border-amber-500/30 p-8 rounded-4xl space-y-6 shadow-xl">
