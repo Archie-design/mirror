@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Loader2, Users, AlertTriangle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
@@ -22,7 +22,7 @@ function parseGatheringId(gid: string) {
     };
 }
 
-export default function SquadCheckinPage() {
+function SquadCheckinContent() {
     const searchParams = useSearchParams();
     const gatheringId = searchParams.get('g') ?? '';
     const { themeId, teamName, date } = parseGatheringId(gatheringId);
@@ -174,5 +174,17 @@ export default function SquadCheckinPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function SquadCheckinPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-[#16213E] flex items-center justify-center">
+                <Loader2 size={32} className="animate-spin text-[#F5C842]" />
+            </div>
+        }>
+            <SquadCheckinContent />
+        </Suspense>
     );
 }
