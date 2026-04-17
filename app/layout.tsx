@@ -1,13 +1,25 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Noto_Sans_TC, Noto_Serif_TC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const notoSansTC = Noto_Sans_TC({
+  subsets: ["latin"],
+  weight: ["400", "500", "700", "900"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const notoSerifTC = Noto_Serif_TC({
+  subsets: ["latin"],
+  weight: ["400", "700", "900"],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "大方圓開運親證班",
-  description: "",
+  title: "覺醒開運親證班",
+  description: "你的黃磚路",
 };
 
 export default function RootLayout({
@@ -16,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-TW" className="dark">
-      <body className={`${inter.className} antialiased bg-black text-white`}>
+    <html lang="zh-TW">
+      <body className={`${notoSansTC.variable} ${notoSerifTC.variable} antialiased`}>
         {children}
         <Analytics />
       </body>

@@ -1,0 +1,23 @@
+-- 新增五運自評分數欄位至 CharacterStats
+ALTER TABLE "CharacterStats"
+  ADD COLUMN IF NOT EXISTS "Score_事業運" smallint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "Score_財富運" smallint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "Score_情感運" smallint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "Score_家庭運" smallint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "Score_體能運" smallint NOT NULL DEFAULT 0;
+
+-- 移除舊六維數值欄位與遊戲系統欄位
+ALTER TABLE "CharacterStats"
+  DROP COLUMN IF EXISTS "Coins",
+  DROP COLUMN IF EXISTS "Spirit",
+  DROP COLUMN IF EXISTS "Physique",
+  DROP COLUMN IF EXISTS "Charisma",
+  DROP COLUMN IF EXISTS "Savvy",
+  DROP COLUMN IF EXISTS "Luck",
+  DROP COLUMN IF EXISTS "Potential",
+  DROP COLUMN IF EXISTS "Facing",
+  DROP COLUMN IF EXISTS "HP",
+  DROP COLUMN IF EXISTS "MaxHP",
+  DROP COLUMN IF EXISTS "GameGold",
+  DROP COLUMN IF EXISTS "GameInventory",
+  DROP COLUMN IF EXISTS "DDA_Difficulty";

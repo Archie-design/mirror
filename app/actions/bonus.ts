@@ -8,33 +8,60 @@ import { logAdminAction } from '@/app/actions/admin';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// ── 隊員：提交電影推廣申請（訪談 w4 系列）─────────────────────────────────────
-export async function submitInterviewApplication(
+// ── 一次性任務獎勵對照表（o1–o7）────────────────────────────────────────────
+const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
+    o1:   { reward: 1000, title: '超越巔峰' },
+    o2_1: { reward: 300,  title: '戲劇進修－生命數字' },
+    o2_2: { reward: 300,  title: '戲劇進修－生命蛻變' },
+    o2_3: { reward: 300,  title: '戲劇進修－複訓大堂課' },
+    o2_4: { reward: 300,  title: '戲劇進修－告別負債&貧窮' },
+    o3:   { reward: 500,  title: '聯誼會（1年）' },
+    o4:   { reward: 1000, title: '聯誼會（2年）' },
+    o5:   { reward: 500,  title: '報高階（訂金）' },
+    o6:   { reward: 1000, title: '報高階（完款）' },
+    o7:   { reward: 1000, title: '傳愛' },
+};
+
+// 戲劇進修類：一級審核（小隊長核准即最終，直接入帳）
+const DRAMA_TRAINING_QUEST_IDS = new Set(['o2_1', 'o2_2', 'o2_3', 'o2_4']);
+
+// ── 學員：提交一次性任務申請（o1–o7）────────────────────────────────────────
+export async function submitOneTimeApplication(
     userId: string,
     userName: string,
     squadName: string | null,
     battalionName: string | null,
-    interviewTarget: string,
-    interviewDate: string,      // YYYY-MM-DD
+    questId: 'o1' | 'o2_1' | 'o2_2' | 'o2_3' | 'o2_4' | 'o3' | 'o4' | 'o5' | 'o6' | 'o7',
+    target: string,       // 申請描述（課程名稱、說明、傳愛對象…）
+    date: string,         // YYYY-MM-DD
     description: string = '',
-    bonusType: 'b1' | 'b2' = 'b1'
+    screenshotUrl?: string
 ) {
     const supabase = createClient(supabaseUrl, supabaseKey);
-    // questId uses b1/b2 prefix so reward lookup matches BONUS_QUEST_CONFIG
-    const questId = `${bonusType}|${interviewDate}|${interviewTarget.trim().slice(0, 50)}`;
 
-    // 防止對同一對象在同一天重複提交（同一天可以電影推廣多人，但同一對象不能重複）
-    const { data: existing } = await supabase
-        .from('BonusApplications')
-        .select('id, status')
-        .eq('user_id', userId)
-        .eq('interview_date', interviewDate)
-        .eq('interview_target', interviewTarget.trim())
-        .neq('status', 'rejected')
-        .maybeSingle();
+    // 截止日檢查
+    const ONE_TIME_DEADLINE = '2026-07-01';
+    if (new Date().toISOString().slice(0, 10) > ONE_TIME_DEADLINE) {
+        return { success: false, error: `一次性任務申請已截止（截止日：${ONE_TIME_DEADLINE}）` };
+    }
 
-    if (existing) {
-        return { success: false, error: `已有「${interviewTarget.trim()}」的同日申請（待審或已核准），無法重複提交` };
+    const config = BONUS_QUEST_CONFIG[questId];
+    if (!config) return { success: false, error: '無效的任務 ID' };
+
+    // o5/o6 報高階允許多次（每階一次），o7 傳愛無上限，其他每人限 1 次
+    const isSingleSubmission = !['o5', 'o6', 'o7'].includes(questId);
+    if (isSingleSubmission) {
+        const { data: existing } = await supabase
+            .from('BonusApplications')
+            .select('id, status')
+            .eq('user_id', userId)
+            .eq('quest_id', questId)
+            .neq('status', 'rejected')
+            .maybeSingle();
+
+        if (existing) {
+            return { success: false, error: `「${config.title}」已有申請記錄，無法重複提交` };
+        }
     }
 
     const { data, error } = await supabase
@@ -44,10 +71,11 @@ export async function submitInterviewApplication(
             user_name: userName,
             squad_name: squadName,
             battalion_name: battalionName,
-            interview_target: interviewTarget,
-            interview_date: interviewDate,
+            interview_target: target,
+            interview_date: date,
             description,
             quest_id: questId,
+            screenshot_url: screenshotUrl,
             status: 'pending',
         })
         .select()
@@ -57,21 +85,9 @@ export async function submitInterviewApplication(
     return { success: true, application: data as BonusApplication };
 }
 
-// ── b1–b7 獎勵對照表 ─────────────────────────────────────
-const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
-    b1: { reward: 100, title: '傳愛（訂金5千以下）' },
-    b2: { reward: 200, title: '傳愛（訂金5千以上）' },
-    b3: { reward: 5000, title: '續報高階/五運班加分' },
-    b4: { reward: 5000, title: '成為小天使加分' },
-    b5: { reward: 3000, title: '報名聯誼會（1年）加分' },
-    b6: { reward: 5000, title: '報名聯誼會（2年）加分' },
-    b7: { reward: 1000, title: '參加實體課程加分' },
-    doc1: { reward: 10000, title: '道在江湖紀錄片' },
-};
-
-// ── 劇組長：初審 ─────────────────────────────────────────
-// b5/b6（聯誼會）：初審通過後直接入帳，不需大隊長終審
-// w4（電影推廣訪談）：初審通過後進入大隊長終審佇列
+// ── 小隊長：初審────────────────────────────────────────────────────────────
+// o2_1–o2_4 戲劇進修（一級審核）：初審通過直接入帳
+// o1 / o3–o7（二級審核）：初審通過後進入大隊長終審佇列
 export async function reviewBonusBySquadLeader(
     appId: string,
     reviewerId: string,
@@ -80,14 +96,13 @@ export async function reviewBonusBySquadLeader(
 ) {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 驗證審核者為劇組長，且與申請人同劇組
     const { data: reviewer } = await supabase
         .from('CharacterStats')
         .select('IsCaptain, TeamName, Name')
         .eq('UserID', reviewerId)
         .single();
 
-    if (!reviewer?.IsCaptain) return { success: false, error: '僅限劇組長進行初審' };
+    if (!reviewer?.IsCaptain) return { success: false, error: '僅限小隊長進行初審' };
 
     const { data: app } = await supabase
         .from('BonusApplications')
@@ -97,7 +112,7 @@ export async function reviewBonusBySquadLeader(
 
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'pending') return { success: false, error: '此申請已被審核，無法重複操作' };
-    if (app.squad_name !== reviewer.TeamName) return { success: false, error: '只能審核本劇組的申請' };
+    if (app.squad_name !== reviewer.TeamName) return { success: false, error: '只能審核本小隊的申請' };
 
     if (!approve) {
         const { error } = await supabase
@@ -114,10 +129,8 @@ export async function reviewBonusBySquadLeader(
         return { success: true, newStatus: 'rejected' };
     }
 
-    // b5/b6 聯誼會：小隊長初審即最終核准，直接入帳
-    const isNetworkingEvent = app.quest_id === 'b5' || app.quest_id === 'b6';
-
-    if (isNetworkingEvent) {
+    // 一級審核任務（戲劇進修）：小隊長核准即最終，直接入帳
+    if (DRAMA_TRAINING_QUEST_IDS.has(app.quest_id)) {
         const bonusInfo = BONUS_QUEST_CONFIG[app.quest_id];
 
         const { error: updateErr } = await supabase
@@ -142,14 +155,14 @@ export async function reviewBonusBySquadLeader(
         );
 
         if (!checkInRes.success) {
-            await logAdminAction('b5b6_squad_approve', reviewer.Name, appId, app.user_name, {
+            await logAdminAction('drama_training_squad_approve', reviewer.Name, appId, app.user_name, {
                 questId: app.quest_id,
                 checkInError: checkInRes.error,
             }, 'error');
             return { success: true, warning: '審核已核准，但入帳失敗：' + checkInRes.error };
         }
 
-        await logAdminAction('b5b6_squad_approve', reviewer.Name, appId, app.user_name, {
+        await logAdminAction('drama_training_squad_approve', reviewer.Name, appId, app.user_name, {
             questId: app.quest_id,
             reward: bonusInfo.reward,
         });
@@ -157,7 +170,7 @@ export async function reviewBonusBySquadLeader(
         return { success: true, newStatus: 'approved' };
     }
 
-    // 其他類型（w4 電影推廣訪談）：進入大隊長終審佇列
+    // 二級審核任務（o1 / o3–o7）：進入大隊長終審佇列
     const { error } = await supabase
         .from('BonusApplications')
         .update({
@@ -172,7 +185,7 @@ export async function reviewBonusBySquadLeader(
     return { success: true, newStatus: 'squad_approved' };
 }
 
-// ── 大隊長：終審（僅用於 w4 電影推廣訪談）──────────────────────────────────────
+// ── 大隊長：終審（o1 / o3–o7 二級審核任務）────────────────────────────────
 export async function reviewBonusByAdmin(
     appId: string,
     action: 'approve' | 'reject',
@@ -188,7 +201,7 @@ export async function reviewBonusByAdmin(
         .single();
 
     if (!app) return { success: false, error: '找不到申請記錄' };
-    if (app.status !== 'squad_approved') return { success: false, error: '此申請尚未通過劇組長初審' };
+    if (app.status !== 'squad_approved') return { success: false, error: '此申請尚未通過小隊長初審' };
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
@@ -205,10 +218,9 @@ export async function reviewBonusByAdmin(
     if (updateErr) return { success: false, error: '終審更新失敗：' + updateErr.message };
 
     if (action === 'approve') {
-        const questIdBase = app.quest_id.split('|')[0];
-        const bonusInfo = BONUS_QUEST_CONFIG[questIdBase];
+        const bonusInfo = BONUS_QUEST_CONFIG[app.quest_id];
         const reward = bonusInfo ? bonusInfo.reward : 1000;
-        const rewardTitle = bonusInfo ? bonusInfo.title : '星光電影推廣獎勵';
+        const rewardTitle = bonusInfo ? bonusInfo.title : '一次性任務獎勵';
 
         const checkInRes = await processCheckInTransaction(
             app.user_id,
@@ -218,120 +230,28 @@ export async function reviewBonusByAdmin(
         );
         if (!checkInRes.success) {
             await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
-                interviewTarget: app.interview_target,
                 questId: app.quest_id,
                 checkInError: checkInRes.error,
             }, 'error');
             return { success: true, warning: '審核已核准，但入帳失敗：' + checkInRes.error };
         }
         await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
-            interviewTarget: app.interview_target,
             questId: app.quest_id,
             reward,
         });
     } else {
-        await logAdminAction('bonus_final_reject', reviewerName, appId, app.user_name, {
-            interviewTarget: app.interview_target,
-            notes,
-        });
+        await logAdminAction('bonus_final_reject', reviewerName, appId, app.user_name, { notes });
     }
 
     return { success: true, newStatus };
 }
 
-// ── 學員：提交 b3–b7 / doc1 加分申請 ──────────────────────────────
-export async function submitBonusApplication(
-    userId: string,
-    userName: string,
-    squadName: string | null,
-    battalionName: string | null,
-    bonusType: 'b3' | 'b4' | 'b5' | 'b6' | 'b7' | 'doc1',
-    target: string,      // 申請描述（課程名稱 / 聯誼會 / 課程日期… / 紀錄片連結）
-    date: string,        // YYYY-MM-DD
-    description: string = '',
-    screenshotUrl?: string  // b5/b6 的截圖 URL
-) {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // doc1：同一大隊只能提交一次（由大隊長代表提交）
-    if (bonusType === 'doc1') {
-        const { data: existing } = await supabase
-            .from('BonusApplications')
-            .select('id, status')
-            .eq('quest_id', 'doc1')
-            .eq('battalion_name', battalionName)
-            .neq('status', 'rejected')
-            .maybeSingle();
-
-        if (existing) {
-            return { success: false, error: '本大隊已有紀錄片申請記錄，無法重複提交' };
-        }
-    }
-
-    // b3、b4、b5、b6 每人只能申請一次（未被駁回的情況下）
-    if (['b3', 'b4', 'b5', 'b6'].includes(bonusType)) {
-        const { data: existing } = await supabase
-            .from('BonusApplications')
-            .select('id, status')
-            .eq('user_id', userId)
-            .eq('quest_id', bonusType)
-            .neq('status', 'rejected')
-            .maybeSingle();
-
-        if (existing) {
-            return { success: false, error: `${BONUS_QUEST_CONFIG[bonusType].title} 已有申請記錄，無法重複提交` };
-        }
-    }
-
-    // b7：同一課程/活動名稱只算1次（連續幾天的活動不重複計分）
-    // quest_id 使用標準化課程名稱作為唯一鍵，日期僅留在 interview_date 供審核參考
-    if (bonusType === 'b7') {
-        const normalizedName = target.trim().toLowerCase().replace(/\s+/g, '_').slice(0, 60);
-        const b7QuestId = `b7|${normalizedName}`;
-        const { data: existing } = await supabase
-            .from('BonusApplications')
-            .select('id, status')
-            .eq('user_id', userId)
-            .eq('quest_id', b7QuestId)
-            .neq('status', 'rejected')
-            .maybeSingle();
-        if (existing) {
-            return { success: false, error: `「${target}」已有申請記錄，同一課程/活動只計算一次` };
-        }
-    }
-    const questId = bonusType === 'b7'
-        ? `b7|${target.trim().toLowerCase().replace(/\s+/g, '_').slice(0, 60)}`
-        : bonusType;
-
-    // b5、b6 需要截圖，送小隊長初審；doc1 直接送 GM 終審；其他送大隊長終審
-    const status = (bonusType === 'b5' || bonusType === 'b6') ? 'pending' : 'squad_approved';
-
-    const { data, error } = await supabase
-        .from('BonusApplications')
-        .insert({
-            user_id: userId,
-            user_name: userName,
-            squad_name: squadName,
-            battalion_name: battalionName,
-            interview_target: target,
-            interview_date: date,
-            description,
-            quest_id: questId,
-            screenshot_url: screenshotUrl,
-            status,
-        })
-        .select()
-        .single();
-
-    if (error) return { success: false, error: '提交失敗：' + error.message };
-    return { success: true, application: data as BonusApplication };
-}
-
-// ── 查詢申請列表 ──────────────────────────────────────────
+// ── 查詢申請列表 ─────────────────────────────────────────────────────────────
 export async function getBonusApplications(filter: {
     userId?: string;
     squadName?: string;
     status?: string;
+    questIdPrefix?: string; // e.g. 'o' to filter o-series only
 } = {}) {
     const supabase = createClient(supabaseUrl, supabaseKey);
     let query = supabase.from('BonusApplications').select('*').order('created_at', { ascending: false });
@@ -339,13 +259,14 @@ export async function getBonusApplications(filter: {
     if (filter.userId) query = query.eq('user_id', filter.userId);
     if (filter.squadName) query = query.eq('squad_name', filter.squadName);
     if (filter.status) query = query.eq('status', filter.status);
+    if (filter.questIdPrefix) query = query.like('quest_id', `${filter.questIdPrefix}%`);
 
     const { data, error } = await query;
     if (error) return { success: false, error: error.message, applications: [] };
     return { success: true, applications: (data || []) as BonusApplication[] };
 }
 
-// ── 查詢管理操作日誌 ──────────────────────────────────────
+// ── 查詢管理操作日誌 ─────────────────────────────────────────────────────────
 export async function getAdminActivityLog(limit = 50) {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase

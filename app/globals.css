@@ -1,31 +1,32 @@
 @import "tailwindcss";
 
 /* ── Design Tokens ─────────────────────────────────────────────────────── */
+/* 綠野仙蹤配色：溫馨・活潑・歡樂 */
 :root {
   /* Brand */
-  --brand-red:    #E50914;
-  --brand-gold:   #D4AF37;
-  --brand-green:  #06C755;
+  --brand-red:    #C0392B;   /* 紅鞋紅 */
+  --brand-gold:   #F5C842;   /* 黃磚路金 */
+  --brand-green:  #1A6B4A;   /* 翡翠城綠 */
 
   /* Surfaces */
-  --bg-base:      #000000;
-  --bg-elevated:  #111111;
-  --bg-raised:    #1a1a1a;
-  --bg-overlay:   #222222;
+  --bg-base:      #FFFEF5;   /* 溫暖白底 */
+  --bg-elevated:  #FFFFFF;   /* 卡片白 */
+  --bg-raised:    #F5FAF7;   /* 淡綠白 */
+  --bg-overlay:   #EDF7F1;   /* 薄荷覆蓋 */
 
   /* Borders */
-  --border-subtle:  #1a1a1a;
-  --border-default: #2a2a2a;
-  --border-strong:  #333333;
+  --border-subtle:  #D4ECD9;
+  --border-default: #B2DFC0;  /* 薄荷綠邊框 */
+  --border-strong:  #7FC49A;
 
   /* Text */
-  --text-primary:   #ffffff;
-  --text-secondary: rgba(255,255,255,0.55);
-  --text-muted:     rgba(255,255,255,0.35);
+  --text-primary:   #1A2A1A;  /* 深墨綠文字 */
+  --text-secondary: #5A7A5A;  /* 橄欖綠灰 */
+  --text-muted:     #8FAF8F;
 
   /* Shadows */
-  --glow-red:  0 0 15px rgba(229,9,20,0.4);
-  --glow-gold: 0 0 15px rgba(212,175,55,0.4);
+  --glow-red:  0 0 15px rgba(192,57,43,0.3);
+  --glow-gold: 0 0 15px rgba(245,200,66,0.4);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
@@ -37,10 +38,51 @@ html {
 body {
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: var(--font-sans, 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+  font-family: var(--font-sans, 'Noto Sans TC', system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Typography ────────────────────────────────────────────────────────── */
+.font-display {
+  font-family: var(--font-serif, 'Noto Serif TC', Georgia, serif);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { translate: 0 0; }
+  50%       { translate: 0 -12px; }
+}
+@keyframes float-slow {
+  0%, 100% { translate: 0 0; }
+  50%       { translate: 0 -8px; }
+}
+@keyframes gold-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50%       { opacity: 0.85; filter: brightness(1.2) drop-shadow(0 0 8px rgba(245,200,66,0.6)); }
+}
+@keyframes fade-up {
+  from { opacity: 0; translate: 0 18px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+@keyframes spin-slow {
+  from { rotate: 0deg; }
+  to   { rotate: 360deg; }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.animate-float       { animation: float      7s ease-in-out infinite; }
+.animate-float-slow  { animation: float-slow 9s ease-in-out infinite; }
+.animate-gold-pulse  { animation: gold-pulse 3s ease-in-out infinite; }
+.animate-fade-up     { animation: fade-up 0.55s ease-out both; }
+.delay-100 { animation-delay: 0.10s; }
+.delay-200 { animation-delay: 0.20s; }
+.delay-300 { animation-delay: 0.30s; }
+.delay-400 { animation-delay: 0.40s; }
+.delay-500 { animation-delay: 0.50s; }
 
 /* ── No-Scrollbar Utility ──────────────────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }

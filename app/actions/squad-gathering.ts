@@ -2,7 +2,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { processCheckInTransaction } from '@/app/actions/quest';
-import { SQUAD_THEME_CONFIG } from '@/lib/constants';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -73,50 +72,6 @@ export async function getGatheringStatus(
             isComplete: checkins.length >= allMemberCount,
         },
     };
-}
-
-// ── 小隊長確認全員到齊，發放 +2000 加成給所有報到成員 ──────────────────
-export async function awardGatheringFullBonus(
-    gatheringId: string,
-    themeId: 'sq1' | 'sq2' | 'sq3' | 'sq4'
-): Promise<{ success: boolean; awarded: number; errors: string[] }> {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const theme = SQUAD_THEME_CONFIG.find(t => t.id === themeId);
-    if (!theme) return { success: false, awarded: 0, errors: ['找不到主題設定'] };
-
-    // 取得所有報到成員
-    const { data, error } = await supabase
-        .from('SquadGatheringCheckins')
-        .select('user_id, user_name')
-        .eq('gathering_id', gatheringId);
-
-    if (error) return { success: false, awarded: 0, errors: [error.message] };
-
-    const members = data || [];
-    const questId = `${themeId}_full`;
-    const questTitle = `${theme.title} 全員到齊加成`;
-    const reward = theme.bonusFull;
-
-    const errors: string[] = [];
-    let awarded = 0;
-
-    for (const member of members) {
-        const res = await processCheckInTransaction(
-            member.user_id,
-            questId,
-            questTitle,
-            reward
-        );
-        if (!res.success) {
-            // 已入帳（重複）視為成功，不算錯誤
-            if (res.error?.includes('已完成') || res.error?.includes('已達上限')) continue;
-            errors.push(`${member.user_name ?? member.user_id}: ${res.error}`);
-        } else {
-            awarded++;
-        }
-    }
-
-    return { success: true, awarded, errors };
 }
 
 // ── 查詢用戶個人的報到紀錄（供掃碼落地頁確認）────────────────────────────

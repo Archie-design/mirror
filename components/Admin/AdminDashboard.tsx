@@ -1,9 +1,10 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, AlertTriangle, Clapperboard, Sliders, UserCog } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Clapperboard, Sliders, UserCog, Grid3X3 } from 'lucide-react';
 import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
 
-import { DAILY_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
+import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { listAllMembers, transferMember, setMemberRole } from '@/app/actions/admin';
+import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 
 interface MemberRow {
     UserID: string;
@@ -13,8 +14,7 @@ interface MemberRow {
     TeamName?: string;
     IsCaptain?: boolean;
     IsCommandant?: boolean;
-    Level?: number;
-    Exp?: number;
+    Score?: number;
 }
 
 function MemberManagementSection() {
@@ -106,7 +106,7 @@ function MemberManagementSection() {
                                     <span className="text-slate-500 flex-1 truncate">{m.SquadName || '-'} / {m.TeamName || '-'}</span>
                                     {m.IsCaptain && <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-full">隊長</span>}
                                     {m.IsCommandant && <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-full">大隊長</span>}
-                                    <span className="text-slate-600 text-[10px]">Lv.{m.Level}</span>
+                                    <span className="text-slate-600 text-[10px]">{(m.Score ?? 0).toLocaleString()} 分</span>
                                     {!isEditing && (
                                         <button onClick={() => startEdit(m)} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold shrink-0">編輯</button>
                                     )}
@@ -158,13 +158,12 @@ const ACTION_LABELS: Record<string, string> = {
     temp_quest_toggle: '切換臨時任務狀態',
     temp_quest_delete: '刪除臨時任務',
     roster_import: '匯入名冊',
-    auto_assign_squads: '自動分配大劇組',
+    auto_assign_squads: '自動分配大隊',
     auto_draw_quests: '全服自動抽籤',
-    weekly_snapshot: '每週業力結算',
-    w3_compliance: 'w3 週罰款結算',
-    fine_compliance: '定課罰款結算',
-    w4_final_approve: 'w4/加分終審核准',
-    w4_final_reject: 'w4/加分終審駁回',
+    weekly_snapshot: '每週積分結算',
+    bonus_final_approve: '一次性任務終審核准',
+    bonus_final_reject: '一次性任務終審駁回',
+    drama_training_squad_approve: '戲劇進修初審核准',
     topic_title_update: '更新主題名稱',
 };
 
@@ -200,26 +199,14 @@ export function AdminDashboard({
     const [reviewingW4Id, setReviewingW4Id] = React.useState<string | null>(null);
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
-    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system'>('members');
-
-    // Fine Settings State
-    const [fineSettingsForm, setFineSettingsForm] = React.useState(
-        systemSettings.FineSettings || {
-            enabled: false,
-            amount: 200,
-            items: ['w3'],
-            periodStart: '',
-            periodEnd: ''
-        }
-    );
-    const [fineSettingsSaved, setFineSettingsSaved] = React.useState(false);
+    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid'>('members');
 
     // Quest Reward & Disable State
     const ALL_QUESTS = React.useMemo(() => [
-        { id: 'q1', title: '體運定課', defaultReward: 1000 },
-        { id: 'q1_dawn', title: '破曉體運', defaultReward: 2000 },
-        ...DAILY_QUEST_CONFIG.filter(q => q.id !== 'q1' && q.id !== 'r1').map(q => ({ id: q.id, title: q.title, defaultReward: q.reward })),
-        { id: 'r1', title: '關係定課', defaultReward: 2000 },
+        ...DAILY_BASIC_CONFIG.map(q => ({ id: q.id, title: q.title, defaultReward: q.reward })),
+        ...DAILY_WEIGHTED_CONFIG.map(q => ({ id: q.id, title: q.title, defaultReward: q.reward })),
+        { id: DAWN_QUEST.id, title: DAWN_QUEST.title, defaultReward: DAWN_QUEST.reward },
+        ...DIET_QUEST_CONFIG.map(q => ({ id: q.id, title: q.title, defaultReward: q.reward })),
         ...WEEKLY_QUEST_CONFIG.map(q => ({ id: q.id, title: q.title, defaultReward: q.reward })),
     ], []);
     const [rewardOverrides, setRewardOverrides] = React.useState<Record<string, number>>(
@@ -269,6 +256,7 @@ export function AdminDashboard({
         { id: 'members' as const, label: '成員', icon: <Users size={14} /> },
         { id: 'quests' as const, label: '任務', icon: <Sliders size={14} /> },
         { id: 'review' as const, label: '審核', icon: <Settings size={14} /> },
+        { id: 'ninegrid' as const, label: '九宮格', icon: <Grid3X3 size={14} /> },
         { id: 'system' as const, label: '系統', icon: <BarChart3 size={14} /> },
     ];
 
@@ -495,29 +483,27 @@ export function AdminDashboard({
                                 <p className="text-sm text-slate-500 text-center py-4">目前無待終審申請</p>
                             ) : (
                                 pendingFinalReviewApps.map(app => {
-                                    const questBase = app.quest_id.split('|')[0];
-                                    const isBonusApp = ['b3', 'b4', 'b5', 'b6', 'b7'].includes(questBase);
-                                    const BONUS_LABELS: Record<string, string> = {
-                                        b3: '續報高階/五運班 +5000',
-                                        b4: '成為小天使 +5000',
-                                        b5: '報名聯誼會（1年）+3000',
-                                        b6: '報名聯誼會（2年）+5000',
-                                        b7: '參加實體課程 +1000',
+                                    const ONE_TIME_LABELS: Record<string, string> = {
+                                        o1: '超越巔峰',
+                                        o3: '聯誼會（1年）',
+                                        o4: '聯誼會（2年）',
+                                        o5: '報高階（訂金）',
+                                        o6: '報高階（完款）',
+                                        o7: '傳愛',
                                     };
+                                    const questLabel = ONE_TIME_LABELS[app.quest_id] || app.quest_id;
                                     return (
                                     <div key={app.id} className="bg-slate-800 rounded-2xl p-5 space-y-3">
                                         <div className="flex justify-between items-start flex-wrap gap-2">
                                             <div>
                                                 <p className="font-black text-white">{app.user_name}</p>
                                                 <p className="text-xs text-slate-400">
-                                                    {app.squad_name} · {isBonusApp ? BONUS_LABELS[questBase] : '傳愛'}
-                                                    {' · '}{app.interview_target} · {app.interview_date}
+                                                    {app.squad_name} · <span className="text-amber-300 font-bold">{questLabel}</span>
+                                                    {app.interview_target && ` · ${app.interview_target}`} · {app.interview_date}
                                                 </p>
-                                                {app.squad_review_notes && <p className="text-xs text-indigo-400 mt-1">劇組長備註：{app.squad_review_notes}</p>}
+                                                {app.squad_review_notes && <p className="text-xs text-indigo-400 mt-1">隊長備註：{app.squad_review_notes}</p>}
                                             </div>
-                                            <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${isBonusApp ? 'text-amber-400 bg-amber-400/10' : 'text-blue-400 bg-blue-400/10'}`}>
-                                                {isBonusApp ? '加分申請' : '傳愛'} 待終審
-                                            </span>
+                                            <span className="text-[10px] font-black px-2 py-1 rounded-lg text-blue-400 bg-blue-400/10">待終審</span>
                                         </div>
                                         {app.description && <p className="text-xs text-slate-400 italic">{app.description}</p>}
                                         <textarea
@@ -590,78 +576,6 @@ export function AdminDashboard({
                 {/* ── Tab: 系統 ── */}
                 {activeAdminTab === 'system' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <section className="space-y-6 md:col-span-2">
-                        <div className="flex items-center gap-2 text-red-500 font-black text-sm uppercase tracking-widest"><AlertTriangle size={16} /> 片場違規與扣款設定</div>
-                        <div className="bg-slate-900 border-2 border-red-500/20 p-8 rounded-4xl space-y-6 shadow-xl relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl -mr-16 -mt-16 group-hover:bg-red-500/10 transition-colors" />
-                            <div className="flex items-center justify-between relative z-10">
-                                <div>
-                                    <p className="font-black text-white text-base">啟用全自動違規結算</p>
-                                    <p className="text-[10px] text-slate-500 mt-1">劇組長執行結算時，系統將自動比對拍攝進度並產生違規票房扣款。</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" className="sr-only peer" checked={fineSettingsForm.enabled} onChange={e => {
-                                        setFineSettingsForm(prev => ({ ...prev, enabled: e.target.checked }));
-                                        setFineSettingsSaved(false);
-                                    }} />
-                                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </label>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 relative z-10">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">違規處罰金額 (NT$)</label>
-                                    <input type="number" min={0} value={fineSettingsForm.amount} onChange={e => { setFineSettingsForm(prev => ({ ...prev, amount: Number(e.target.value) })); setFineSettingsSaved(false); }} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-red-500 placeholder:text-slate-700 shadow-inner" placeholder="0" />
-                                </div>
-                            </div>
-                            <div className="space-y-2 relative z-10">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">必修監測項目 (不符即扣款)</label>
-                                <div className="max-h-56 overflow-y-auto bg-slate-950 border border-slate-800 rounded-3xl p-5 shadow-inner grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 custom-scrollbar">
-                                    {[...DAILY_QUEST_CONFIG, ...WEEKLY_QUEST_CONFIG, { id: 't3', title: '沉澱週分享', reward: 0 } as any].map(q => (
-                                        <label key={q.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-900 p-2 rounded-xl transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                className="accent-red-500 w-4 h-4"
-                                                checked={fineSettingsForm.items.includes(q.id)}
-                                                onChange={e => {
-                                                    const newItems = e.target.checked
-                                                        ? [...fineSettingsForm.items, q.id]
-                                                        : fineSettingsForm.items.filter(id => id !== q.id);
-                                                    setFineSettingsForm(prev => ({ ...prev, items: newItems }));
-                                                    setFineSettingsSaved(false);
-                                                }}
-                                            />
-                                            <span className="text-xs font-bold text-slate-300 flex-1 truncate" title={q.title}>
-                                                <span className="text-slate-500 mr-1">[{q.id}]</span>
-                                                {q.title}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase">結算開始期間</label>
-                                    <input type="date" value={fineSettingsForm.periodStart} onChange={e => { setFineSettingsForm(prev => ({ ...prev, periodStart: e.target.value })); setFineSettingsSaved(false); }} className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl p-3 text-white font-bold outline-none focus:border-red-500 hover:border-slate-500 transition-all cursor-pointer invert-[0.1] contrast-[1.2]" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase">結算結束期間</label>
-                                    <input type="date" value={fineSettingsForm.periodEnd} onChange={e => { setFineSettingsForm(prev => ({ ...prev, periodEnd: e.target.value })); setFineSettingsSaved(false); }} className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl p-3 text-white font-bold outline-none focus:border-red-500 hover:border-slate-500 transition-all cursor-pointer invert-[0.1] contrast-[1.2]" />
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    updateGlobalSetting('FineSettings', JSON.stringify(fineSettingsForm));
-                                    setFineSettingsSaved(true);
-                                }}
-                                className="w-full bg-red-600 p-3 rounded-2xl text-white font-black hover:bg-red-500 active:scale-95 transition-all mt-4"
-                            >
-                                <Save size={18} className="inline mr-2" />
-                                儲存罰款設定
-                            </button>
-                            {fineSettingsSaved && <p className="text-xs text-red-400 font-bold text-center mt-2">✅ 罰款設定已更新</p>}
-                        </div>
-                    </section>
-
                     <section className="space-y-6">
                         <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 修行者票房榜預覽</div>
                         <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden divide-y divide-slate-800 shadow-xl max-h-[400px] overflow-y-auto">
@@ -673,8 +587,7 @@ export function AdminDashboard({
                                         <p className="text-[10px] text-slate-500 italic">{p.SquadName || '—'}{p.SquadRole ? ` · ${p.SquadRole}` : ''}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-xs font-black text-orange-500">{p.Exp} 票房</p>
-                                        <p className="text-[10px] text-red-500">罰金 NT${p.TotalFines}</p>
+                                        <p className="text-xs font-black text-orange-500">{(p.Score ?? 0).toLocaleString()} 分</p>
                                     </div>
                                 </div>
                             ))}
@@ -711,6 +624,18 @@ export function AdminDashboard({
                             ))}
                         </div>
                     </section>
+                </div>
+                )}
+
+                {/* ── Tab: 九宮格公版 ── */}
+                {activeAdminTab === 'ninegrid' && (
+                <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-amber-400 font-black text-sm uppercase tracking-widest">
+                        <Grid3X3 size={16} /> 九宮格公版模板管理
+                    </div>
+                    <div className="bg-slate-900 border-2 border-slate-800 p-6 md:p-8 rounded-4xl shadow-xl">
+                        <NineGridTemplateEditor adminName="admin" />
+                    </div>
                 </div>
                 )}
             </div>

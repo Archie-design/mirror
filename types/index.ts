@@ -1,27 +1,23 @@
-import React from 'react';
-
 export interface CharacterStats {
   UserID: string;
   Name: string;
-  Level: number;
-  Exp: number;
+  Score: number;    // 累積總分（原 Exp 欄位，已更名）
   Streak: number;
   LastCheckIn: string | null;
-  TotalFines: number;
-  FinePaid: number;  // 已繳款累計（餘額 = TotalFines - FinePaid）
-  CurrentQ: number;
-  CurrentR: number;
   Email?: string;
-  SquadName?: string;
-  TeamName?: string;
+  SquadName?: string;   // 大隊名稱
+  TeamName?: string;    // 小隊名稱
   IsCaptain?: boolean;
-  SquadRole?: string; // 小隊角色職稱（副隊長/抱抱/衡衡/叮叮1號/叮叮2號/樂樂）
-  Inventory?: string[];
-  InitialFortunes?: Record<string, number>;
-  Birthday?: string; // ISO date string YYYY-MM-DD
+  SquadRole?: string;   // 小隊角色職稱（副隊長/抱抱/衡衡/叮叮1號/叮叮2號/樂樂）
+  Birthday?: string;    // ISO date string YYYY-MM-DD
   IsCommandant?: boolean; // 大隊長
   IsGM?: boolean;         // GM 遊戲管理員
   LineUserId?: string;    // LINE Login 綁定 ID
+  'Score_事業運'?: number;
+  'Score_財富運'?: number;
+  'Score_情感運'?: number;
+  'Score_家庭運'?: number;
+  'Score_體能運'?: number;
 }
 
 export interface Roster {
@@ -38,10 +34,9 @@ export interface Roster {
 export interface TeamSettings {
   team_name: string;
   team_coins: number;
-  mandatory_quest_id?: string;       // 本週抽出的推薦定課 QuestID
-  mandatory_quest_week?: string;     // 本次抽籤週一日期（YYYY-MM-DD）
-  quest_draw_history?: string[];     // 已抽過的 QuestID 陣列
-  inventory?: any;
+  mandatory_quest_id?: string;      // 本週推薦定課 QuestID（小隊長抽籤）
+  mandatory_quest_week?: string;    // 本次抽籤週一日期（YYYY-MM-DD）
+  quest_draw_history?: string[];    // 已抽過的 QuestID 陣列
 }
 
 export interface DailyLog {
@@ -56,11 +51,11 @@ export interface DailyLog {
 export interface Quest {
   id: string;
   title: string;
-  sub?: string;   // 任務名稱（特別任務的短名稱，如「跟父母三道菜」）
-  desc?: string;  // 任務說明（完成標準說明，如「面對面或是視訊」）
+  sub?: string;   // 任務短說明
+  desc?: string;  // 完成標準說明
   reward: number;
   icon?: string;
-  limit?: number;
+  limit?: number; // 每週/月上限次數
 }
 
 export interface TemporaryQuest extends Quest {
@@ -68,18 +63,9 @@ export interface TemporaryQuest extends Quest {
   created_at?: string;
 }
 
-export interface FineSettings {
-  enabled: boolean;
-  amount: number;
-  items: string[];
-  periodStart: string;
-  periodEnd: string;
-}
-
 export interface SystemSettings {
   RegistrationMode?: 'open' | 'roster'; // 'open' = 自由註冊；'roster' = 名單驗證
   VolunteerPassword?: string;
-  FineSettings?: FineSettings;
   QuestRewardOverrides?: Record<string, number>;  // 定課分值動態調整：questId → reward
   DisabledQuests?: string[];                       // 停用的定課 ID 列表
 }
@@ -90,10 +76,10 @@ export interface BonusApplication {
   user_name: string;
   squad_name?: string;
   battalion_name?: string;
-  interview_target: string;   // 訪談對象（w4）或報名項目描述（b3-b7）
+  interview_target: string;   // 報名項目描述
   interview_date: string;     // YYYY-MM-DD
   description?: string;
-  quest_id: string;           // 'w4|date|target' 或 'b3'/'b4'/'b5'/'b6'/'b7|date'
+  quest_id: string;           // 'o1' / 'o2_1' / 'o3' 等一次性任務 ID
   status: 'pending' | 'squad_approved' | 'approved' | 'rejected';
   squad_review_by?: string;
   squad_review_at?: string;
@@ -101,12 +87,9 @@ export interface BonusApplication {
   final_review_by?: string;
   final_review_at?: string;
   final_review_notes?: string;
-  screenshot_url?: string;    // b5/b6 聯誼會截圖憑證
+  screenshot_url?: string;    // 截圖憑證
   created_at?: string;
 }
-
-/** @deprecated 請改用 BonusApplication */
-export type W4Application = BonusApplication;
 
 export interface AdminLog {
   id: string;
@@ -138,38 +121,33 @@ export interface TopicHistory {
   created_at: string;
 }
 
-export interface ZoneInfo {
-  id: string;
-  name: string;
-  char?: string;
-  color: string;
-  textColor: string;
-  icon: React.ReactNode;
+export interface NineGridCell {
+  label: string;
+  description: string;
 }
 
-export interface FinePaymentRecord {
-  id: string;
-  user_id: string;
-  user_name: string;
-  squad_name: string;
-  amount: number;
-  period_label: string;
-  paid_to_captain_at: string | null;   // 隊員上繳小隊長日期
-  submitted_to_org_at: string | null;  // 小隊長上繳大會日期（DB 保留，UI 不顯示）
-  recorded_by: string;
+export interface NineGridTemplate {
+  id: number;
+  companion_type: string; // '事業運' | '財富運' | '情感運' | '家庭運' | '體能運'
+  cells: NineGridCell[];
+  cell_score: number;
+  updated_at: string;
+}
+
+export interface UserNineGridCell extends NineGridCell {
+  completed: boolean;
+  completed_at: string | null;
+}
+
+export interface UserNineGrid {
+  id: number;
+  member_id: string;
+  companion_type: string;
+  cells: UserNineGridCell[];
+  cell_score: number;
   created_at: string;
+  updated_at: string;
 }
-
-export interface SquadFineSubmission {
-  id: string;
-  squad_name: string;
-  amount: number;
-  submitted_at: string;  // YYYY-MM-DD
-  recorded_by: string;
-  notes: string | null;
-  created_at: string;
-}
-
 
 export interface CourseRegistration {
   id: string;
@@ -181,8 +159,7 @@ export interface CourseRegistration {
 export interface SquadMemberStats {
   UserID: string;
   Name: string;
-  Level: number;
-  Exp: number;
+  Score: number;    // 累積總分
   Streak: number;
   TeamName?: string;
   IsCaptain: boolean;

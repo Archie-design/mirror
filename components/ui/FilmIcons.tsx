@@ -167,22 +167,143 @@ export function FilmBackgroundDecorations() {
     );
 }
 
+/** 向日葵 */
+export function SunflowerIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    const petals = [0, 45, 90, 135, 180, 225, 270, 315];
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            {petals.map(angle => (
+                <ellipse key={angle} cx="12" cy="6.5" rx="2" ry="3.2" transform={`rotate(${angle} 12 12)`} />
+            ))}
+            <circle cx="12" cy="12" r="3.5" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+    );
+}
+
+/** 紅寶石鞋 */
+export function RubySlipperIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            {/* upper */}
+            <path d="M4 17 Q4 13 8 12 Q12 11 16 11 Q20 11 21 13 L21 17 Z" />
+            {/* sole */}
+            <path d="M3 17 L22 17 L22 19 Q21 19.5 20 19.5 L4 19.5 Q3 19.5 3 19 Z" />
+            {/* toe decoration */}
+            <path d="M14 11.5 Q17 10.5 19.5 12.5" />
+        </svg>
+    );
+}
+
+/** 翡翠城城堡 */
+export function EmeraldCastleIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            {/* main tower */}
+            <rect x="8" y="9" width="8" height="12" rx="0.5" />
+            {/* merlons */}
+            <rect x="8.5" y="6" width="2" height="4" rx="0.5" />
+            <rect x="11" y="6" width="2" height="4" rx="0.5" />
+            <rect x="13.5" y="6" width="2" height="4" rx="0.5" />
+            {/* arched window */}
+            <path d="M11 14 L11 18 L13 18 L13 14 Q13 12 12 12 Q11 12 11 14 Z" />
+            {/* side towers */}
+            <rect x="3" y="13" width="5" height="8" rx="0.5" />
+            <rect x="16" y="13" width="5" height="8" rx="0.5" />
+            <rect x="3.5" y="11" width="1.5" height="3" rx="0.3" />
+            <rect x="5.5" y="11" width="1.5" height="3" rx="0.3" />
+            <rect x="16.5" y="11" width="1.5" height="3" rx="0.3" />
+            <rect x="18.5" y="11" width="1.5" height="3" rx="0.3" />
+        </svg>
+    );
+}
+
+/** 彩虹 */
+export function RainbowIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            <path d="M2 19 A10 10 0 0 1 22 19" />
+            <path d="M4.5 19 A7.5 7.5 0 0 1 19.5 19" />
+            <path d="M7 19 A5 5 0 0 1 17 19" />
+            {/* ground dots */}
+            <circle cx="2" cy="19" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="22" cy="19" r="0.8" fill="currentColor" stroke="none" />
+        </svg>
+    );
+}
+
+/** 錫人的心 */
+export function HeartGlowIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            <path d="M12 8 C15 4 20 5 20 9 C20 14 16 18 12 20 C8 18 4 14 4 9 C4 5 9 4 12 8 Z" />
+            {/* glow sparkles */}
+            <line x1="12" y1="2" x2="12" y2="4" />
+            <line x1="19" y1="5" x2="21" y2="4" />
+            <line x1="5" y1="5" x2="3" y2="4" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+        </svg>
+    );
+}
+
+/** 魔法棒星星 */
+export function StarWandIcon({ size = 24, className = '', strokeWidth = 1.5 }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+            {/* five-pointed star */}
+            <path d="M12 3 L13.8 8.5 L19.5 8.5 L14.9 11.8 L16.6 17.3 L12 14 L7.4 17.3 L9.1 11.8 L4.5 8.5 L10.2 8.5 Z" />
+            {/* wand stick */}
+            <line x1="12" y1="14" x2="12" y2="22" />
+            {/* sparkles */}
+            <line x1="17" y1="3" x2="18.5" y2="1.5" />
+            <line x1="7" y1="3" x2="5.5" y2="1.5" />
+            <line x1="20" y1="7" x2="22" y2="6" />
+            <line x1="4" y1="7" x2="2" y2="6" />
+        </svg>
+    );
+}
+
 /**
- * 水平膠卷條紋裝飾帶
- * 放在 Header 底部或區塊分隔線。
+ * 水平黃磚路裝飾帶（取代舊電影膠卷條紋）
+ * 標準偏移磚塊排列：Row 1 兩塊完整磚，Row 2 半磚＋完整磚＋半磚（拼接後對齊）
+ * 放在 Header 上下緣。
+ */
+export function YellowBrickDivider({ className = '' }: { className?: string }) {
+    // Pattern tile = 44 × 16 px
+    // Row 1 (y=1..6):  [brick 0..19] [mortar 2px] [brick 22..41] [mortar 2px to tile edge]
+    // Row 2 (y=9..14): [half 0..9] [mortar 2px] [brick 12..31] [mortar 2px] [half 34..43]
+    //   ↑ the two halves join across tile boundaries to form a complete offset brick
+    return (
+        <div className={`w-full overflow-hidden ${className}`} aria-hidden="true">
+            <svg width="100%" height="16" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="yellowbrick-pattern" x="0" y="0" width="44" height="16" patternUnits="userSpaceOnUse">
+                        {/* Row 1 — two full bricks */}
+                        <rect x="0"  y="1" width="20" height="6" rx="0.5" fill="currentColor" opacity="0.60" />
+                        <rect x="22" y="1" width="20" height="6" rx="0.5" fill="currentColor" opacity="0.60" />
+                        {/* Row 2 — offset: left half | full brick | right half */}
+                        <rect x="0"  y="9" width="10" height="6" rx="0.5" fill="currentColor" opacity="0.48" />
+                        <rect x="12" y="9" width="20" height="6" rx="0.5" fill="currentColor" opacity="0.60" />
+                        <rect x="34" y="9" width="10" height="6" rx="0.5" fill="currentColor" opacity="0.48" />
+                    </pattern>
+                </defs>
+                <rect width="100%" height="16" fill="url(#yellowbrick-pattern)" />
+            </svg>
+        </div>
+    );
+}
+
+/**
+ * 水平膠卷條紋裝飾帶（保留備用，Header 已改用 YellowBrickDivider）
  */
 export function FilmStripDivider({ className = '' }: { className?: string }) {
-    // A repeating SVG pattern of film sprocket holes + frame lines
     return (
         <div className={`w-full overflow-hidden ${className}`} aria-hidden="true">
             <svg width="100%" height="20" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                     <pattern id="filmstrip-pattern" x="0" y="0" width="40" height="20" patternUnits="userSpaceOnUse">
-                        {/* top sprocket hole */}
                         <rect x="4" y="1" width="6" height="5" rx="1.5" fill="currentColor" opacity="0.35" />
-                        {/* bottom sprocket hole */}
                         <rect x="4" y="14" width="6" height="5" rx="1.5" fill="currentColor" opacity="0.35" />
-                        {/* frame divider */}
                         <line x1="14" y1="0" x2="14" y2="20" stroke="currentColor" strokeWidth="0.5" opacity="0.2" />
                     </pattern>
                 </defs>

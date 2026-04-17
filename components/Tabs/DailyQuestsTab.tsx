@@ -1,271 +1,71 @@
-import { useState, useEffect } from 'react';
-import { Sparkles, UserPlus, ChevronDown, ChevronUp, Star, Pencil, Check, CheckCircle2, Sunrise, Sword, Heart, AlertTriangle } from 'lucide-react';
-import { QUEST_ICON_MAP } from '@/lib/constants';
-import { Quest, DailyLog, FineSettings } from '@/types';
-import { DAILY_QUEST_CONFIG, FLEX_QUEST_IDS } from '@/lib/constants';
+'use client';
+
+import { useState } from 'react';
+import { Sparkles, CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish } from 'lucide-react';
+import { Quest, DailyLog } from '@/types';
+import {
+    DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG,
+    DAWN_QUEST, DIET_QUEST_CONFIG,
+    BASIC_QUEST_IDS, WEIGHTED_QUEST_IDS, DIET_QUEST_IDS,
+    DAILY_BASIC_LIMIT, DAILY_WEIGHTED_LIMIT,
+} from '@/lib/constants';
 import { getLogicalDateStr } from '@/lib/utils/time';
 
-// ── 一、體運定課（q1 / q1_dawn）──────────────────────────────────────────
+// ── 通用定課 Chip ─────────────────────────────────────────────────────────
 
-interface BodyQuestCardProps {
-    isDawn: boolean;
-    isDone: boolean;
-    doneTime?: string;
-    reward: number;
-    onCheckIn: () => void;
-    hasFineReminder?: boolean;
-}
-
-function BodyQuestCard({ isDawn, isDone, doneTime, reward, onCheckIn, hasFineReminder }: BodyQuestCardProps) {
-    return (
-        <button
-            onClick={onCheckIn}
-            disabled={isDone}
-            className={`w-full rounded-3xl border p-5 flex items-center gap-5 transition-all active:scale-95 text-left relative overflow-hidden
-                ${isDone
-                    ? 'bg-[#C0392B]/10 border-[#C0392B]/40 opacity-70 cursor-default'
-                    : isDawn
-                        ? 'bg-black border-[#F5C842] shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:border-yellow-300'
-                        : 'bg-[#1B2A4A] border-[#253A5C] hover:border-gray-500'}`}
-        >
-            {hasFineReminder && !isDone && (
-                <div className="absolute top-0 right-0 px-3 py-1 bg-red-600/20 border-l border-b border-red-500/30 rounded-bl-xl flex items-center gap-1">
-                    <AlertTriangle size={10} className="text-red-500" />
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter">未達標罰款</span>
-                </div>
-            )}
-            <div className={`w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center bg-black/50
-                ${isDone ? 'text-[#C0392B]' : isDawn ? 'text-[#F5C842]' : 'text-white/70'}`}>
-                {isDone
-                    ? <CheckCircle2 size={32} />
-                    : isDawn
-                        ? <Sunrise size={32} />
-                        : <Sword size={32} />}
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                    <h3 className={`font-black text-lg ${isDone ? 'text-[#C0392B]' : 'text-white'}`}>
-                        體運定課
-                    </h3>
-                    {isDawn && !isDone && (
-                        <span className="text-[9px] font-black bg-[#F5C842] text-black px-2 py-0.5 rounded-full uppercase tracking-widest">早場加成</span>
-                    )}
-                </div>
-                <p className="text-xs text-gray-500">打拳或運動 30 分鐘{isDawn ? '（05:00–08:00）' : ''}</p>
-                {isDone && doneTime && (
-                    <p className="text-[10px] font-mono text-[#C0392B]/70 mt-1">{doneTime}</p>
-                )}
-            </div>
-            <div className="text-right shrink-0">
-                <p className={`font-black text-lg ${isDone ? 'text-[#C0392B]' : isDawn ? 'text-[#F5C842]' : 'text-white'}`}>
-                    +{reward.toLocaleString()}
-                </p>
-                <p className="text-[10px] text-gray-500">積分</p>
-            </div>
-        </button>
-    );
-}
-
-// ── 二、任意定課（q2–q22）────────────────────────────────────────────────
-
-interface FlexQuestChipProps {
+interface QuestChipProps {
     quest: Quest;
     isDone: boolean;
-    doneTime?: string;
     isDisabled: boolean;
+    doneTime?: string;
     onCheckIn: () => void;
     editMode?: boolean;
     isFav?: boolean;
     onToggleFav?: () => void;
-    hasFineReminder?: boolean;
 }
 
-function FlexQuestChip({ quest, isDone, doneTime, isDisabled, onCheckIn, editMode, isFav, onToggleFav, hasFineReminder }: FlexQuestChipProps) {
+function QuestChip({ quest, isDone, isDisabled, doneTime, onCheckIn, editMode, isFav, onToggleFav }: QuestChipProps) {
     const handleClick = () => {
-        if (editMode) {
-            onToggleFav?.();
-        } else {
-            onCheckIn();
-        }
+        if (editMode) { onToggleFav?.(); return; }
+        onCheckIn();
     };
 
     return (
         <button
             onClick={handleClick}
             disabled={!editMode && isDisabled && !isDone}
-            className={`relative flex flex-col items-center gap-0.5 px-3 pt-2.5 pb-2 rounded-2xl border text-xs font-bold transition-all active:scale-95
+            className={`relative w-full flex flex-col items-center gap-1 px-3 pt-3.5 pb-3 rounded-2xl border text-base font-bold transition-all active:scale-95
                 ${editMode
                     ? isFav
-                        ? 'bg-[#F5C842]/10 border-[#F5C842]/60 text-[#F5C842]'
-                        : 'bg-[#1B2A4A] border-[#253A5C] text-gray-400 hover:border-gray-500'
+                        ? 'bg-[#F5C842]/10 border-[#F5C842]/60 text-[#C0392B]'
+                        : 'bg-white border-[#B2DFC0] text-gray-500 hover:border-[#7FC49A]'
                     : isDone
-                        ? 'bg-[#C0392B]/15 border-[#C0392B]/50 text-[#C0392B]'
+                        ? 'bg-[#C0392B]/10 border-[#C0392B]/40 text-[#C0392B]'
                         : isDisabled
-                            ? 'bg-[#0a0a0a] border-[#253A5C] text-gray-700 opacity-40 cursor-not-allowed'
-                            : (hasFineReminder
-                                ? 'bg-red-950/20 border-red-500/30 text-white hover:border-red-400'
-                                : 'bg-[#1B2A4A] border-[#253A5C] text-white hover:border-gray-500 hover:bg-[#253A5C]')}`}
+                            ? 'bg-gray-100 border-[#B2DFC0] text-gray-400 opacity-40 cursor-not-allowed'
+                            : 'bg-white border-[#B2DFC0] text-[#1A2A1A] hover:border-[#7FC49A] hover:bg-[#F5FAF7]'}`}
         >
-            {hasFineReminder && !isDone && !editMode && (
-                <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 flex items-center justify-center shadow-lg animate-pulse">
-                    <AlertTriangle size={8} className="text-white" />
-                </div>
-            )}
             {editMode && (
-                <span className="absolute top-1 right-1.5">
-                    <Star
-                        size={10}
-                        className={isFav ? 'text-[#F5C842] fill-[#F5C842]' : 'text-gray-600'}
-                    />
+                <span className="absolute top-1 right-1.5 text-sm">
+                    {isFav ? '★' : '☆'}
                 </span>
             )}
             <div className="flex items-center gap-1.5">
-                {(!editMode && isDone)
+                {!editMode && isDone
                     ? <Check size={14} className="text-[#C0392B] shrink-0" />
-                    : (() => {
-                        const QIcon = QUEST_ICON_MAP[quest.id];
-                        return QIcon
-                            ? <QIcon size={14} className="shrink-0" />
-                            : <span className="text-sm leading-none">{quest.icon}</span>;
-                      })()}
+                    : <span className="text-base leading-none">{quest.icon || '✦'}</span>}
                 <span>{quest.title}</span>
             </div>
-            <span className={`text-[9px] font-mono ${
+            <span className={`text-sm font-mono ${
                 editMode
-                    ? isFav ? 'text-[#F5C842]/70' : 'text-gray-600'
+                    ? isFav ? 'text-[#C0392B]/70' : 'text-gray-400'
                     : isDone
                         ? 'text-[#C0392B]/70'
-                        : 'text-[#F5C842]/70'
+                        : 'text-[#1A6B4A]/70'
             }`}>
-                {!editMode && isDone && doneTime ? doneTime : `+${quest.reward.toLocaleString()} 積分`}
+                {!editMode && isDone && doneTime ? doneTime : `+${quest.reward} 分`}
             </span>
         </button>
-    );
-}
-
-// ── 三、關係定課（r1）────────────────────────────────────────────────────
-
-interface RelationshipQuestSectionProps {
-    todayR1Count: number;
-    logs: DailyLog[];
-    logicalTodayStr: string;
-    onCheckIn: (personName: string) => void;
-    hasFineReminder?: boolean;
-}
-
-const RELATIONSHIP_OPTIONS = [
-    '爸爸',
-    '媽媽',
-    '師長',
-    '上級',
-    '伴侶',
-    '替代功課（親近的長輩）'
-];
-
-function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheckIn, hasFineReminder }: RelationshipQuestSectionProps) {
-    const [selectedPerson, setSelectedPerson] = useState('');
-    const [isOpen, setIsOpen] = useState(false);
-
-    const todayR1Logs = logs.filter(
-        l => l.QuestID === 'r1' && getLogicalDateStr(l.Timestamp) === logicalTodayStr
-    );
-    const isFull = todayR1Count >= 3;
-
-    const handleSubmit = () => {
-        if (!selectedPerson) return;
-        onCheckIn(selectedPerson);
-        setSelectedPerson('');
-        setIsOpen(false);
-    };
-
-    return (
-        <div className={`rounded-3xl border p-5 space-y-4 relative overflow-hidden ${
-            isFull 
-                ? 'opacity-60 border-slate-800' 
-                : (hasFineReminder 
-                    ? 'bg-red-950/10 border-red-500/20' 
-                    : 'bg-[#1B2A4A] border-[#253A5C]')
-        }`}>
-            {hasFineReminder && !isFull && (
-                <div className="absolute top-0 right-0 px-3 py-1 bg-red-600/20 border-l border-b border-red-500/30 rounded-bl-xl flex items-center gap-1">
-                    <AlertTriangle size={10} className="text-red-500" />
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter">本期必修罰款</span>
-                </div>
-            )}
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-black/50 shrink-0 text-emerald-400">
-                    <Heart size={28} />
-                </div>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                        <h3 className="font-black text-white text-base">關係定課</h3>
-                        <span className="text-[10px] font-black bg-[#253A5C] text-gray-300 px-2 py-0.5 rounded-full">
-                            {todayR1Count} / 3 名
-                        </span>
-                    </div>
-                    <p className="text-[10px] text-gray-500 mt-0.5">與三貴人或伴侶進行有品質互動（≥15分鐘），上級有真誠回報/分享亦可計</p>
-                </div>
-                <div className="text-right shrink-0">
-                    <p className="font-black text-lg text-emerald-400">+2000</p>
-                    <p className="text-[10px] text-gray-500">票房／人</p>
-                </div>
-            </div>
-
-            {/* Today's logged persons */}
-            {todayR1Logs.length > 0 && (
-                <div className="space-y-1.5 pl-2">
-                    {todayR1Logs.map((l, i) => {
-                        const name = l.QuestTitle.replace('關係定課 — ', '');
-                        return (
-                            <div key={l.id ?? i} className="flex items-center gap-2 text-xs text-emerald-400">
-                                <span className="text-emerald-600">✓</span>
-                                <span className="font-bold">{name}</span>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* Dropdown form */}
-            {!isFull && (
-                <>
-                    <button
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 font-bold text-sm hover:bg-emerald-600/30 transition-colors"
-                    >
-                        <UserPlus size={16} />
-                        {isOpen ? '取消' : '記錄互動對象'}
-                        {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    {isOpen && (
-                        <div className="flex gap-3 animate-in slide-in-from-top-2 duration-200">
-                            <select
-                                autoFocus
-                                value={selectedPerson}
-                                onChange={e => setSelectedPerson(e.target.value)}
-                                className="flex-1 bg-[#16213E] border border-[#444] rounded-xl px-4 py-2.5 text-white text-sm font-bold outline-none focus:border-emerald-500 appearance-none cursor-pointer"
-                            >
-                                <option value="">選擇互動對象…</option>
-                                {RELATIONSHIP_OPTIONS.map(option => (
-                                    <option key={option} value={option}>{option}</option>
-                                ))}
-                            </select>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={!selectedPerson}
-                                className="px-5 py-2.5 bg-emerald-600 text-white font-black rounded-xl active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                ＋
-                            </button>
-                        </div>
-                    )}
-                </>
-            )}
-            {isFull && (
-                <div className="text-center text-xs font-bold text-gray-500 py-1">今日關係定課已達 3 人上限</div>
-            )}
-        </div>
     );
 }
 
@@ -274,7 +74,6 @@ function RelationshipQuestSection({ todayR1Count, logs, logicalTodayStr, onCheck
 interface DailyQuestsTabProps {
     userId: string;
     weeklyQuestId?: string;
-    fineSettings?: FineSettings;
     logs: DailyLog[];
     logicalTodayStr: string;
     onCheckIn: (q: Quest) => void;
@@ -288,7 +87,6 @@ interface DailyQuestsTabProps {
 export function DailyQuestsTab({
     userId,
     weeklyQuestId,
-    fineSettings,
     logs,
     logicalTodayStr,
     onCheckIn,
@@ -297,115 +95,147 @@ export function DailyQuestsTab({
     questRewardOverrides,
     disabledQuests,
 }: DailyQuestsTabProps) {
-    const [isDawn, setIsDawn] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
-    const [showOthers, setShowOthers] = useState(false);
+    const [showOtherBasic, setShowOtherBasic] = useState(false);
+    const [showOtherWeighted, setShowOtherWeighted] = useState(false);
     const [favIds, setFavIds] = useState<string[]>(() => {
         if (typeof window === 'undefined' || !userId) return [];
         try {
-            const stored = localStorage.getItem(`fav_flex_quests_${userId}`);
+            const stored = localStorage.getItem(`fav_quests_${userId}`);
             return stored ? JSON.parse(stored) : [];
-        } catch {
-            return [];
-        }
+        } catch { return []; }
     });
 
-    useEffect(() => {
-        const check = () => {
-            const h = new Date().getHours();
-            setIsDawn(h >= 5 && h < 8);
-        };
-        check();
-        const t = setInterval(check, 60_000);
-        return () => clearInterval(t);
-    }, []);
-
-    const toggleFav = (questId: string) => {
-        setFavIds(prev => {
-            const next = prev.includes(questId)
-                ? prev.filter(id => id !== questId)
-                : [...prev, questId];
-            try {
-                localStorage.setItem(`fav_flex_quests_${userId}`, JSON.stringify(next));
-            } catch {}
-            return next;
-        });
-    };
-
-    // ── 今日記錄 ──
-    const todayLogs = logs.filter(l => getLogicalDateStr(l.Timestamp) === logicalTodayStr);
-    const bodyDone = todayLogs.some(l => l.QuestID === 'q1' || l.QuestID === 'q1_dawn');
-    const bodyLog = todayLogs.find(l => l.QuestID === 'q1' || l.QuestID === 'q1_dawn');
-    const dawnWasDone = todayLogs.some(l => l.QuestID === 'q1_dawn');
-
-    // 套用動態分值覆寫與停用過濾
     const disabledSet = new Set(disabledQuests || []);
     const applyOverride = (q: Quest): Quest =>
         questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q;
 
-    const flexQuests = DAILY_QUEST_CONFIG
-        .filter(q => FLEX_QUEST_IDS.has(q.id) && !disabledSet.has(q.id))
-        .map(applyOverride);
-    const flexDoneCount = todayLogs.filter(l => FLEX_QUEST_IDS.has(l.QuestID)).length;
-    // q1/q1_dawn 佔每日3種名額中的一個；totalDailyCount 用於停用判斷
-    const totalDailyCount = flexDoneCount + (bodyDone ? 1 : 0);
-    const flexSlotsLeft = Math.max(0, 3 - totalDailyCount);
-    const todayR1Count = todayLogs.filter(l => l.QuestID === 'r1').length;
-    const isBodyDisabled = disabledSet.has('q1');
-    const isR1Disabled = disabledSet.has('r1');
+    const todayLogs = logs.filter(l => getLogicalDateStr(l.Timestamp) === logicalTodayStr);
 
-    // ── 罰款邏輯判斷 ──
-    const isFineActive = () => {
-        if (!fineSettings?.enabled) return false;
-        if (!fineSettings.periodStart || !fineSettings.periodEnd) return true; // 未設日期視為全開
-        return logicalTodayStr >= fineSettings.periodStart && logicalTodayStr <= fineSettings.periodEnd;
-    };
-    const showFine = isFineActive();
-    const isFineItem = (id: string) => showFine && fineSettings?.items?.includes(id);
+    // ── 基本定課 d1–d8 ──
+    const basicQuests = DAILY_BASIC_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
+    const basicDoneIds = new Set(todayLogs.filter(l => BASIC_QUEST_IDS.has(l.QuestID)).map(l => l.QuestID));
+    const basicDoneCount = basicDoneIds.size;
+    const basicSlotsLeft = Math.max(0, DAILY_BASIC_LIMIT - basicDoneCount);
 
-    const weeklyQuestName = DAILY_QUEST_CONFIG.find(q => q.id === weeklyQuestId)?.title;
+    // ── 加權定課 p1–p5 ──
+    const weightedQuests = DAILY_WEIGHTED_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
+    const weightedDoneIds = new Set(todayLogs.filter(l => WEIGHTED_QUEST_IDS.has(l.QuestID)).map(l => l.QuestID));
+    const weightedDoneCount = weightedDoneIds.size;
+    const weightedSlotsLeft = Math.max(0, DAILY_WEIGHTED_LIMIT - weightedDoneCount);
 
-    const hasFavs = favIds.length > 0;
-    const favQuests = flexQuests.filter(q => favIds.includes(q.id));
-    const otherQuests = flexQuests.filter(q => !favIds.includes(q.id));
+    // ── 破曉打拳 p1_dawn ──
+    const dawnQuest = applyOverride(DAWN_QUEST);
+    const p1Done = todayLogs.some(l => l.QuestID === 'p1');
+    const dawnDone = todayLogs.some(l => l.QuestID === 'p1_dawn');
+    const dawnLog = todayLogs.find(l => l.QuestID === 'p1_dawn');
+    const showDawnQuest = p1Done || dawnDone;
 
-    // ── 體運定課 reward 計算（支援動態覆寫）──
-    const q1Reward = questRewardOverrides?.['q1'] ?? 1000;
-    const q1DawnReward = questRewardOverrides?.['q1_dawn'] ?? 2000;
-    const bodyDisplayReward = dawnWasDone ? q1DawnReward : (isDawn ? q1DawnReward : q1Reward);
+    // ── 飲控 diet ──
+    const dietQuests = DIET_QUEST_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
+    const dietDoneLog = todayLogs.find(l => DIET_QUEST_IDS.has(l.QuestID));
+    const dietDoneId = dietDoneLog?.QuestID;
 
-    const handleBodyCheckIn = () => {
-        if (bodyDone) return;
-        const questId = isDawn ? 'q1_dawn' : 'q1';
-        const title = isDawn ? '早場體運定課' : '體運定課';
-        onCheckIn({ id: questId, title, reward: isDawn ? q1DawnReward : q1Reward });
-    };
+    // ── 本週推薦 weeklyQuestId ──
+    const allQuests = [...basicQuests, ...weightedQuests];
+    const weeklyQuestName = allQuests.find(q => q.id === weeklyQuestId)?.title;
 
-    const r1Reward = questRewardOverrides?.['r1'] ?? 2000;
-    const handleR1CheckIn = (personName: string) => {
-        onCheckIn({
-            id: 'r1',
-            title: `關係定課 — ${personName}`,
-            reward: r1Reward,
+    // ── 收藏管理 ──
+    const toggleFav = (questId: string) => {
+        setFavIds(prev => {
+            const next = prev.includes(questId) ? prev.filter(id => id !== questId) : [...prev, questId];
+            try { localStorage.setItem(`fav_quests_${userId}`, JSON.stringify(next)); } catch {}
+            return next;
         });
     };
 
-    const renderFlexChip = (q: Quest) => {
-        const done = todayLogs.some(l => l.QuestID === q.id);
+    const renderChip = (q: Quest, isDone: boolean, isDisabled: boolean) => {
         const log = todayLogs.find(l => l.QuestID === q.id);
         return (
-            <FlexQuestChip
+            <QuestChip
                 key={q.id}
                 quest={q}
-                isDone={done}
+                isDone={isDone}
+                isDisabled={isDisabled}
                 doneTime={log ? formatCheckInTime(log.Timestamp) : undefined}
-                isDisabled={flexSlotsLeft <= 0}
-                onCheckIn={() => done ? onUndo(q) : onCheckIn(q)}
+                onCheckIn={() => isDone ? onUndo(q) : onCheckIn(q)}
                 editMode={isEditMode}
                 isFav={favIds.includes(q.id)}
                 onToggleFav={() => toggleFav(q.id)}
-                hasFineReminder={isFineItem(q.id)}
             />
+        );
+    };
+
+    const renderQuestSection = (
+        quests: Quest[],
+        doneIds: Set<string>,
+        slotsLeft: number,
+        limit: number,
+        doneCount: number,
+        label: string,
+        showOther: boolean,
+        setShowOther: (v: boolean) => void,
+    ) => {
+        const favQuests = quests.filter(q => favIds.includes(q.id));
+        const otherQuests = quests.filter(q => !favIds.includes(q.id));
+        const hasFavs = favQuests.length > 0;
+
+        return (
+            <section className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                    {isEditMode ? (
+                        <>
+                            <div>
+                                <h2 className="text-sm font-black text-[#1A6B4A] uppercase tracking-widest">選擇常用定課</h2>
+                                <p className="text-[9px] text-gray-500 mt-0.5">點擊 ★ 切換</p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">
+                                {label}（{doneCount}/{limit}）
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-sm font-bold ${slotsLeft <= 0 ? 'text-[#C0392B]' : 'text-gray-500'}`}>
+                                    {slotsLeft <= 0 ? '已達上限' : `剩 ${slotsLeft} 次`}
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {isEditMode ? (
+                    <div className="grid grid-cols-2 gap-3">
+                        {quests.map(q => renderChip(q, doneIds.has(q.id), false))}
+                    </div>
+                ) : hasFavs ? (
+                    <>
+                        <div className="grid grid-cols-2 gap-3">
+                            {favQuests.map(q => renderChip(q, doneIds.has(q.id), slotsLeft <= 0 && !doneIds.has(q.id)))}
+                        </div>
+                        {otherQuests.length > 0 && (
+                            <div className="space-y-2">
+                                <button
+                                    onClick={() => setShowOther(!showOther)}
+                                    className="flex items-center gap-1.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors px-1"
+                                >
+                                    {showOther ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    其他（{otherQuests.length} 種）
+                                </button>
+                                {showOther && (
+                                    <div className="grid grid-cols-2 gap-3 animate-in slide-in-from-top-1 duration-200">
+                                        {otherQuests.map(q => renderChip(q, doneIds.has(q.id), slotsLeft <= 0 && !doneIds.has(q.id)))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                        {quests.map(q => renderChip(q, doneIds.has(q.id), slotsLeft <= 0 && !doneIds.has(q.id)))}
+                    </div>
+                )}
+            </section>
         );
     };
 
@@ -414,115 +244,101 @@ export function DailyQuestsTab({
 
             {/* 本週推薦 */}
             {weeklyQuestName && (
-                <div className="bg-gradient-to-br from-[#1B2A4A] to-black border border-[#253A5C] rounded-2xl px-5 py-4 flex items-center gap-3">
+                <div className="bg-white border border-[#B2DFC0] rounded-2xl px-5 py-4 flex items-center gap-3 shadow-sm">
                     <Sparkles size={14} className="text-[#F5C842] shrink-0" />
                     <div>
-                        <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest">本週熱門片單</p>
-                        <p className="text-sm font-black text-[#F5C842]">「{weeklyQuestName}」</p>
+                        <p className="text-sm text-gray-500 font-black uppercase tracking-widest">本週推薦</p>
+                        <p className="text-base font-black text-[#1A6B4A]">「{weeklyQuestName}」</p>
                     </div>
                 </div>
             )}
 
-            {/* ① 體運定課 */}
-            {!isBodyDisabled && (
-            <section className="space-y-2">
-                <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">體運定課</h2>
-                <BodyQuestCard
-                    isDawn={isDawn && !bodyDone}
-                    isDone={bodyDone}
-                    doneTime={bodyLog ? formatCheckInTime(bodyLog.Timestamp) : undefined}
-                    reward={bodyDisplayReward}
-                    onCheckIn={handleBodyCheckIn}
-                    hasFineReminder={isFineItem('q1') || isFineItem('q1_dawn')}
-                />
-            </section>
+            {/* 常用定課編輯按鈕 */}
+            <div className="flex justify-end px-1">
+                <button
+                    onClick={() => setIsEditMode(v => !v)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] text-gray-500 text-sm font-bold hover:text-[#1A6B4A] active:scale-95 transition-all"
+                >
+                    {isEditMode ? <CheckCircle2 size={11} className="text-[#1A6B4A]" /> : <Pencil size={9} />}
+                    {isEditMode ? '完成' : '常用'}
+                </button>
+            </div>
+
+            {/* ① 基本定課 d1–d8 */}
+            {renderQuestSection(
+                basicQuests, basicDoneIds, basicSlotsLeft,
+                DAILY_BASIC_LIMIT, basicDoneCount,
+                '基本定課', showOtherBasic, setShowOtherBasic,
             )}
 
-            {/* ② 任意定課（最多 3 種） */}
-            <section className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                    {isEditMode ? (
-                        <>
-                            <div>
-                                <h2 className="text-[10px] font-black text-[#F5C842] uppercase tracking-widest">選擇常用定課</h2>
-                                <p className="text-[9px] text-gray-600 mt-0.5">已選 {favIds.length} 種，點擊 ★ 切換</p>
-                            </div>
-                            <button
-                                onClick={() => setIsEditMode(false)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F5C842]/15 border border-[#F5C842]/40 text-[#F5C842] text-[10px] font-black active:scale-95 transition-all"
-                            >
-                                <Check size={11} />
-                                完成
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">任意定課（每日最多 3 種）</h2>
-                            <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-bold ${flexSlotsLeft <= 0 ? 'text-[#C0392B]' : 'text-gray-600'}`}>
-                                    {flexSlotsLeft <= 0 ? `已達上限` : `剩餘 ${flexSlotsLeft} 種`}
-                                </span>
-                                <button
-                                    onClick={() => setIsEditMode(true)}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#253A5C] border border-[#253A5C] text-gray-500 text-[10px] font-bold hover:border-gray-500 hover:text-gray-300 active:scale-95 transition-all"
-                                >
-                                    <Pencil size={9} />
-                                    常用
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
+            {/* ② 加權定課 p1–p5 */}
+            {renderQuestSection(
+                weightedQuests, weightedDoneIds, weightedSlotsLeft,
+                DAILY_WEIGHTED_LIMIT, weightedDoneCount,
+                '加權定課', showOtherWeighted, setShowOtherWeighted,
+            )}
 
-                {isEditMode ? (
-                    // 編輯模式：顯示全部 21 種
-                    <div className="flex flex-wrap gap-2">
-                        {flexQuests.map(renderFlexChip)}
-                    </div>
-                ) : hasFavs ? (
-                    <>
-                        {/* 常用定課 */}
-                        <div className="flex flex-wrap gap-2">
-                            {favQuests.map(renderFlexChip)}
+            {/* ③ 破曉打拳（p1 done 後出現） */}
+            {showDawnQuest && !disabledSet.has('p1_dawn') && (
+                <section className="space-y-2">
+                    <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">破曉加成</h2>
+                    <button
+                        onClick={() => dawnDone ? onUndo(dawnQuest) : onCheckIn(dawnQuest)}
+                        disabled={!p1Done && !dawnDone}
+                        className={`w-full rounded-3xl border p-4 flex items-center gap-4 transition-all active:scale-95 text-left
+                            ${dawnDone
+                                ? 'bg-[#C0392B]/10 border-[#C0392B]/40'
+                                : 'bg-white border-[#F5C842]/60 shadow-sm hover:border-[#F5C842]'}`}
+                    >
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-[#F5FAF7] shrink-0 ${dawnDone ? 'text-[#C0392B]' : 'text-[#F5C842]'}`}>
+                            {dawnDone ? <CheckCircle2 size={26} /> : <Sunrise size={26} />}
                         </div>
-                        {/* 其他定課 收合 */}
-                        {otherQuests.length > 0 && (
-                            <div className="space-y-2">
-                                <button
-                                    onClick={() => setShowOthers(v => !v)}
-                                    className="flex items-center gap-1.5 text-[10px] font-bold text-gray-600 hover:text-gray-400 transition-colors px-1"
-                                >
-                                    {showOthers ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                    其他定課（{otherQuests.length} 種）
-                                </button>
-                                {showOthers && (
-                                    <div className="flex flex-wrap gap-2 animate-in slide-in-from-top-1 duration-200">
-                                        {otherQuests.map(renderFlexChip)}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    // 未設定常用：顯示全部
-                    <div className="flex flex-wrap gap-2">
-                        {flexQuests.map(renderFlexChip)}
-                    </div>
-                )}
-            </section>
+                        <div className="flex-1 min-w-0">
+                            <h3 className={`font-black text-base ${dawnDone ? 'text-[#C0392B]' : 'text-[#1A2A1A]'}`}>{dawnQuest.title}</h3>
+                            <p className="text-sm text-gray-500">今日已打拳，記錄破曉加成</p>
+                            {dawnDone && dawnLog && (
+                                <p className="text-sm font-mono text-[#C0392B]/70 mt-0.5">{formatCheckInTime(dawnLog.Timestamp)}</p>
+                            )}
+                        </div>
+                        <div className="text-right shrink-0">
+                            <p className={`font-black text-lg ${dawnDone ? 'text-[#C0392B]' : 'text-[#1A6B4A]'}`}>+{dawnQuest.reward}</p>
+                            <p className="text-sm text-gray-500">分</p>
+                        </div>
+                    </button>
+                </section>
+            )}
 
-            {/* ③ 關係定課（最多 3 人） */}
-            {!isR1Disabled && (
-            <section className="space-y-2">
-                <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">關係定課</h2>
-                <RelationshipQuestSection
-                    todayR1Count={todayR1Count}
-                    logs={logs}
-                    logicalTodayStr={logicalTodayStr}
-                    onCheckIn={handleR1CheckIn}
-                    hasFineReminder={isFineItem('r1')}
-                />
-            </section>
+            {/* ④ 飲控 diet */}
+            {dietQuests.length > 0 && (
+                <section className="space-y-2">
+                    <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">飲控（每日擇一）</h2>
+                    <div className="flex gap-3">
+                        {dietQuests.map(q => {
+                            const isDone = dietDoneId === q.id;
+                            const isBlockedByOther = !!dietDoneId && !isDone;
+                            const Icon = q.id === 'diet_veg' ? Salad : Fish;
+                            return (
+                                <button
+                                    key={q.id}
+                                    onClick={() => isDone ? onUndo(q) : onCheckIn(q)}
+                                    disabled={isBlockedByOther}
+                                    className={`flex-1 flex flex-col items-center gap-1.5 py-4 rounded-2xl border text-base font-bold transition-all active:scale-95
+                                        ${isDone
+                                            ? 'bg-[#C0392B]/10 border-[#C0392B]/40 text-[#C0392B]'
+                                            : isBlockedByOther
+                                                ? 'bg-gray-100 border-[#B2DFC0] text-gray-400 opacity-40 cursor-not-allowed'
+                                                : 'bg-white border-[#B2DFC0] text-[#1A2A1A] hover:border-[#7FC49A]'}`}
+                                >
+                                    {isDone ? <CheckCircle2 size={20} className="text-[#C0392B]" /> : <Icon size={20} />}
+                                    <span>{q.title}</span>
+                                    <span className={`text-sm font-mono ${isDone ? 'text-[#C0392B]/70' : 'text-[#1A6B4A]/70'}`}>
+                                        +{q.reward} 分
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
             )}
 
         </div>

@@ -1,158 +1,115 @@
 import {
-    EyeOff, Flame, Droplets, Wind, Ghost, Heart,
-    ThumbsUp, BookOpen, Brain, Sparkles, Star, Utensils,
-    HeartHandshake, TreePine, Waves, Moon, Laugh, Music2, Sun,
-    Salad, MicVocal, Target, PenLine, Music, Flower2, Bell,
-    Phone, Mic, Award, Users, PhoneCall,
-    WandSparkles, Zap, Eye, Drum,
+    Flame, Heart, ThumbsUp, BookOpen, Brain, Sparkles, Star, Utensils,
+    HeartHandshake, Waves, Moon, Sun, Salad, MicVocal, Target, PenLine,
+    Bell, Phone, Mic, Award, Users, Zap,
     type LucideIcon,
 } from 'lucide-react';
-import { Quest, ZoneInfo } from '@/types';
+import { Quest } from '@/types';
 
-export const BASE_START_DATE_STR = "2026-02-01";
-export const END_DATE = "2026-06-28";
-export const PENALTY_PER_DAY = 50;
-
-/**
- * 門檻公式：9000 + (Level - 1) * 100
- */
-const BASE_REQ = 9000;
-const INCREMENT = 100;
-
-export function getAccumulatedExpForLevel(level: number): number {
-    if (level <= 1) return 0;
-    const n = level - 1;
-    // 等差級數和公式: n/2 * (2*a + (n-1)*d)
-    return Math.floor((n / 2) * (2 * BASE_REQ + (n - 1) * INCREMENT));
-}
-
-export function getExpForNextLevel(level: number): number {
-    if (level >= 99) return 0;
-    return BASE_REQ + (level - 1) * INCREMENT;
-}
-
-export function calculateLevelFromExp(exp: number): number {
-    let currentLevel = 1;
-    while (currentLevel < 99) {
-        // 如果票房足夠達到下一級的門檻，就升級
-        if (exp >= getAccumulatedExpForLevel(currentLevel + 1)) {
-            currentLevel++;
-        } else {
-            break;
-        }
-    }
-    return currentLevel;
-}
+export const BASE_START_DATE_STR = "2026-05-10";
+export const END_DATE = "2026-07-12";
+export const ONE_TIME_TASK_DEADLINE = "2026-07-01";
 
 export const ADMIN_PASSWORD = "123";
 
-export const ZONES: ZoneInfo[] = [
-    { id: 'pride', name: '愛情片．甜蜜陷阱', char: '偶像明星', color: '#f8fafc', textColor: 'text-pink-400', icon: <Heart size={14} /> },
-    { id: 'doubt', name: '劇情片．反轉迷宮', char: '文藝名導', color: '#1e3a8a', textColor: 'text-blue-400', icon: <EyeOff size={14} /> },
-    { id: 'anger', name: '動作片．爆破前線', char: '動作巨星', color: '#991b1b', textColor: 'text-red-500', icon: <Flame size={14} /> },
-    { id: 'greed', name: '喜劇片．歡笑泥沼', char: '喜劇泰斗', color: '#14532d', textColor: 'text-emerald-500', icon: <Droplets size={14} /> },
-    { id: 'delusion', name: '科幻片．綠幕幻境', char: '特效大師', color: '#78350f', textColor: 'text-orange-500', icon: <Wind size={14} /> },
-    { id: 'chaos', name: '爛片．票房毒藥', char: 'Boss', color: '#1e293b', textColor: 'text-slate-400', icon: <Ghost size={14} /> },
+// ── 基本定課（20分/項，每日上限3項）────────────────────────────────────────
+// d1–d8：做不習慣但有意義的內在練習，建立向上慣性
+// 每日最多完成 3 項，計入 DAILY_BASIC_LIMIT
+export const DAILY_BASIC_CONFIG: Quest[] = [
+    { id: 'd1', title: '五感恩',   sub: '每日五感恩練習',                   reward: 20, icon: '🙏' },
+    { id: 'd2', title: '餐前感恩', sub: '餐前感恩練習',                     reward: 20, icon: '🍽️' },
+    { id: 'd3', title: '嗯啊吽',   sub: '嗯啊吽咒語練習',                   reward: 20, icon: '🔔' },
+    { id: 'd4', title: '感恩冥想', sub: '感恩冥想練習',                     reward: 20, icon: '💛' },
+    { id: 'd5', title: '抄經',     sub: '抄寫心經或指定經文',               reward: 20, icon: '📝' },
+    { id: 'd6', title: '光的冥想', sub: '光的冥想練習',                     reward: 20, icon: '☀️' },
+    { id: 'd7', title: '欣賞',     sub: '欣賞伴侶或身邊的人',               reward: 20, icon: '💑' },
+    { id: 'd8', title: '活在當下', sub: '活在當下練習',                     reward: 20, icon: '🎯' },
 ];
 
+// 基本定課 ID 集合，供伺服器端驗證與前端篩選共用
+export const BASIC_QUEST_IDS = new Set(['d1','d2','d3','d4','d5','d6','d7','d8']);
+export const DAILY_BASIC_LIMIT = 3;
 
-// ── 每日定課 ──────────────────────────────────────────────────────────────
-// 規則：
-//   體運定課  q1(+1000) / q1_dawn(+2000) 每日擇一，互斥
-//   任意定課  q2–q22 各 +1000，每日共用上限 3 種（每種各最多 1 次）
-//   關係定課  r1 +2000／人，每日最多 3 名（見 quest.ts 特別處理）
-export const DAILY_QUEST_CONFIG: Quest[] = [
-    { id: 'q1',  title: '體運定課',    sub: '打拳或運動 30 分鐘', reward: 1000 },
-    { id: 'q2',  title: '每日五感恩',  icon: '🙏', reward: 1000 },
-    { id: 'q3',  title: '觀心書',      icon: '📖', reward: 1000 },
-    { id: 'q4',  title: '靜心冥想',    icon: '🧘', reward: 1000 },
-    { id: 'q5',  title: '自我肯定',    icon: '✨', reward: 1000 },
-    { id: 'q6',  title: '感恩冥想',    icon: '💛', reward: 1000 },
-    { id: 'q7',  title: '創造法則冥想',icon: '🌟', reward: 1000 },
-    { id: 'q8',  title: '餐前感恩',    icon: '🍽️', reward: 1000 },
-    { id: 'q9',  title: '欣賞伴侶',    icon: '💑', reward: 1000 },
-    { id: 'q10', title: '接地氣',      icon: '🌿', reward: 1000 },
-    { id: 'q11', title: '接海氣',      icon: '🌊', reward: 1000 },
-    { id: 'q12', title: '子時入睡',    icon: '🌙', reward: 1000 },
-    { id: 'q13', title: '大笑功法',    icon: '😄', reward: 1000 },
-    { id: 'q14', title: '熱舞',        icon: '💃', reward: 1000 },
-    { id: 'q15', title: '光的冥想',    icon: '☀️', reward: 1000 },
-    { id: 'q16', title: '一日一蔬食',  icon: '🥦', reward: 1000 },
-    { id: 'q17', title: '大悲咒',      icon: '🕉️', reward: 1000 },
-    { id: 'q18', title: '活在當下',    icon: '🎯', reward: 1000 },
-    { id: 'q19', title: '抄心經',      icon: '📝', reward: 1000 },
-    { id: 'q20', title: '當下之舞',    icon: '🎶', reward: 1000 },
-    { id: 'q21', title: '祝福',        icon: '🌸', reward: 1000 },
-    { id: 'q22', title: '嗯啊吽',      icon: '🔔', reward: 1000 },
-    { id: 'r1',  title: '關係定課',    sub: '與三貴人或伴侶有品質互動（≥15分鐘）', reward: 2000 },
+// ── 加權定課（50分/項，每日上限3項）────────────────────────────────────────
+// p1–p5：需要更深刻投入或身體力行的修練
+// 每日最多完成 3 項，與基本定課各自獨立計算
+export const DAILY_WEIGHTED_CONFIG: Quest[] = [
+    { id: 'p1', title: '打拳',     sub: '每日至少打一種拳或運動30分鐘',             reward: 50, icon: '🥊' },
+    { id: 'p2', title: '觀心書',   sub: '閱讀觀心書',                               reward: 50, icon: '📖' },
+    { id: 'p3', title: '大悲咒',   sub: '持誦大悲咒',                               reward: 50, icon: '🕉️' },
+    { id: 'p4', title: '子時入睡', sub: '子時（23:00）前入睡',                      reward: 50, icon: '🌙' },
+    { id: 'p5', title: '痛參',     sub: '對生活中遇到的痛苦，透過內觀參解其出現的意義', reward: 50, icon: '🧠' },
 ];
 
-// 任意定課 ID 集合，供伺服器端驗證與前端篩選共用
-export const FLEX_QUEST_IDS = new Set([
-    'q2','q3','q4','q5','q6','q7','q8','q9','q10','q11',
-    'q12','q13','q14','q15','q16','q17','q18','q19','q20','q21','q22',
-]);
+// 加權定課 ID 集合，供伺服器端驗證與前端篩選共用
+export const WEIGHTED_QUEST_IDS = new Set(['p1','p2','p3','p4','p5']);
+export const DAILY_WEIGHTED_LIMIT = 3;
 
-// ── 每週 / 雙週 / 月任務 ──────────────────────────────────────────────────
-// a1：天使通話      +500／次，每週至少1次、最多3次
-// w1：親證分享      +1000，每週最多1則
-// w2：欣賞／肯定夥伴 +1000，每週最多3則（各不同人）
-// w3：小隊定聚      +5000，每月最多2次
-// w4：小隊通話      +3000，每月最多2次
+// ── 破曉打拳（獨立加成，不佔用名額）───────────────────────────────────────
+// 需同日已完成 p1（打拳）方可計算，不佔用加權定課 3 項名額
+export const DAWN_QUEST: Quest = {
+    id: 'p1_dawn',
+    title: '破曉打拳',
+    sub: '在破曉時段（05:00–08:00）完成打拳，疊加在打拳 p1 之上',
+    reward: 50,
+    icon: '🌅',
+};
+
+// ── 每日飲控（獨立計分，每日擇一，不佔用定課名額）─────────────────────────
+export const DIET_QUEST_CONFIG: Quest[] = [
+    { id: 'diet_veg',     title: '三餐吃素',   sub: '今日三餐全素',    reward: 50, icon: '🥦' },
+    { id: 'diet_seafood', title: '三餐海鮮素', sub: '今日三餐海鮮素',  reward: 30, icon: '🌊' },
+];
+
+// 飲控任務 ID 集合（每日只能擇一）
+export const DIET_QUEST_IDS = new Set(['diet_veg', 'diet_seafood']);
+
+// ── 每週任務 ──────────────────────────────────────────────────────────────
+// wk1：破框練習，每週最多 3 次
+// wk2：天使通話，每週最多 2 次
+// wk3_online / wk3_offline：小組凝聚，每週 1 次，須審核
+// wk4_small / wk4_large：人生大戲分享，每週各 1 次
 export const WEEKLY_QUEST_CONFIG: Quest[] = [
-    { id: 'a1', title: '主創對談',       sub: '分享本週拍攝進度（每週 1–3 次）', reward: 500,  limit: 3, icon: '👼' },
-    { id: 'w1', title: '精彩片段分享',   sub: '群組分享上週花絮 & 下週劇本規劃',  reward: 1000, limit: 1, icon: '🎙️' },
-    { id: 'w2', title: '讚賞合製夥伴',   sub: '每次需為不同人，每週最多 3 則',   reward: 1000, limit: 3, icon: '🌟' },
-    { id: 'w3', title: '劇組首映會',     sub: '小隊專屬首映（每月最多 2 次）',   reward: 5000, limit: 2, icon: '🎪' },
-    { id: 'w4', title: '劇組會議',       sub: '分享拍攝心得，給予劇組支持（每月最多 2 次）', reward: 3000, limit: 2, icon: '📞' },
-];
-
-// ── 小隊主題定聚任務（搭配 w3 使用）────────────────────────────────────────
-// 除 w3 基礎 +5000 外，另加主題分數；全員到齊再加成
-export const SQUAD_THEME_CONFIG = [
-    { id: 'sq1', title: '阿拉丁',   attr: '陽／適應力',     reward: 3000, bonusFull: 2000, icon: '🧞', desc: '帶領夥伴一起去掃公所，體驗突破適應力的過程' },
-    { id: 'sq2', title: 'F1賽車',   attr: '陰／找回初衷',   reward: 3000, bonusFull: 2000, icon: '🏎️', desc: '分享工作或生活中的卡關之處，如何轉念並訂立行動方案' },
-    { id: 'sq3', title: '獵魔女團', attr: '陰／接納不完美', reward: 3000, bonusFull: 2000, icon: '🔮', desc: '探討自己最不能接受的缺點，如何接納並化為優點' },
-    { id: 'sq4', title: '陣頭',     attr: '陽／主動吃苦',   reward: 3000, bonusFull: 2000, icon: '🥁', desc: '透過爬山主動吃向上的苦，透過彼此扶持體驗團隊力量' },
+    { id: 'wk1',         title: '破框練習',         sub: '做不習慣、討厭、害怕的事；在小群分享',              reward: 200, limit: 3 },
+    { id: 'wk2',         title: '天使通話',         sub: '與夥伴進行天使通話，分享近期親證狀況',              reward: 200, limit: 2 },
+    { id: 'wk3_online',  title: '小組凝聚（線上）', sub: '線上小組聚會，須審核',                             reward: 100, limit: 1 },
+    { id: 'wk3_offline', title: '小組凝聚（實體）', sub: '實體小組聚會（全到+400，大隊長出席再+100），須審核', reward: 300, limit: 1 },
+    { id: 'wk4_small',   title: '人生大戲（小群）', sub: '選定最弱一運，在小群分享親證狀況',                  reward: 200, limit: 1 },
+    { id: 'wk4_large',   title: '人生大戲（大群）', sub: '選定最弱一運，在大群（全隊）分享親證狀況',           reward: 300, limit: 1 },
 ];
 
 // ── Quest Icon Map（ID → Lucide Component）─────────────────────────────────
 export const QUEST_ICON_MAP: Record<string, LucideIcon> = {
-    q2:  ThumbsUp,       // 每日五感恩
-    q3:  BookOpen,       // 觀心書
-    q4:  Brain,          // 靜心冥想
-    q5:  Sparkles,       // 自我肯定
-    q6:  Heart,          // 感恩冥想
-    q7:  Star,           // 創造法則冥想
-    q8:  Utensils,       // 餐前感恩
-    q9:  HeartHandshake, // 欣賞伴侶
-    q10: TreePine,       // 接地氣
-    q11: Waves,          // 接海氣
-    q12: Moon,           // 子時入睡
-    q13: Laugh,          // 大笑功法
-    q14: Music2,         // 熱舞
-    q15: Sun,            // 光的冥想
-    q16: Salad,          // 一日一蔬食
-    q17: MicVocal,       // 大悲咒
-    q18: Target,         // 活在當下
-    q19: PenLine,        // 抄心經
-    q20: Music,          // 當下之舞
-    q21: Flower2,        // 祝福
-    q22: Bell,           // 嗯啊吽
-    // Weekly quests
-    a1:  Phone,          // 天使通話
-    w1:  Mic,            // 親證分享
-    w2:  Award,          // 欣賞／肯定夥伴
-    w3:  Users,          // 小隊定聚
-    w4:  PhoneCall,      // 小隊通話
-};
-
-// ── Squad Theme Icon Map（ID → Lucide Component）───────────────────────────
-export const SQUAD_THEME_ICON_MAP: Record<string, LucideIcon> = {
-    sq1: WandSparkles,   // 阿拉丁
-    sq2: Zap,            // F1賽車
-    sq3: Eye,            // 獵魔女團
-    sq4: Drum,           // 陣頭
+    // 基本定課
+    d1: ThumbsUp,       // 五感恩
+    d2: Utensils,       // 餐前感恩
+    d3: Bell,           // 嗯啊吽
+    d4: Heart,          // 感恩冥想
+    d5: PenLine,        // 抄經
+    d6: Sun,            // 光的冥想
+    d7: HeartHandshake, // 欣賞
+    d8: Target,         // 活在當下
+    // 加權定課
+    p1: Flame,          // 打拳
+    p2: BookOpen,       // 觀心書
+    p3: MicVocal,       // 大悲咒
+    p4: Moon,           // 子時入睡
+    p5: Brain,          // 痛參
+    // 破曉打拳
+    p1_dawn: Sparkles,  // 破曉打拳
+    // 飲控
+    diet_veg:     Salad, // 三餐吃素
+    diet_seafood: Waves, // 三餐海鮮素
+    // 每週任務
+    wk1:         Zap,   // 破框練習
+    wk2:         Phone, // 天使通話
+    wk3_online:  Star,  // 小組凝聚（線上）
+    wk3_offline: Users, // 小組凝聚（實體）
+    wk4_small:   Mic,   // 人生大戲（小群）
+    wk4_large:   Award, // 人生大戲（大群）
 };
 
 export const SQUAD_ROLES = ['副隊長', '抱抱', '衡衡', '叮叮1號', '叮叮2號', '樂樂'] as const;
+
+export const COMPANION_TYPES = ['事業運', '財富運', '情感運', '家庭運', '體能運'] as const;
+export type CompanionType = typeof COMPANION_TYPES[number];

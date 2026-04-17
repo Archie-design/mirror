@@ -48,3 +48,6 @@ ui-ux-pro-max-skill/
 
 # local claude settings
 .claude/settings.local.json
+
+# Agent skills
+.agent/

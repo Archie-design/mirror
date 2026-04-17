@@ -5,15 +5,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import {
   AlertTriangle, CheckCircle2, Sparkles,
-  Dice5, Loader2, RotateCcw,
-  CalendarDays, Clapperboard, Video
+  Loader2, RotateCcw,
+  CalendarDays, Clapperboard, Video, LayoutGrid, Trophy
 } from 'lucide-react';
-import { FilmStripIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
+import { StarWandIcon, FilmStripIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
 
-import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, FinePaymentRecord } from '@/types';
+import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
 import { standardizePhone } from '@/lib/utils/phone';
-import { ADMIN_PASSWORD, calculateLevelFromExp } from '@/lib/constants';
+import { ADMIN_PASSWORD } from '@/lib/constants';
 
 import { Header } from '@/components/Layout/Header';
 import { LoginForm } from '@/components/Login/LoginForm';
@@ -30,21 +30,49 @@ import { processCheckInTransaction, clearTodayLogs } from '@/app/actions/quest';
 import { importRostersData, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
 import { drawWeeklyQuestForSquad, autoDrawAllSquads, getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
-import { submitInterviewApplication, reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog, submitBonusApplication } from '@/app/actions/bonus';
-import { getSquadFineStatus, recordFinePayment, setPaidToCaptainDate, getSquadFinePaymentHistory, checkSquadFineCompliance, recordOrgSubmission, getSquadOrgSubmissions, getLastComplianceRun } from '@/app/actions/fines';
+import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
+import { NineGridTab } from '@/components/Tabs/NineGridTab';
+import { getMemberGrid, initMemberGrid } from '@/app/actions/nine-grid';
+import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
+import { UserNineGrid } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_key';
 const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
+const SESSION_UID_KEY = 'session_uid';
+const SESSION_EXP_KEY = 'session_exp';
+const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 分鐘
+
+function saveSession(userId: string) {
+  localStorage.setItem(SESSION_UID_KEY, userId);
+  localStorage.setItem(SESSION_EXP_KEY, String(Date.now() + SESSION_DURATION_MS));
+}
+function clearSession() {
+  localStorage.removeItem(SESSION_UID_KEY);
+  localStorage.removeItem(SESSION_EXP_KEY);
+}
+function getStoredSession(): string | null {
+  const uid = localStorage.getItem(SESSION_UID_KEY);
+  const exp = localStorage.getItem(SESSION_EXP_KEY);
+  if (uid && exp && Date.now() < parseInt(exp)) return uid;
+  clearSession();
+  return null;
+}
+
 const MessageBox = ({ message, onClose, type = 'info' }: { message: string, onClose: () => void, type?: 'info' | 'error' | 'success' }) => (
-  <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-sm animate-in fade-in duration-300 mx-auto text-center">
-    <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center space-y-6 mx-auto flex flex-col items-center">
-      <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center ${type === 'error' ? 'bg-red-500/20 text-red-500' : type === 'success' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-blue-500/20 text-blue-500'}`}>
+  <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-[#1A2A1A]/70 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="bg-white border-2 p-8 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center space-y-6 flex flex-col items-center"
+      style={{ borderColor: type === 'error' ? '#C0392B' : type === 'success' ? '#1A6B4A' : '#F5C842' }}>
+      <div className={`w-20 h-20 rounded-full flex items-center justify-center ${type === 'error' ? 'bg-red-50 text-[#C0392B]' : type === 'success' ? 'bg-[#EDF7F1] text-[#1A6B4A]' : 'bg-[#FFFBEB] text-[#8B6914]'}`}>
         {type === 'error' ? <AlertTriangle size={40} /> : type === 'success' ? <CheckCircle2 size={40} /> : <Sparkles size={40} />}
       </div>
-      <p className="text-xl font-bold text-white leading-relaxed text-center mx-auto">{message}</p>
-      <button onClick={onClose} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg text-center mx-auto">確認劇本</button>
+      <p className="font-display text-xl font-bold text-[#1A2A1A] leading-relaxed">{message}</p>
+      <button onClick={onClose}
+        className="w-full py-4 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg"
+        style={{ background: type === 'error' ? '#C0392B' : type === 'success' ? '#1A6B4A' : '#F5C842', color: type === 'info' ? '#1A2A1A' : 'white' }}>
+        了解，繼續旅程
+      </button>
     </div>
   </div>
 );
@@ -53,7 +81,8 @@ export default function App() {
   const [view, setView] = useState<'login' | 'register' | 'app' | 'loading' | 'admin'>('loading');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lineBannerDismissed, setLineBannerDismissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'commandant' | 'course'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'stats' | 'rank' | 'captain' | 'commandant' | 'course' | 'ninegrid'>('daily');
+  const [userGrid, setUserGrid] = useState<UserNineGrid | null>(null);
   type GmViewMode = 'all' | 'player' | 'captain' | 'commandant';
   const [gmViewMode, setGmViewMode] = useState<GmViewMode>('all');
   const [userData, setUserData] = useState<CharacterStats | null>(null);
@@ -67,19 +96,10 @@ export default function App() {
   const [teamSettings, setTeamSettings] = useState<any>(null);
   const [teamMemberCount, setTeamMemberCount] = useState<number>(1);
 
-  const [myBonusApps, setMyBonusApps] = useState<BonusApplication[]>([]);
   const [pendingBonusApps, setPendingBonusApps] = useState<BonusApplication[]>([]);
 
   const [pendingFinalReviewApps, setPendingFinalReviewApps] = useState<BonusApplication[]>([]);
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
-  // 罰款管理 state
-  interface SquadMemberFine { userId: string; name: string; totalFines: number; finePaid: number; balance: number; }
-  const [squadFineMembers, setSquadFineMembers] = useState<SquadMemberFine[]>([]);
-  const [fineHistory, setFineHistory] = useState<FinePaymentRecord[]>([]);
-  const [isLoadingFines, setIsLoadingFines] = useState(false);
-  const [orgSubmissions, setOrgSubmissions] = useState<import('@/types').SquadFineSubmission[]>([]);
-  const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
-  const [complianceResult, setComplianceResult] = useState<{ periodLabel: string; violators: { userId: string; name: string; missingSum?: number; fineAdded?: number }[]; alreadyRun: boolean } | null>(null);
 
   const [squadMembers, setSquadMembers] = useState<SquadMemberStats[]>([]);
   const [battalionMembers, setBattalionMembers] = useState<Record<string, SquadMemberStats[]>>({});
@@ -130,35 +150,6 @@ export default function App() {
     }
   };
 
-  const handleSubmitBonusApp = async (
-    bonusType: 'b3' | 'b4' | 'b5' | 'b6' | 'b7',
-    target: string,
-    date: string,
-    desc: string,
-    screenshotUrl?: string
-  ) => {
-    if (!userData) return;
-    const res = await submitBonusApplication(
-      userData.UserID, userData.Name,
-      userData.TeamName || null, userData.SquadName || null,
-      bonusType, target, date, desc, screenshotUrl
-    );
-    if (res.success && res.application) {
-      setMyBonusApps(prev => [res.application as BonusApplication, ...prev]);
-      if (userData.IsCaptain && userData.TeamName) {
-        const pendingRes = await getBonusApplications({ squadName: userData.TeamName, status: 'pending' });
-        if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
-      }
-      if (adminAuth) {
-        const finalRes = await getBonusApplications({ status: 'squad_approved' });
-        if (finalRes.success) setPendingFinalReviewApps(finalRes.applications);
-      }
-      setModalMessage({ text: '加分申請已提交，待小隊長審核。', type: 'success' });
-    } else {
-      setModalMessage({ text: res.error || '提交失敗', type: 'error' });
-    }
-  };
-
   const handleImportRoster = async (csvData: string) => {
     setIsSyncing(true);
     try {
@@ -172,32 +163,6 @@ export default function App() {
       setModalMessage({ text: `系統異常：${err.message}`, type: 'error' });
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  const handleCaptainCheckW3Compliance = async () => {
-    if (!userData?.UserID) return;
-    setIsCheckingCompliance(true);
-    try {
-      const res = await checkSquadFineCompliance(userData.UserID);
-      if (res.success) {
-        setComplianceResult({
-          periodLabel: res.periodLabel ?? '',
-          violators: res.violators ?? [],
-          alreadyRun: res.alreadyRun ?? false,
-        });
-        // Refresh fine status to reflect updated TotalFines
-        if (!res.alreadyRun) {
-          const fineRes = await getSquadFineStatus(userData.UserID);
-          if (fineRes.success && fineRes.members) setSquadFineMembers(fineRes.members);
-        }
-      } else {
-        setModalMessage({ text: '結算失敗：' + res.error, type: 'error' });
-      }
-    } catch (e: any) {
-      setModalMessage({ text: '系統異常：' + e.message, type: 'error' });
-    } finally {
-      setIsCheckingCompliance(false);
     }
   };
 
@@ -227,8 +192,7 @@ export default function App() {
 
   const handleOpenCaptainTab = () => {
     setActiveTab('captain');
-    if (userData?.IsCaptain || userData?.IsGM) {
-      loadFinesData();
+    if ((userData?.IsCaptain || userData?.IsGM) && userData?.UserID) {
       getSquadMembersStats(userData.UserID).then(res => {
         if (res.success && res.members) setSquadMembers(res.members);
       });
@@ -245,12 +209,12 @@ export default function App() {
   };
 
   const handleAutoAssignSquads = async () => {
-    if (!confirm("確定要將所有玩家隨機分配發行商 / 劇組？（每隊 4 人，3 隊一發行商，會覆蓋現有編組）")) return;
+    if (!confirm("確定要將所有旅人隨機分配大隊 / 小隊？（每隊 4 人，3 隊一大隊，會覆蓋現有編組）")) return;
     setIsSyncing(true);
     try {
       const res = await autoAssignSquadsForTesting();
       if (res.success) {
-        setModalMessage({ text: `分配完成！共 ${res.totalPlayers} 位玩家，${res.squadCount} 支劇組，${res.battalionCount} 個發行商。`, type: 'success' });
+        setModalMessage({ text: `分配完成！共 ${res.totalPlayers} 位旅人，${res.squadCount} 支小隊，${res.battalionCount} 個大隊。`, type: 'success' });
       } else {
         setModalMessage({ text: '分配失敗：' + res.error, type: 'error' });
       }
@@ -261,63 +225,14 @@ export default function App() {
     }
   };
 
-  // ── 罰款 handlers ──
-  const loadFinesData = async () => {
-    if (!userData?.TeamName) return;
-    setIsLoadingFines(true);
-    try {
-      const [summaryRes, histRes, orgRes, complianceRes] = await Promise.all([
-        getSquadFineStatus(userData.UserID),
-        getSquadFinePaymentHistory(userData.UserID),
-        getSquadOrgSubmissions(userData.UserID),
-        getLastComplianceRun(userData.UserID),
-      ]);
-      if (summaryRes.success && summaryRes.members) setSquadFineMembers(summaryRes.members as SquadMemberFine[]);
-      if (histRes.success && histRes.records) setFineHistory(histRes.records as FinePaymentRecord[]);
-      if (orgRes.success && orgRes.records) setOrgSubmissions(orgRes.records as import('@/types').SquadFineSubmission[]);
-      if (complianceRes.success && complianceRes.alreadyRun) {
-        setComplianceResult({ periodLabel: complianceRes.periodLabel!, violators: [], alreadyRun: true });
-      }
-    } catch (_) { /* silent */ } finally {
-      setIsLoadingFines(false);
-    }
-  };
-
-  const handleRecordFinePayment = async (targetUserId: string, amount: number, periodLabel: string, paidToCaptainAt?: string) => {
-    if (!userData?.TeamName) return;
-    const res = await recordFinePayment(userData.UserID, targetUserId, amount, periodLabel, paidToCaptainAt);
-    if (res.success) {
-      setModalMessage({ text: `已記錄繳款 NT$${amount}`, type: 'success' });
-      await loadFinesData();
-    } else {
-      setModalMessage({ text: res.error || '記錄失敗', type: 'error' });
-    }
-  };
-
-  const handleSetPaidToCaptainDate = async (paymentId: string, date: string) => {
-    const res = await setPaidToCaptainDate(userData?.UserID || '', paymentId, date);
-    if (res.success) await loadFinesData();
-    else setModalMessage({ text: res.error || '更新失敗', type: 'error' });
-  };
-
-  const handleRecordOrgSubmission = async (amount: number, submittedAt: string, notes?: string) => {
-    const res = await recordOrgSubmission(userData?.UserID || '', amount, submittedAt, notes);
-    if (res.success) {
-      setModalMessage({ text: `已記錄上繳大會 NT$${amount}`, type: 'success' });
-      await loadFinesData();
-    } else {
-      setModalMessage({ text: res.error || '記錄失敗', type: 'error' });
-    }
-  };
-
   const handleAutoDrawAllSquads = async () => {
-    if (!confirm("確定要為所有本週尚未抽籤的劇組自動抽選推薦通告？")) return;
+    if (!confirm("確定要為所有本週尚未抽籤的小隊自動抽選本週任務？")) return;
     setIsSyncing(true);
     try {
       const res = await autoDrawAllSquads();
       if (res.success) {
         const summary = res.drawn?.map((d: { squadName: string; questName: string }) => `${d.squadName}→${d.questName}`).join('、') || '（無）';
-        setModalMessage({ text: `自動抽籤完成！${res.drawnCount} 個劇組已抽選，${res.skippedCount} 個已跳過。\n${summary}`, type: 'success' });
+        setModalMessage({ text: `自動抽籤完成！${res.drawnCount} 個小隊已抽選，${res.skippedCount} 個已跳過。\n${summary}`, type: 'success' });
       } else {
         setModalMessage({ text: '自動抽籤失敗：' + res.error, type: 'error' });
       }
@@ -392,26 +307,6 @@ export default function App() {
     }
   };
 
-  const handleSubmitInterview = async (data: { interviewTarget: string; interviewDate: string; description: string; bonusType?: 'b1' | 'b2' }) => {
-    if (!userData) return;
-    const res = await submitInterviewApplication(
-      userData.UserID, userData.Name,
-      userData.TeamName || null, userData.SquadName || null,
-      data.interviewTarget, data.interviewDate, data.description,
-      data.bonusType || 'b1'
-    );
-    if (res.success && res.application) {
-      setMyBonusApps(prev => [res.application as BonusApplication, ...prev]);
-      if (userData.IsCaptain && userData.TeamName) {
-        const pendingRes = await getBonusApplications({ squadName: userData.TeamName, status: 'pending' });
-        if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
-      }
-      setModalMessage({ text: '電影推廣申請已提交，待劇組長審核。', type: 'success' });
-    } else {
-      setModalMessage({ text: res.error || '提交失敗', type: 'error' });
-    }
-  };
-
   const handleReviewBonusBySquad = async (appId: string, approve: boolean, notes: string) => {
     if (!userData) return;
     const res = await reviewBonusBySquadLeader(appId, userData.UserID, approve, notes);
@@ -431,7 +326,7 @@ export default function App() {
     const res = await reviewBonusByAdmin(appId, approve ? 'approve' : 'reject', notes);
     if (res.success) {
       setPendingFinalReviewApps(prev => prev.filter(a => a.id !== appId));
-      setModalMessage({ text: approve ? '已核准入帳！票房已發放。' : '已駁回申請。', type: approve ? 'success' : 'info' });
+      setModalMessage({ text: approve ? '已核准！積分已發放。' : '已駁回申請。', type: approve ? 'success' : 'info' });
       const logsRes = await getAdminActivityLog(30);
       if (logsRes.success) setAdminLogs(logsRes.logs as AdminLog[]);
     } else {
@@ -462,17 +357,17 @@ export default function App() {
             if (data && data.length > 0) setLogs(data as DailyLog[]);
           });
         setModalMessage(res.rewardCapped
-          ? { text: "Action！打卡完成，今日三場已殺青，本次不計票房。", type: 'info' }
-          : { text: "本場完美收鏡，票房長紅！", type: 'success' }
+          ? { text: "今日積分已達上限，本次不計分。", type: 'info' }
+          : { text: "旅程已記錄，積分入帳！", type: 'success' }
         );
       } else {
         // Sync logs so client state reflects server state (e.g. quest already done)
         const { data: syncedLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
         if (syncedLogs) setLogs(syncedLogs as DailyLog[]);
-        setModalMessage({ text: res.error || "記錄失敗，靈通中斷。", type: 'error' });
+        setModalMessage({ text: res.error || "記錄失敗，請稍後再試。", type: 'error' });
       }
-    } catch (err) {
-      setModalMessage({ text: "記錄失敗，靈通中斷。", type: 'error' });
+    } catch (err: any) {
+      setModalMessage({ text: err?.message ? `記錄失敗：${err.message}` : "記錄失敗，請稍後再試。", type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -492,12 +387,10 @@ export default function App() {
       await supabase.from('DailyLogs').delete().eq('id', targetLogs[0].id);
 
       const actualReward: number = targetLogs[0].RewardPoints ?? quest.reward;
-      const newExp = Math.max(0, userData.Exp - actualReward);
-      const newLevel = calculateLevelFromExp(newExp);
+      const newScore = Math.max(0, (userData.Score ?? 0) - actualReward);
 
       const update: Partial<CharacterStats> = {
-        Exp: newExp,
-        Level: newLevel,
+        Score: newScore,
       };
 
       await supabase.from('CharacterStats').update(update).eq('UserID', userData.UserID);
@@ -562,6 +455,7 @@ export default function App() {
           if (ts) setTeamSettings(ts);
         }
 
+        saveSession(match.UserID);
         setUserData(match);
         setLogs(logsArray);
         setView('app');
@@ -577,10 +471,16 @@ export default function App() {
 
     const newChar: any = {
       UserID: phone, Name: name.trim(),
-      Level: 1, Exp: 0,
-      Streak: 0, LastCheckIn: null, TotalFines: 0, CurrentQ: 0, CurrentR: 0,
-      Email: email, InitialFortunes: fortunes
+      Score: 0, Streak: 0, LastCheckIn: null,
+      Email: email,
     };
+
+    // 五運分數
+    if (fortunes) {
+      for (const f of FORTUNE_COMPANIONS) {
+        newChar[f.dbCol] = fortunes[f.key] ?? 0;
+      }
+    }
 
     try {
       if (email) {
@@ -592,8 +492,20 @@ export default function App() {
         }
       }
       await supabase.from('CharacterStats').insert([newChar]);
+
+      // 根據最低分自動初始化九宮格
+      if (fortunes) {
+        const lowestFortune = getLowestFortune(fortunes);
+        const gridResult = await initMemberGrid(phone, lowestFortune.companion);
+        if (gridResult.success) {
+          const gridRes = await getMemberGrid(phone);
+          if (gridRes.success) setUserGrid(gridRes.grid);
+        }
+      }
+
+      saveSession(phone);
       setUserData(newChar);
-      setModalMessage({ text: '帳號建立成功，開始您的親證之旅！', type: 'success' });
+      setModalMessage({ text: '帳號建立成功，開始你的黃磚路旅程！', type: 'success' });
       setView('app');
     } catch (err) {
       setModalMessage({ text: '註冊失敗。可能該手機號碼已經建立過帳號。', type: 'error' });
@@ -604,7 +516,7 @@ export default function App() {
 
 
 
-  const handleLogout = () => { setUserData(null); setView('login'); };
+  const handleLogout = () => { clearSession(); setUserData(null); setView('login'); };
 
   // One-time static data load — settings, history
   useEffect(() => {
@@ -612,11 +524,6 @@ export default function App() {
       const { data: settingsData } = await supabase.from('SystemSettings').select('*');
       if (settingsData) {
         const sObj = settingsData.reduce((acc: any, curr: any) => ({ ...acc, [curr.SettingName]: curr.Value }), {});
-        let parsedFineSettings;
-        try {
-          if (sObj.FineSettings) parsedFineSettings = JSON.parse(sObj.FineSettings);
-        } catch (_) {}
-
         let parsedQuestRewardOverrides;
         try {
           if (sObj.QuestRewardOverrides) parsedQuestRewardOverrides = JSON.parse(sObj.QuestRewardOverrides);
@@ -630,7 +537,6 @@ export default function App() {
         setSystemSettings({
           RegistrationMode: (sObj.RegistrationMode as 'open' | 'roster') || 'open',
           VolunteerPassword: sObj.VolunteerPassword,
-          FineSettings: parsedFineSettings,
           QuestRewardOverrides: parsedQuestRewardOverrides,
           DisabledQuests: parsedDisabledQuests,
         });
@@ -647,18 +553,25 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      // LINE OAuth session handoff — handle ?line_uid, ?line_bound, ?line_error params
+      // LINE OAuth session handoff — handle ?line_auth, ?line_bound, ?line_error params
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
-        const lineUid = params.get('line_uid');
+        const lineAuth = params.get('line_auth');
         const lineBound = params.get('line_bound');
         const lineError = params.get('line_error');
-        if (lineUid || lineBound || lineError) {
+        if (lineAuth || lineBound || lineError) {
           window.history.replaceState({}, '', '/');
-          if (lineUid) {
+          if (lineAuth === '1') {
             lineLoginInProgress.current = true;
-            // LINE login: auto-load user from DB then enter app
-            const uid = decodeURIComponent(lineUid);
+            // Exchange HttpOnly cookie for UserID — UserID never touches the URL
+            const sessionRes = await fetch('/api/auth/session');
+            if (!sessionRes.ok) {
+              lineLoginInProgress.current = false;
+              setView('login');
+              return;
+            }
+            const { userId } = await sessionRes.json();
+            const uid: string = userId;
             const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', uid).single();
             if (stats && !error) {
               const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID);
@@ -671,8 +584,6 @@ export default function App() {
               }
               setUserData(stats as CharacterStats);
               setLogs(logsArray);
-              const w4Res = await getBonusApplications({ userId: stats.UserID });
-              if (w4Res.success) setMyBonusApps(w4Res.applications);
               if (stats.IsCaptain && stats.TeamName) {
                 const pendingRes = await getBonusApplications({ squadName: stats.TeamName, status: 'pending' });
                 if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
@@ -681,6 +592,7 @@ export default function App() {
                 const commandantRes = await getBonusApplications({ status: 'squad_approved' });
                 if (commandantRes.success) setPendingFinalReviewApps(commandantRes.applications);
               }
+              saveSession(uid);
               lineLoginInProgress.current = false;
               setView('app');
             } else {
@@ -702,8 +614,36 @@ export default function App() {
         }
       }
 
-      // 無 session 儲存，每次重整都回到登入頁
+      // 嘗試從 localStorage 恢復 session（30 分鐘內有效）
       if (!lineLoginInProgress.current) {
+        const storedUid = getStoredSession();
+        if (storedUid) {
+          const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', storedUid).single();
+          if (stats && !error) {
+            const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID);
+            setLogs((userLogs as DailyLog[]) || []);
+            if (stats.TeamName) {
+              const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
+              if (tSettings) setTeamSettings(tSettings);
+              const { count } = await supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName);
+              setTeamMemberCount(count || 1);
+            }
+            if (stats.IsCaptain && stats.TeamName) {
+              const pendingRes = await getBonusApplications({ squadName: stats.TeamName, status: 'pending' });
+              if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
+            }
+            if (stats.IsCommandant) {
+              const commandantRes = await getBonusApplications({ status: 'squad_approved' });
+              if (commandantRes.success) setPendingFinalReviewApps(commandantRes.applications);
+            }
+            saveSession(storedUid); // 每次成功恢復就刷新過期時間
+            setUserData(stats as CharacterStats);
+            setView('app');
+            return;
+          } else {
+            clearSession();
+          }
+        }
         setView(v => v === 'loading' ? 'login' : v);
       }
     };
@@ -713,33 +653,35 @@ export default function App() {
 
   useEffect(() => {
     const fetchRank = async () => {
-      const { data: rankData } = await supabase.from('CharacterStats').select('*').order('Exp', { ascending: false });
+      const { data: rankData } = await supabase.from('CharacterStats').select('*').order('Score', { ascending: false });
       if (rankData) setLeaderboard(rankData as CharacterStats[]);
     };
     if (activeTab === 'rank' || view === 'admin') fetchRank();
   }, [activeTab, view]);
-
-  // Refresh w4 applications whenever the weekly tab becomes active
-  useEffect(() => {
-    if (activeTab === 'weekly' && userData?.UserID) {
-      getBonusApplications({ userId: userData.UserID }).then(res => {
-        if (res.success) setMyBonusApps(res.applications);
-      });
-    }
-  }, [activeTab, userData?.UserID]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'captain' && !showCaptainTab) setActiveTab('daily');
     if (activeTab === 'commandant' && !showCommandantTab) setActiveTab('daily');
   }, [gmViewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (userData?.Score != null) {
+      localStorage.setItem('oz_score', String(userData.Score));
+    }
+  }, [userData?.Score]);
+
+  useEffect(() => {
+    if (!userData?.UserID) return;
+    getMemberGrid(userData.UserID).then(r => { if (r.success) setUserGrid(r.grid); });
+  }, [userData?.UserID]);
+
   const GmToolbar = () => {
     if (!userData?.IsGM) return null;
     const modes: { label: string; value: GmViewMode }[] = [
       { label: '全部', value: 'all' },
       { label: '一般成員', value: 'player' },
-      { label: '劇組長', value: 'captain' },
-      { label: '發行商長', value: 'commandant' },
+      { label: '小隊長', value: 'captain' },
+      { label: '大隊長', value: 'commandant' },
     ];
     return (
       <div className="bg-amber-950/80 border-b-2 border-amber-500/60 px-4 py-2 flex items-center gap-3 flex-wrap">
@@ -764,15 +706,15 @@ export default function App() {
   };
 
   const HomeView = () => (
-    <div className="min-h-screen bg-[#16213E] text-white pb-40 text-center animate-in fade-in">
-      <Header userData={userData} onLogout={handleLogout} />
+    <div className="min-h-screen bg-[#FFFEF5] text-[#1A2A1A] pb-40 text-center animate-in fade-in">
+      <Header userData={userData} onLogout={handleLogout} companionType={userGrid?.companion_type} />
       <GmToolbar />
 
       {/* LINE 綁定提示 Banner */}
       {userData && !userData.LineUserId && !lineBannerDismissed && (
         <div className="flex items-center gap-3 px-4 py-3 bg-[#06C755]/10 border-b border-[#06C755]/20 text-sm">
           <span className="text-[#06C755] font-black shrink-0">LINE</span>
-          <span className="flex-1 text-left text-slate-300 text-xs">尚未綁定 LINE 帳號，綁定後可直接以 LINE 登入。</span>
+          <span className="flex-1 text-left text-gray-700 text-xs">尚未綁定 LINE 帳號，綁定後可直接以 LINE 登入。</span>
           <a
             href={`/api/auth/line?action=bind&uid=${encodeURIComponent(userData.UserID)}`}
             className="shrink-0 px-3 py-1 rounded-lg bg-[#06C755] text-white text-xs font-black active:scale-95 transition-all"
@@ -788,20 +730,21 @@ export default function App() {
         </div>
       )}
 
-      <nav className="sticky top-0 z-20 bg-[#16213E]/80 backdrop-blur-xl flex p-3 gap-2 border-b border-[#253A5C] shadow-xl overflow-x-auto no-scrollbar">
+      <nav className="sticky top-0 z-20 bg-[#1A6B4A] flex p-3 gap-2 border-b border-[#0F4A30] shadow-xl overflow-x-auto no-scrollbar">
         {([
-          { id: 'daily',   label: '每日觀影', icon: <FilmStripIcon size={13} /> },
-          { id: 'weekly',  label: '導演報表', icon: <MegaphoneIcon size={13} /> },
-          { id: 'rank',    label: '票房榜',   icon: <FilmReelIcon size={13} /> },
-          { id: 'stats',   label: '觀影分析', icon: <Glasses3DIcon size={13} /> },
+          { id: 'daily',    label: '每日踏程', icon: <FilmStripIcon size={13} /> },
+          { id: 'weekly',   label: '旅伴週報', icon: <MegaphoneIcon size={13} /> },
+          { id: 'ninegrid', label: '人生大戲', icon: <LayoutGrid size={13} /> },
+          { id: 'rank',     label: '旅人榜',   icon: <Trophy size={13} /> },
+          { id: 'stats',    label: '我的旅程', icon: <Glasses3DIcon size={13} /> },
         ] as const).map(({ id, label, icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={`shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer
               ${activeTab === id
-                ? 'bg-[#C0392B] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]'
-                : 'bg-[#1B2A4A] text-[rgba(255,255,255,0.45)] hover:text-white hover:bg-[#253A5C]'}`}
+                ? 'bg-[#C0392B] text-white shadow-[0_0_15px_rgba(192,57,43,0.4)]'
+                : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
             {icon}
             {label}
@@ -811,22 +754,22 @@ export default function App() {
           onClick={() => setActiveTab('course')}
           className={`shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer
             ${activeTab === 'course'
-              ? 'bg-[#C0392B] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]'
-              : 'bg-[#1B2A4A] text-[rgba(255,255,255,0.45)] hover:text-white hover:bg-[#253A5C]'}`}
+              ? 'bg-[#C0392B] text-white shadow-[0_0_15px_rgba(192,57,43,0.4)]'
+              : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
         >
           <CalendarDays size={13} />
-          首映曆
+          親證曆
         </button>
         {showCaptainTab && (
           <button
             onClick={handleOpenCaptainTab}
             className={`shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer
               ${activeTab === 'captain'
-                ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(212,175,55,0.4)]'
-                : 'bg-[#1B2A4A] text-[rgba(255,255,255,0.45)] hover:text-white hover:bg-[#253A5C]'}`}
+                ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(245,200,66,0.4)]'
+                : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
             <Clapperboard size={13} />
-            製片總部
+            隊長基地
           </button>
         )}
         {showCommandantTab && (
@@ -834,11 +777,11 @@ export default function App() {
             onClick={handleOpenCommandantTab}
             className={`shrink-0 flex items-center gap-1.5 px-5 py-3 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer
               ${activeTab === 'commandant'
-                ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(212,175,55,0.4)]'
-                : 'bg-[#1B2A4A] text-[rgba(255,255,255,0.45)] hover:text-white hover:bg-[#253A5C]'}`}
+                ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(245,200,66,0.4)]'
+                : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
             <Video size={13} />
-            片商總部
+            大隊長總部
           </button>
         )}
       </nav>
@@ -848,7 +791,6 @@ export default function App() {
           <DailyQuestsTab
             userId={userData?.UserID || ''}
             weeklyQuestId={teamSettings?.mandatory_quest_id}
-            fineSettings={systemSettings?.FineSettings}
             logs={logs}
             logicalTodayStr={logicalTodayStr}
             onCheckIn={handleCheckInAction}
@@ -863,17 +805,13 @@ export default function App() {
           <WeeklyTopicTab
             userId={userData.UserID}
             systemSettings={systemSettings}
-            fineSettings={systemSettings?.FineSettings}
             logicalTodayStr={logicalTodayStr}
             logs={logs}
             currentWeeklyMonday={currentWeeklyMonday}
             isTopicDone={isTopicDone}
             temporaryQuests={temporaryQuests.filter(t => t.active)}
-            bonusApplications={myBonusApps}
             onCheckIn={handleCheckInAction}
             onUndo={setUndoTarget}
-            onSubmitInterview={handleSubmitInterview}
-            onSubmitBonusApp={handleSubmitBonusApp}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
             isCaptain={!!(userData?.IsCaptain || userData?.IsGM)}
@@ -881,25 +819,39 @@ export default function App() {
             squadMemberCount={squadMembers.length}
           />
         )}
+        {activeTab === 'ninegrid' && userData && (
+          <NineGridTab
+            userId={userData.UserID}
+            userName={userData.Name}
+            userData={userData}
+            grid={userGrid}
+            onFortuneSave={async (fortunes) => {
+              const updates: Record<string, number> = {};
+              for (const f of FORTUNE_COMPANIONS) updates[f.dbCol] = fortunes[f.key] ?? 0;
+              await supabase.from('CharacterStats').update(updates).eq('UserID', userData.UserID);
+              const lowestFortune = getLowestFortune(fortunes);
+              await initMemberGrid(userData.UserID, lowestFortune.companion);
+              const gridRes = await getMemberGrid(userData.UserID);
+              if (gridRes.success) setUserGrid(gridRes.grid);
+              setUserData(prev => prev ? { ...prev, ...updates } : prev);
+            }}
+            onRefresh={async () => {
+              const r = await getMemberGrid(userData.UserID);
+              if (r.success) setUserGrid(r.grid);
+            }}
+          />
+        )}
         {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} />}
         {activeTab === 'stats' && userData && <StatsTab userData={userData} />}
         {activeTab === 'captain' && showCaptainTab && userData && (
           <CaptainTab
             teamName={userData.TeamName || '未編組'}
+            captainId={userData.UserID}
+            captainName={userData.Name}
             teamSettings={teamSettings}
             pendingBonusApps={pendingBonusApps}
             onDrawWeeklyQuest={handleDrawWeeklyQuest}
             onReviewBonus={handleReviewBonusBySquad}
-            squadFineMembers={squadFineMembers}
-            fineHistory={fineHistory}
-            onRecordPayment={handleRecordFinePayment}
-            onSetPaidToCaptainDate={handleSetPaidToCaptainDate}
-            orgSubmissions={orgSubmissions}
-            onRecordOrgSubmission={handleRecordOrgSubmission}
-            isLoadingFines={isLoadingFines}
-            onCheckW3Compliance={handleCaptainCheckW3Compliance}
-            isCheckingCompliance={isCheckingCompliance}
-            complianceResult={complianceResult}
             squadMembers={squadMembers}
           />
         )}
@@ -928,9 +880,19 @@ export default function App() {
   return (
     <div className="text-center justify-center mx-auto w-full font-sans">
       {view === 'loading' && (
-        <div className="min-h-screen bg-[#16213E] flex flex-col items-center justify-center p-10 text-center mx-auto">
-          <Loader2 className="w-16 h-16 text-[#C0392B] animate-spin mb-6 mx-auto" />
-          <p className="text-[#C0392B] text-xl font-bold animate-pulse text-center mx-auto">載入片庫中...</p>
+        <div className="min-h-screen flex flex-col items-center justify-center p-10 text-center relative overflow-hidden"
+          style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, #C8EDD5 0%, #E8F5EC 40%, #FFFEF5 100%)' }}>
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-[#F5C842]/[0.08] blur-3xl" />
+            <div className="absolute bottom-1/4 right-1/4 w-64 h-64 rounded-full bg-[#1A6B4A]/[0.06] blur-3xl" />
+          </div>
+          <div className="relative z-10 flex flex-col items-center gap-5">
+            <StarWandIcon size={80} className="text-[#F5C842] animate-spin-slow drop-shadow-lg" />
+            <div className="space-y-2">
+              <p className="font-display text-2xl font-black text-[#1A6B4A]">踏上黃磚路…</p>
+              <p className="text-sm text-[#5A7A5A] font-bold tracking-widest">旅程資料召喚中</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -985,9 +947,9 @@ export default function App() {
       )}
 
       {isSyncing && (
-        <div className="fixed inset-0 bg-[#16213E]/80 z-[1100] flex flex-col items-center justify-center text-center mx-auto backdrop-blur-sm">
-          <Loader2 className="w-12 h-12 text-[#C0392B] animate-spin mb-4 mx-auto" />
-          <p className="text-[#C0392B] font-bold animate-pulse tracking-widest uppercase text-center mx-auto">與片庫同步中...</p>
+        <div className="fixed inset-0 bg-[#1A6B4A]/75 z-[1100] flex flex-col items-center justify-center gap-4 backdrop-blur-md">
+          <StarWandIcon size={56} className="text-[#F5C842] animate-spin-slow drop-shadow-lg" />
+          <p className="font-display text-[#F5C842] font-black tracking-widest text-lg">旅程同步中…</p>
         </div>
       )}
 

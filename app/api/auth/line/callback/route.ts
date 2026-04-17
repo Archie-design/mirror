@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 // Handles LINE Login OAuth callback
 // GET /api/auth/line/callback?code=XXX&state=YYY
 export async function GET(request: NextRequest) {
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const state = searchParams.get('state') || 'login';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -100,9 +100,16 @@ export async function GET(request: NextRequest) {
                 return NextResponse.redirect(`${appUrl}/?line_error=not_bound`);
             }
 
-            // Encode UserID in URL (safe: it's a phone number)
-            const encoded = encodeURIComponent(user.UserID);
-            return NextResponse.redirect(`${appUrl}/?line_uid=${encoded}`);
+            // Hand off UserID via HttpOnly cookie (never expose in URL)
+            const res = NextResponse.redirect(`${appUrl}/?line_auth=1`);
+            res.cookies.set('line_session_uid', user.UserID, {
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: 120, // 2-minute window for the handoff, then expires
+                path: '/',
+                secure: process.env.NODE_ENV === 'production',
+            });
+            return res;
         }
     } catch {
         return NextResponse.redirect(`${appUrl}/?line_error=server`);

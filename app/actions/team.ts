@@ -1,14 +1,14 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import { DAILY_QUEST_CONFIG } from "@/lib/constants";
+import { DAILY_BASIC_CONFIG } from "@/lib/constants";
 import { logAdminAction } from "@/app/actions/admin";
 import { SquadMemberStats } from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseActionKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-const ALL_QUEST_IDS = DAILY_QUEST_CONFIG.map(q => q.id).filter(id => id.startsWith('q'));
+const ALL_QUEST_IDS = DAILY_BASIC_CONFIG.map(q => q.id);
 
 function getCurrentWeekMondayStr(): string {
     // Always compute relative to Taiwan time (UTC+8) so the stored value
@@ -68,7 +68,7 @@ export async function drawWeeklyQuestForSquad(squadName: string, captainUserId: 
 
     if (updateErr) return { success: false, error: '更新失敗：' + updateErr.message };
 
-    const questName = DAILY_QUEST_CONFIG.find(q => q.id === drawn)?.title || drawn;
+    const questName = DAILY_BASIC_CONFIG.find(q => q.id === drawn)?.title || drawn;
     return { success: true, questId: drawn, questName, weekLabel: weekMondayStr, drawnBy: captainUserId };
 }
 
@@ -115,7 +115,7 @@ export async function autoDrawAllSquads() {
             quest_draw_history: updatedHistory,
         }).eq('team_name', ts.team_name);
 
-        const questName = DAILY_QUEST_CONFIG.find(q => q.id === questId)?.title || questId;
+        const questName = DAILY_BASIC_CONFIG.find(q => q.id === questId)?.title || questId;
         drawn.push({ squadName: ts.team_name, questId, questName });
     }
 
@@ -158,9 +158,9 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
 
     const { data: members, error } = await supabase
         .from('CharacterStats')
-        .select('UserID, Name, Level, Exp, Streak, TeamName, IsCaptain')
+        .select('UserID, Name, Score, Streak, TeamName, IsCaptain')
         .eq('TeamName', captain.TeamName)
-        .order('Exp', { ascending: false });
+        .order('Score', { ascending: false });
 
     if (error || !members) return { success: false, error: error?.message };
 
@@ -183,8 +183,7 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
     const result: SquadMemberStats[] = (members as any[]).map(m => ({
         UserID: m.UserID,
         Name: m.Name,
-        Level: m.Level,
-        Exp: m.Exp,
+        Score: m.Score || 0,
         Streak: m.Streak || 0,
         TeamName: m.TeamName,
         IsCaptain: m.IsCaptain || false,
@@ -210,9 +209,9 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
 
     const { data: members, error } = await supabase
         .from('CharacterStats')
-        .select('UserID, Name, Level, Exp, Streak, TeamName, SquadName, IsCaptain')
+        .select('UserID, Name, Score, Streak, TeamName, SquadName, IsCaptain')
         .eq('SquadName', commandant.SquadName)
-        .order('Exp', { ascending: false });
+        .order('Score', { ascending: false });
 
     if (error || !members) return { success: false, error: error?.message };
 
@@ -239,8 +238,7 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
         grouped[teamName].push({
             UserID: m.UserID,
             Name: m.Name,
-            Level: m.Level,
-            Exp: m.Exp,
+            Score: m.Score || 0,
             Streak: m.Streak || 0,
             TeamName: m.TeamName,
             IsCaptain: m.IsCaptain || false,

@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, Loader2, Users, AlertTriangle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { checkInToGathering } from '@/app/actions/squad-gathering';
-import { SQUAD_THEME_CONFIG } from '@/lib/constants';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,8 +24,7 @@ function parseGatheringId(gid: string) {
 function SquadCheckinContent() {
     const searchParams = useSearchParams();
     const gatheringId = searchParams.get('g') ?? '';
-    const { themeId, teamName, date } = parseGatheringId(gatheringId);
-    const theme = SQUAD_THEME_CONFIG.find(t => t.id === themeId);
+    const { teamName, date } = parseGatheringId(gatheringId);
 
     const [name, setName] = useState('');
     const [phoneSuffix, setPhoneSuffix] = useState('');
@@ -97,7 +95,7 @@ function SquadCheckinContent() {
         }
     };
 
-    if (!gatheringId || !theme) {
+    if (!gatheringId) {
         return (
             <div className="min-h-screen bg-[#16213E] flex items-center justify-center p-6">
                 <div className="text-center text-gray-400 space-y-2">
@@ -114,10 +112,9 @@ function SquadCheckinContent() {
             <div className="w-full max-w-sm space-y-6">
                 {/* 定聚資訊 */}
                 <div className="bg-[#1B2A4A] border border-[#253A5C] rounded-3xl p-6 text-center space-y-2">
-                    <div className="text-4xl">{theme.icon}</div>
-                    <h1 className="text-xl font-black text-[#F5C842]">{theme.title} 主題定聚</h1>
+                    <div className="text-4xl">🤝</div>
+                    <h1 className="text-xl font-black text-[#F5C842]">小組凝聚定聚</h1>
                     <p className="text-sm text-gray-400">{teamName} · {date}</p>
-                    <p className="text-xs text-gray-500">{theme.attr}</p>
                 </div>
 
                 {status === 'done' ? (
