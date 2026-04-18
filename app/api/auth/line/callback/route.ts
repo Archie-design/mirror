@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
                 .maybeSingle();
 
             if (!user) {
-                return NextResponse.redirect(`${appUrl}/?line_error=not_bound`);
+                return NextResponse.redirect(`${appUrl}/?line_error=not_bound&lid=${encodeURIComponent(lineUserId)}`);
             }
 
             // Hand off UserID via HttpOnly cookie (never expose in URL)
