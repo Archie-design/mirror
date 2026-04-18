@@ -1,5 +1,6 @@
 'use server';
 
+import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { processCheckInTransaction } from '@/app/actions/quest';
 

@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useState, useCallback } from 'react';
 import { getCourseAttendanceList } from '@/app/actions/course';
 import { COURSE_INFO, type CourseKey } from '@/lib/courseConfig';
-import { ADMIN_PASSWORD } from '@/lib/constants';
+import { loginAdmin } from '@/app/actions/admin-auth';
 
 // Load Scanner client-side only (uses browser camera APIs)
 const Scanner = dynamic(() => import('./Scanner'), { ssr: false });
@@ -23,10 +23,12 @@ export default function CheckinPage() {
         setListLoaded(true);
     }
 
-    function handleAuth(e: React.FormEvent) {
+    async function handleAuth(e: React.FormEvent) {
         e.preventDefault();
-        if (password === ADMIN_PASSWORD) {
+        const res = await loginAdmin(password);
+        if (res.success) {
             setAuthed(true);
+            setAuthError('');
             loadList(courseKey);
         } else {
             setAuthError('密碼錯誤');

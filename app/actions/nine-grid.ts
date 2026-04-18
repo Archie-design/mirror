@@ -1,5 +1,6 @@
 'use server';
 
+import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { NineGridTemplate, UserNineGrid, UserNineGridCell } from '@/types';
 import { processCheckInTransaction } from '@/app/actions/quest';

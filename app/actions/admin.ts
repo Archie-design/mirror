@@ -1,5 +1,6 @@
 'use server';
 
+import 'server-only';
 import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 

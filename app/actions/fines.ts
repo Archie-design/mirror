@@ -1,5 +1,6 @@
 'use server';
 
+import 'server-only';
 import { connectDb } from '@/lib/db';
 import { logAdminAction } from './admin';
 import { getCurrentThemePeriod } from '@/lib/utils/time';

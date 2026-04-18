@@ -1,5 +1,6 @@
 "use server";
 
+import 'server-only';
 import { createClient } from "@supabase/supabase-js";
 import { DAILY_BASIC_CONFIG } from "@/lib/constants";
 import { logAdminAction } from "@/app/actions/admin";

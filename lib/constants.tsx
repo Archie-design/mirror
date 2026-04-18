@@ -10,7 +10,10 @@ export const BASE_START_DATE_STR = "2026-05-10";
 export const END_DATE = "2026-07-12";
 export const ONE_TIME_TASK_DEADLINE = "2026-07-01";
 
-export const ADMIN_PASSWORD = "123";
+// ⚠️ ADMIN_PASSWORD 已移除（之前為明文 "123" hardcode）。
+// 請改用 process.env.ADMIN_PASSWORD（透過 server action 比對），
+// 客戶端不應再持有任何管理員密碼字串。
+// 相關檔案：app/actions/admin-auth.ts
 
 // ── 基本定課（20分/項，每日上限3項）────────────────────────────────────────
 // d1–d8：做不習慣但有意義的內在練習，建立向上慣性

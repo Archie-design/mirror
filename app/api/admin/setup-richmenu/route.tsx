@@ -3,7 +3,23 @@ export const runtime = 'nodejs';
 import { NextRequest } from 'next/server';
 import { ImageResponse } from 'next/og';
 import { messagingApi } from '@line/bot-sdk';
-import { ADMIN_PASSWORD } from '@/lib/constants';
+import { timingSafeEqual } from 'node:crypto';
+
+function safeEqualString(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+
+function isAuthorized(req: NextRequest): boolean {
+    const expected = process.env.ADMIN_PASSWORD
+        ?? (process.env.NODE_ENV !== 'production' ? '123' : undefined);
+    if (!expected) return false;
+
+    const auth = req.headers.get('authorization') ?? '';
+    const m = /^Bearer\s+(.+)$/i.exec(auth);
+    if (!m) return false;
+    return safeEqualString(m[1].trim(), expected);
+}
 
 const W = 2500;
 const H = 843;
@@ -66,9 +82,8 @@ async function generateImage(): Promise<Buffer> {
     return Buffer.from(await imageResp.arrayBuffer());
 }
 
-export async function GET(req: NextRequest) {
-    const key = req.nextUrl.searchParams.get('key');
-    if (key !== ADMIN_PASSWORD) {
+export async function POST(req: NextRequest) {
+    if (!isAuthorized(req)) {
         return new Response('Unauthorized', { status: 401 });
     }
 

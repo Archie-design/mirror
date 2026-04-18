@@ -13,7 +13,7 @@ import { StarWandIcon, FilmStripIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon
 import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
 import { standardizePhone } from '@/lib/utils/phone';
-import { ADMIN_PASSWORD } from '@/lib/constants';
+import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
 
 import { Header } from '@/components/Layout/Header';
 import { LoginForm } from '@/components/Login/LoginForm';
@@ -133,18 +133,23 @@ export default function App() {
     return logs.filter(l => getLogicalDateStr(l.Timestamp) === logicalTodayStr).map(l => l.QuestID);
   }, [logs, logicalTodayStr]);
 
+  const loadAdminData = async () => {
+    const [w4Res, logsRes] = await Promise.all([
+      getBonusApplications({ status: 'squad_approved' }),
+      getAdminActivityLog(30),
+    ]);
+    if (w4Res.success) setPendingFinalReviewApps(w4Res.applications);
+    if (logsRes.success) setAdminLogs(logsRes.logs as AdminLog[]);
+  };
+
   const handleAdminAuth = async (e: { preventDefault: () => void; currentTarget: HTMLFormElement }) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    if (fd.get('password') === ADMIN_PASSWORD) {
+    const pw = String(fd.get('password') ?? '');
+    const res = await loginAdmin(pw);
+    if (res.success) {
       setAdminAuth(true);
-      // Fetch admin data on auth
-      const [w4Res, logsRes] = await Promise.all([
-        getBonusApplications({ status: 'squad_approved' }),
-        getAdminActivityLog(30),
-      ]);
-      if (w4Res.success) setPendingFinalReviewApps(w4Res.applications);
-      if (logsRes.success) setAdminLogs(logsRes.logs as AdminLog[]);
+      await loadAdminData();
     } else {
       setModalMessage({ text: "密令錯誤，大會禁地不可擅闖。", type: 'error' });
     }
@@ -517,6 +522,26 @@ export default function App() {
 
 
   const handleLogout = () => { clearSession(); setUserData(null); setView('login'); };
+
+  const handleAdminClose = async () => {
+    await logoutAdmin();
+    setAdminAuth(false);
+    setView(userData ? 'app' : 'login');
+  };
+
+  // Restore admin session from HttpOnly cookie when entering admin view
+  useEffect(() => {
+    if (view !== 'admin' || adminAuth) return;
+    let cancelled = false;
+    (async () => {
+      const ok = await verifyAdminSession();
+      if (cancelled || !ok) return;
+      setAdminAuth(true);
+      await loadAdminData();
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   // One-time static data load — settings, history
   useEffect(() => {
@@ -930,7 +955,7 @@ export default function App() {
           onAutoDrawAllSquads={handleAutoDrawAllSquads}
           onImportRoster={handleImportRoster}
           onFinalReviewBonus={handleFinalReviewBonus}
-          onClose={() => setView('login')}
+          onClose={handleAdminClose}
         />
       )}
 
