@@ -648,7 +648,7 @@ export default function App() {
       }
     };
     init();
-  }, [userData]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   useEffect(() => {
