@@ -138,11 +138,15 @@ function SquadNineGridSection({ captainId, captainName }: { captainId: string; c
                         <div key={grid.member_id} className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="font-black text-gray-900 text-base">{grid.user_name}</span>
-                                <span className="text-sm text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
-                                    {grid.companion_type} · {grid.cells.filter(c => c.completed).length}/9 格完成
-                                </span>
+                                {grid.companion_type ? (
+                                    <span className="text-sm text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+                                        {grid.companion_type} · {grid.cells.filter(c => c.completed).length}/9 格完成
+                                    </span>
+                                ) : (
+                                    <span className="text-sm text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">尚未初始化</span>
+                                )}
                             </div>
-                            <div className="grid grid-cols-3 gap-1.5">
+                            {!grid.companion_type ? null : <div className="grid grid-cols-3 gap-1.5">
                                 {grid.cells.map((cell, i) => (
                                     <div
                                         key={i}
@@ -166,7 +170,7 @@ function SquadNineGridSection({ captainId, captainName }: { captainId: string; c
                                         )}
                                     </div>
                                 ))}
-                            </div>
+                            </div>}
                             {/* 編輯格子文字 */}
                             {editing?.memberId === grid.member_id && (
                                 <div className="bg-gray-50 rounded-2xl p-3 space-y-2 border border-teal-200">

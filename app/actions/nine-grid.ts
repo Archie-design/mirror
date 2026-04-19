@@ -246,7 +246,6 @@ export async function getSquadGrids(captainId: string): Promise<{ success: boole
     if (!members?.length) return { success: true, grids: [] };
 
     const memberIds = members.map(m => m.UserID);
-    const nameMap = Object.fromEntries(members.map(m => [m.UserID, m.Name]));
 
     const { data: grids, error } = await supabase
         .from('UserNineGrid')
@@ -255,6 +254,18 @@ export async function getSquadGrids(captainId: string): Promise<{ success: boole
 
     if (error) return { success: false, grids: [], error: error.message };
 
-    const result = (grids || []).map(g => ({ ...g, user_name: nameMap[g.member_id] || g.member_id }));
+    const gridMap = Object.fromEntries((grids || []).map(g => [g.member_id, g]));
+
+    // 包含所有小隊成員，未初始化者以 null 填充（UI 顯示「尚未初始化」）
+    const result = members.map(m => {
+        const grid = gridMap[m.UserID];
+        if (grid) return { ...grid, user_name: m.Name };
+        return {
+            member_id: m.UserID,
+            user_name: m.Name,
+            companion_type: null,
+            cells: [],
+        };
+    });
     return { success: true, grids: result as (UserNineGrid & { user_name: string })[] };
 }
