@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Clapperboard, Sliders, UserCog, Grid3X3 } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3 } from 'lucide-react';
 import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
@@ -262,10 +262,10 @@ export function AdminDashboard({
             <div className="max-w-6xl mx-auto space-y-8 pb-20">
                 <header className="flex justify-between items-center">
                     <div className="flex items-center gap-3 md:gap-4">
-                        <div className="p-3 md:p-4 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl text-white shadow-2xl shadow-orange-950/20 ring-4 ring-orange-500/10"><Clapperboard size={28} /></div>
+                        <div className="p-3 md:p-4 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl text-white shadow-2xl shadow-orange-950/20 ring-4 ring-orange-500/10"><Crown size={28} /></div>
                         <div className="text-left">
-                            <h1 className="text-2xl md:text-4xl font-black text-white italic tracking-tighter">方圓影展・片場監製中心</h1>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1 ml-1 opacity-50 hidden md:block">Studio Executive Dashboard</p>
+                            <h1 className="text-2xl md:text-4xl font-black text-white italic tracking-tighter">大法師後台</h1>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1 ml-1 opacity-50 hidden md:block">Wizard&apos;s Back Office</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-4 bg-slate-900/50 backdrop-blur-md rounded-2xl text-slate-500 border border-white/5 hover:text-red-400 hover:bg-slate-800 transition-all hover:rotate-90"><X size={20} /></button>
@@ -293,7 +293,7 @@ export function AdminDashboard({
                 {activeAdminTab === 'members' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <section className="space-y-6">
-                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 戰隊名冊管理</div>
+                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 學員名冊管理</div>
                         <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl">
                             <div className="space-y-3">
                                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">登入模式</p>
@@ -318,12 +318,12 @@ export function AdminDashboard({
                             <form onSubmit={handleImportSubmit} className="space-y-4 text-center">
                                 <p className="text-xs text-slate-400 text-left">
                                     請貼上 CSV 格式資料（含表頭行將自動略過）<br />
-                                    格式：<span className="text-orange-400 font-mono">email, 姓名, 生日(YYYY-MM-DD), 發行商, 劇組, 是否劇組長, 是否發行商長</span>
+                                    格式：<span className="text-orange-400 font-mono">email, 姓名, 生日(YYYY-MM-DD), 大隊, 小隊, 是否小隊長, 是否大隊長</span>
                                 </p>
                                 <textarea
                                     value={csvInput}
                                     onChange={(e) => setCsvInput(e.target.value)}
-                                    placeholder={`ex:\nuser1@gmail.com,王小明,1960-03-15,第一發行商,第一劇組,true,false\nuser2@gmail.com,李大華,1985-07-22,第一發行商,第一劇組,false,false`}
+                                    placeholder={`ex:\nuser1@gmail.com,王小明,1960-03-15,第一大隊,第一小隊,true,false\nuser2@gmail.com,李大華,1985-07-22,第一大隊,第一小隊,false,false`}
                                     className="w-full h-36 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs outline-none focus:border-orange-500 resize-none"
                                 />
                                 <button disabled={isImporting || !csvInput} className="w-full bg-emerald-600 p-4 rounded-2xl text-white font-black shadow-lg hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50">

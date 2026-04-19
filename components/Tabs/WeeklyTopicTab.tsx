@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import {
     Phone, Mic, Award, Users, Zap,
-    Map, BookOpen, Sparkles, Star,
+    Map, Star,
 } from 'lucide-react';
 import { Quest, DailyLog, SystemSettings, TemporaryQuest } from '@/types';
-import { WEEKLY_QUEST_CONFIG, QUEST_ICON_MAP } from '@/lib/constants';
+import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { getLogicalDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
 
 interface WeeklyTopicTabProps {
@@ -30,17 +29,15 @@ interface WeeklyTopicTabProps {
 function WeekCalendarRow({
     questId,
     logs,
-    limit,
     disabled,
-    currentWeeklyMonday,
     onCheckIn,
     onUndo,
 }: {
     questId: string;
     logs: DailyLog[];
-    limit: number;
+    limit?: number;
     disabled: boolean;
-    currentWeeklyMonday: Date;
+    currentWeeklyMonday?: Date;
     onCheckIn: (qId: string, day: Date) => void;
     onUndo: (qId: string, day: Date) => void;
 }) {
@@ -118,12 +115,6 @@ export function WeeklyTopicTab({
     const wk4SmallCount = countThisWeek('wk4_small');
     const wk4LargeCount = countThisWeek('wk4_large');
 
-    // ── t3 沉澱週分享計數 ──
-    const t3Base = themePeriod.t3QuestBase;
-    const t3Count = t3Base
-        ? logs.filter(l => l.QuestID.startsWith(t3Base + '|')).length
-        : 0;
-
     const makeWeekHandler = (questId: string, quest: Quest) => ({
         onCheckIn: (_qid: string, day: Date) => {
             const qId = `${questId}|${getLogicalDateStr(day)}`;
@@ -179,119 +170,22 @@ export function WeeklyTopicTab({
             <section className="space-y-3">
                 <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">本週旅程主題</h2>
                 <div className={`p-4 rounded-3xl border flex items-center gap-4 shadow-sm ${
-                    themePeriod.type === 'regular' ? 'bg-white border-[#F5C842]/40'
-                    : themePeriod.type === 'reflection' ? 'bg-[#F5C842]/5 border-[#F5C842]/50'
+                    themePeriod.type === 'graduation' ? 'bg-[#F5C842]/5 border-[#F5C842]/50'
+                    : themePeriod.type === 'regular' ? 'bg-white border-[#F5C842]/40'
                     : 'bg-white border-[#B2DFC0]'
                 }`}>
                     <div className="w-12 h-12 rounded-2xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><Map size={28} /></div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-black text-[#1A2A1A] text-base">《{themePeriod.movie}》</p>
+                            <p className="font-black text-[#1A2A1A] text-base">{themePeriod.title}</p>
                             <span className={`text-sm font-black px-2 py-0.5 rounded-full ${
-                                themePeriod.type === 'reflection' ? 'bg-[#F5C842] text-black' : 'bg-[#C0392B] text-white'
+                                themePeriod.type === 'graduation' ? 'bg-[#F5C842] text-black' : 'bg-[#C0392B] text-white'
                             }`}>{themePeriod.weeks}</span>
                         </div>
                         <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{themePeriod.desc}</p>
                     </div>
                 </div>
             </section>
-
-            {/* ── 沉澱週 t3 分享任務 ── */}
-            {themePeriod.taskType === 't3' && t3Base && (
-                <section className="space-y-3">
-                    <div className="flex justify-between items-center px-1">
-                        <h2 className="text-sm font-black text-[#1A6B4A] uppercase tracking-widest">沉澱週分享任務</h2>
-                        <span className={`text-sm font-bold ${t3Count >= 3 ? 'text-[#C0392B]' : 'text-gray-500'}`}>{t3Count} / 3 則</span>
-                    </div>
-                    <div className={`p-5 rounded-3xl border space-y-4 shadow-sm ${t3Count >= 3 ? 'opacity-60' : ''} bg-[#F5C842]/5 border-[#F5C842]/40`}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><Map size={22} /></div>
-                            <div className="flex-1">
-                                <p className="font-bold text-[#1A2A1A] text-base">沉澱週分享</p>
-                                <p className="text-sm text-gray-500">{themePeriod.desc}</p>
-                                <p className="text-sm text-[#1A6B4A] mt-0.5">+{themePeriod.t3Reward} / 則，最多 3 則</p>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
-                                const d = new Date();
-                                const cd = d.getDay() || 7;
-                                d.setDate(d.getDate() + (idx + 1 - cd));
-                                const qId = `${t3Base}|${getLogicalDateStr(d)}`;
-                                const isDone = logs.some(l => l.QuestID === qId);
-                                const isCapped = !isDone && t3Count >= 3;
-                                return (
-                                    <div key={idx} className="flex flex-col items-center gap-1.5">
-                                        <span className="text-sm text-gray-500 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
-                                        <button
-                                            disabled={isCapped}
-                                            onClick={() => isDone
-                                                ? onUndo({ id: qId, title: '沉澱週分享', reward: themePeriod.t3Reward })
-                                                : onCheckIn({ id: qId, title: '沉澱週分享', reward: themePeriod.t3Reward })}
-                                            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all
-                                                ${isDone ? 'bg-[#F5C842] text-black' : isCapped ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-[#B2DFC0] active:scale-90'}`}
-                                        >{day}</button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </section>
-            )}
-
-            {/* ── 個人主題影展（t1）── */}
-            <section className="space-y-3">
-                <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">旅程主旨任務</h2>
-                <div className={`p-5 rounded-3xl border-2 shadow-sm ${isTopicDone ? 'border-[#F5C842]/70 bg-[#F5C842]/5' : 'border-[#F5C842]/40 bg-white'}`}>
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 rounded-2xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><BookOpen size={28} /></div>
-                        <div className="flex-1">
-                            <span className="text-sm font-black bg-[#F5C842] text-black px-2 py-0.5 rounded-full uppercase">本週主旨</span>
-                            <h3 className="text-lg font-black text-[#1A2A1A] mt-1 italic">「{themePeriod.movie}」</h3>
-                        </div>
-                        <div className="text-right">
-                            <p className="font-black text-[#1A6B4A]">+1,000</p>
-                            <p className="text-sm text-gray-500">計劃完成</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => isTopicDone
-                            ? onUndo({ id: 't1', title: '本週主旨', reward: 1000 })
-                            : onCheckIn({ id: 't1', title: '本週主旨', reward: 1000 })}
-                        className={`w-full py-3.5 rounded-2xl font-black text-base transition-all active:scale-95
-                            ${isTopicDone
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                                : 'bg-[#F5C842] text-black shadow-md'}`}
-                    >
-                        {isTopicDone ? '✓ 已完成本週主旨（點擊取消）' : <span className="flex items-center justify-center gap-1.5"><Sparkles size={14} />完成本週主旨</span>}
-                    </button>
-                </div>
-            </section>
-
-            {/* ── 每日親證打卡（t2）── */}
-            {isTopicDone && (() => {
-                const t2Quest = { id: 't2', title: '每日親證打卡', reward: 500, limit: 99 };
-                const { onCheckIn: t2CheckIn, onUndo: t2Undo } = makeWeekHandler('t2', t2Quest);
-                return (
-                    <section className="space-y-3">
-                        <div className="flex justify-between items-center px-1">
-                            <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">每日親證打卡</h2>
-                            <span className="text-sm text-gray-500">+{t2Quest.reward} / 日</span>
-                        </div>
-                        <div className="p-5 rounded-3xl bg-white border border-[#B2DFC0] shadow-sm">
-                            <WeekCalendarRow
-                                questId="t2"
-                                logs={logs}
-                                limit={99}
-                                disabled={false}
-                                currentWeeklyMonday={currentWeeklyMonday}
-                                onCheckIn={t2CheckIn}
-                                onUndo={t2Undo}
-                            />
-                        </div>
-                    </section>
-                );
-            })()}
 
             {/* ── wk1：破框練習（每週最多 3 次）── */}
             {renderWeeklySection(wk1Quest, wk1Count, '破框練習', '每週最多 3 次', <Zap size={22} />)}

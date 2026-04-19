@@ -26,7 +26,7 @@ import { CaptainTab } from '@/components/Tabs/CaptainTab';
 import { CommandantTab } from '@/components/Tabs/CommandantTab';
 import CourseTab from '@/components/Tabs/CourseTab';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
-import { processCheckInTransaction, clearTodayLogs } from '@/app/actions/quest';
+import { processCheckInTransaction, clearTodayLogs, undoCheckIn } from '@/app/actions/quest';
 import { importRostersData, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
 import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
@@ -43,6 +43,10 @@ const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 const SESSION_UID_KEY = 'session_uid';
 const SESSION_EXP_KEY = 'session_exp';
 const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 分鐘
+
+function logsDateCutoff() {
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+}
 
 function saveSession(userId: string) {
   localStorage.setItem(SESSION_UID_KEY, userId);
@@ -107,6 +111,7 @@ export default function App() {
 
   // LINE login progress flag to prevent flash of login page during async DB work
   const lineLoginInProgress = useRef(false);
+  const rankFetchedAt = useRef(0);
 
   const showCaptainTab = userData?.IsGM
     ? (gmViewMode === 'all' || gmViewMode === 'captain')
@@ -335,7 +340,7 @@ export default function App() {
         setUserData(res.user as CharacterStats);
         setLogs(prev => [...prev, optimisticLog]);
         // 背景同步：只有 DB 回傳的筆數 > 現有 state 才更新，避免短暫空值覆蓋樂觀更新
-        supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID)
+        supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID).gte('Timestamp', logsDateCutoff())
           .then(({ data }) => {
             if (data && data.length > 0) setLogs(data as DailyLog[]);
           });
@@ -360,31 +365,23 @@ export default function App() {
     if (!userData || !quest) return;
     setIsSyncing(true);
     try {
-      const { data: targetLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID).eq('QuestID', quest.id).order('Timestamp', { ascending: false }).limit(1);
-      if (!targetLogs || targetLogs.length === 0) return;
-      if (getLogicalDateStr(targetLogs[0].Timestamp) !== logicalTodayStr) {
-        setModalMessage({ text: "因果已定，僅限回溯今日紀錄。", type: 'info' });
+      const res = await undoCheckIn(userData.UserID, quest.id);
+      if (res.success) {
+        const { data: newLogs } = await supabase.from('DailyLogs').select('*')
+          .eq('UserID', userData.UserID).gte('Timestamp', logsDateCutoff());
+        setLogs((newLogs as DailyLog[]) || []);
+        setUserData(prev => prev ? { ...prev, Score: res.newScore! } : prev);
         setUndoTarget(null);
-        return;
+        setModalMessage({ text: "時光回溯成功，紀錄已取消。", type: 'success' });
+      } else {
+        setModalMessage({ text: res.error || "回溯失敗，請稍後再試。", type: res.error?.includes('今日') ? 'info' : 'error' });
+        setUndoTarget(null);
       }
-      await supabase.from('DailyLogs').delete().eq('id', targetLogs[0].id);
-
-      const actualReward: number = targetLogs[0].RewardPoints ?? quest.reward;
-      const newScore = Math.max(0, (userData.Score ?? 0) - actualReward);
-
-      const update: Partial<CharacterStats> = {
-        Score: newScore,
-      };
-
-      await supabase.from('CharacterStats').update(update).eq('UserID', userData.UserID);
-      const { data: newLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
-      const updatedLogs = (newLogs as DailyLog[]) || [];
-
-      setLogs(updatedLogs);
-      setUserData({ ...userData, ...update } as CharacterStats);
-      setUndoTarget(null);
-      setModalMessage({ text: "時光回溯成功，紀錄已取消。", type: 'success' });
-    } catch (err) { setModalMessage({ text: "回溯失敗，請稍後再試。", type: 'error' }); } finally { setIsSyncing(false); }
+    } catch (err) {
+      setModalMessage({ text: "回溯失敗，請稍後再試。", type: 'error' });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleClearTodayLogs = async () => {
@@ -404,7 +401,7 @@ export default function App() {
       if (res.success) {
         // Fetch fresh stats and logs
         const { data: stats } = await supabase.from('CharacterStats').select('*').eq('UserID', userData.UserID).single();
-        const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
+        const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID).gte('Timestamp', logsDateCutoff());
         if (stats) setUserData(stats as CharacterStats);
         if (userLogs) setLogs(userLogs as DailyLog[]);
         setModalMessage({ text: "今日紀錄已清空，可重新一鍵填寫。", type: 'success' });
@@ -551,7 +548,7 @@ export default function App() {
   // 載入使用者資料並進入 app 視圖的共用邏輯
   const loadUserSession = useCallback(async (stats: CharacterStats) => {
     const [logsRes, teamCountRes] = await Promise.all([
-      supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID),
+      supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID).gte('Timestamp', logsDateCutoff()),
       stats.TeamName
         ? supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName)
         : Promise.resolve({ count: null }),
@@ -640,14 +637,15 @@ export default function App() {
 
 
   useEffect(() => {
-    const fetchRank = async () => {
-      const { data: rankData } = await supabase
-        .from('CharacterStats')
-        .select('UserID, Name, Score, Streak, SquadName, TeamName, IsCaptain, IsCommandant, IsGM, LineUserId')
-        .order('Score', { ascending: false });
-      if (rankData) setLeaderboard(rankData as CharacterStats[]);
-    };
-    if (activeTab === 'rank' || view === 'admin') fetchRank();
+    const shouldFetch = activeTab === 'rank' || view === 'admin';
+    if (!shouldFetch) return;
+    if (Date.now() - rankFetchedAt.current < 60_000) return;
+    rankFetchedAt.current = Date.now();
+    supabase
+      .from('CharacterStats')
+      .select('UserID, Name, Score, Streak, SquadName, TeamName, IsCaptain, IsCommandant, IsGM, LineUserId')
+      .order('Score', { ascending: false })
+      .then(({ data }) => { if (data) setLeaderboard(data as CharacterStats[]); });
   }, [activeTab, view]);
 
   useEffect(() => {
