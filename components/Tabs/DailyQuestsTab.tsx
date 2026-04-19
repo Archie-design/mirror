@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Sparkles, CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish } from 'lucide-react';
+import { CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish } from 'lucide-react';
 import { Quest, DailyLog } from '@/types';
 import {
     DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG,
@@ -73,7 +73,6 @@ function QuestChip({ quest, isDone, isDisabled, doneTime, onCheckIn, editMode, i
 
 interface DailyQuestsTabProps {
     userId: string;
-    weeklyQuestId?: string;
     logs: DailyLog[];
     logicalTodayStr: string;
     onCheckIn: (q: Quest) => void;
@@ -86,7 +85,6 @@ interface DailyQuestsTabProps {
 
 export function DailyQuestsTab({
     userId,
-    weeklyQuestId,
     logs,
     logicalTodayStr,
     onCheckIn,
@@ -135,10 +133,6 @@ export function DailyQuestsTab({
     const dietQuests = DIET_QUEST_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
     const dietDoneLog = todayLogs.find(l => DIET_QUEST_IDS.has(l.QuestID));
     const dietDoneId = dietDoneLog?.QuestID;
-
-    // ── 本週推薦 weeklyQuestId ──
-    const allQuests = [...basicQuests, ...weightedQuests];
-    const weeklyQuestName = allQuests.find(q => q.id === weeklyQuestId)?.title;
 
     // ── 收藏管理 ──
     const toggleFav = (questId: string) => {
@@ -241,17 +235,6 @@ export function DailyQuestsTab({
 
     return (
         <div className="space-y-5 pb-10 animate-in slide-in-from-bottom-4 duration-500">
-
-            {/* 本週推薦 */}
-            {weeklyQuestName && (
-                <div className="bg-white border border-[#B2DFC0] rounded-2xl px-5 py-4 flex items-center gap-3 shadow-sm">
-                    <Sparkles size={14} className="text-[#F5C842] shrink-0" />
-                    <div>
-                        <p className="text-sm text-gray-500 font-black uppercase tracking-widest">本週推薦</p>
-                        <p className="text-base font-black text-[#1A6B4A]">「{weeklyQuestName}」</p>
-                    </div>
-                </div>
-            )}
 
             {/* 常用定課編輯按鈕 */}
             <div className="flex justify-end px-1">

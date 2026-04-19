@@ -90,11 +90,16 @@ export async function GET(request: NextRequest) {
             return NextResponse.redirect(`${appUrl}/?line_bound=success`);
         } else {
             // Login flow: find user by LINE ID
-            const { data: user } = await supabase
+            const { data: user, error: lookupError } = await supabase
                 .from('CharacterStats')
                 .select('UserID')
                 .eq('LineUserId', lineUserId)
                 .maybeSingle();
+
+            if (lookupError) {
+                console.error('[LINE callback] DB lookup error:', lookupError.message);
+                return NextResponse.redirect(`${appUrl}/?line_error=server`);
+            }
 
             if (!user) {
                 return NextResponse.redirect(`${appUrl}/?line_error=not_bound&lid=${encodeURIComponent(lineUserId)}`);

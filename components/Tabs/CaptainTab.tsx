@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Dices, Loader2, Grid3x3, Users, Edit3, Check, X } from 'lucide-react';
-import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, SQUAD_ROLES } from '@/lib/constants';
+import { ShieldAlert, Loader2, Grid3x3, Users, Edit3, Check, X } from 'lucide-react';
+import { SQUAD_ROLES } from '@/lib/constants';
 import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
 import { getSquadGrids, updateMemberCellText } from '@/app/actions/nine-grid';
 import type { UserNineGrid } from '@/types';
@@ -15,17 +15,16 @@ interface CaptainTabProps {
     teamName: string;
     teamSettings?: TeamSettings;
     pendingBonusApps: BonusApplication[];
-    onDrawWeeklyQuest: () => Promise<void>;
     onReviewBonus: (appId: string, approve: boolean, notes: string) => Promise<void>;
     squadMembersForRoles?: SquadMemberRole[];
     onSetSquadRole?: (targetUserId: string, role: string | null) => Promise<void>;
     squadMembers?: SquadMemberStats[];
+    squadMembersLoaded?: boolean;
     captainId: string;
     captainName: string;
 }
 
 // 可抽籤的定課：基本定課 + 加權定課
-const ALL_DRAW_QUESTS = [...DAILY_BASIC_CONFIG, ...DAILY_WEIGHTED_CONFIG];
 
 function RolePicker({ member, onSet }: {
     member: { userId: string; name: string; squadRole?: string };
@@ -66,13 +65,6 @@ function RolePicker({ member, onSet }: {
     );
 }
 
-function getCurrentWeekMondayStr(): string {
-    const nowTaiwan = new Date(Date.now() + 8 * 3600 * 1000);
-    const day = nowTaiwan.getUTCDay() || 7;
-    const monday = new Date(nowTaiwan);
-    monday.setUTCDate(monday.getUTCDate() - (day - 1));
-    return monday.toISOString().slice(0, 10);
-}
 
 function isActive(lastCheckIn?: string): boolean {
     if (!lastCheckIn) return false;
@@ -218,27 +210,14 @@ function SquadNineGridSection({ captainId, captainName }: { captainId: string; c
 }
 
 export function CaptainTab({
-    teamName, teamSettings, pendingBonusApps, onDrawWeeklyQuest, onReviewBonus,
+    teamName, teamSettings, pendingBonusApps, onReviewBonus,
     squadMembersForRoles = [], onSetSquadRole,
     squadMembers = [],
+    squadMembersLoaded = false,
     captainId, captainName,
 }: CaptainTabProps) {
-    const [isDrawing, setIsDrawing] = useState(false);
     const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
     const [reviewingId, setReviewingId] = useState<string | null>(null);
-
-    const weekMondayStr = getCurrentWeekMondayStr();
-    const alreadyDrawnThisWeek = teamSettings?.mandatory_quest_week === weekMondayStr;
-    const currentQuestId = teamSettings?.mandatory_quest_id;
-    const currentQuestName = ALL_DRAW_QUESTS.find(q => q.id === currentQuestId)?.title;
-    const drawHistory: string[] = teamSettings?.quest_draw_history || [];
-    const remaining = ALL_DRAW_QUESTS.filter(q => !drawHistory.includes(q.id));
-
-    const handleDraw = async () => {
-        setIsDrawing(true);
-        await onDrawWeeklyQuest();
-        setIsDrawing(false);
-    };
 
     const handleReview = async (appId: string, approve: boolean) => {
         setReviewingId(appId);
@@ -260,8 +239,10 @@ export function CaptainTab({
                 <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
                     <Users size={18} className="text-indigo-500" /> 小隊成員總覽
                 </h3>
-                {squadMembers.length === 0 ? (
+                {!squadMembersLoaded ? (
                     <p className="text-sm text-gray-400 text-center py-4">載入中…</p>
+                ) : squadMembers.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">找不到小隊成員資料，請確認帳號已設定小隊名稱。</p>
                 ) : (
                     <div className="space-y-2">
                         {squadMembers.map(m => (
@@ -292,52 +273,6 @@ export function CaptainTab({
                                 </div>
                             </div>
                         ))}
-                    </div>
-                )}
-            </section>
-
-            {/* ── 🎲 本週推薦通告抽籤 ── */}
-            <section className="bg-white border-2 border-gray-200 p-8 rounded-4xl space-y-6 shadow-md text-center">
-                <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-4 text-left">🎲 本週推薦通告抽籤</h3>
-
-                {alreadyDrawnThisWeek && currentQuestName ? (
-                    <div className="space-y-3">
-                        <p className="text-sm text-gray-500 font-bold">本週已抽出</p>
-                        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-3xl p-6">
-                            <p className="text-3xl font-black text-gray-900">「{currentQuestName}」</p>
-                            <p className="text-xs text-indigo-500 mt-2 font-bold">週一 {weekMondayStr} 起生效</p>
-                        </div>
-                        <p className="text-sm text-gray-400">下週一前無法再次抽籤</p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <p className="text-sm text-gray-500 font-bold leading-relaxed">
-                            每週一抽選本週推薦定課通告。<br />
-                            已抽過的定課不重複，{remaining.length > 0 ? `尚餘 ${remaining.length} 項可抽` : '本輪已全部抽完，下次抽籤將重置循環'}。
-                        </p>
-                        <button
-                            disabled={isDrawing}
-                            onClick={handleDraw}
-                            className="w-full flex items-center justify-center gap-3 bg-indigo-600 p-5 rounded-2xl text-white font-black text-lg shadow-lg hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-50"
-                        >
-                            <Dices size={22} /> {isDrawing ? '命運抽籤中...' : '🎲 抽選本週通告'}
-                        </button>
-                    </div>
-                )}
-
-                {drawHistory.length > 0 && (
-                    <div className="text-left space-y-2 mt-2">
-                        <p className="text-sm font-black text-gray-400 uppercase tracking-widest">本輪已抽歷程</p>
-                        <div className="flex flex-wrap gap-2">
-                            {drawHistory.map(id => {
-                                const name = ALL_DRAW_QUESTS.find(q => q.id === id)?.title || id;
-                                return (
-                                    <span key={id} className={`px-3 py-1 rounded-xl text-sm font-bold ${id === currentQuestId ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                                        {name}
-                                    </span>
-                                );
-                            })}
-                        </div>
                     </div>
                 )}
             </section>

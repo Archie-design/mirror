@@ -159,7 +159,6 @@ const ACTION_LABELS: Record<string, string> = {
     temp_quest_delete: '刪除臨時任務',
     roster_import: '匯入名冊',
     auto_assign_squads: '自動分配大隊',
-    auto_draw_quests: '全服自動抽籤',
     weekly_snapshot: '每週積分結算',
     bonus_final_approve: '一次性任務終審核准',
     bonus_final_reject: '一次性任務終審駁回',
@@ -179,7 +178,6 @@ interface AdminDashboardProps {
     onAddTempQuest: (title: string, sub: string, desc: string, reward: number) => void;
     onToggleTempQuest: (id: string, active: boolean) => void;
     onDeleteTempQuest: (id: string) => void;
-    onAutoDrawAllSquads: () => void;
     onImportRoster: (csvData: string) => Promise<void>;
     onFinalReviewBonus: (appId: string, approve: boolean, notes: string) => Promise<void>;
     onClose: () => void;
@@ -190,7 +188,6 @@ export function AdminDashboard({
     leaderboard, temporaryQuests,
     pendingFinalReviewApps, adminLogs,
     onAddTempQuest, onToggleTempQuest, onDeleteTempQuest,
-    onAutoDrawAllSquads,
     onImportRoster, onFinalReviewBonus, onClose
 }: AdminDashboardProps) {
     const [csvInput, setCsvInput] = React.useState("");
@@ -407,15 +404,6 @@ export function AdminDashboard({
                     </section>
 
                     <section className="space-y-6">
-                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Settings size={16} /> 每週任務管理</div>
-                        <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl text-center">
-                            <button onClick={onAutoDrawAllSquads} className="w-full bg-indigo-600 p-4 rounded-2xl text-white font-black shadow-lg hover:bg-indigo-500 transition-colors">
-                                🎲 全服自動抽籤（為未抽劇組代選本週通告）
-                            </button>
-                        </div>
-                    </section>
-
-                    <section className="space-y-6">
                         <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Settings size={16} /> 臨時加分任務管理</div>
                         <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl">
                             <form onSubmit={(e) => {
@@ -577,7 +565,7 @@ export function AdminDashboard({
                 {activeAdminTab === 'system' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <section className="space-y-6">
-                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 修行者票房榜預覽</div>
+                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 旅人榜預覽</div>
                         <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden divide-y divide-slate-800 shadow-xl max-h-[400px] overflow-y-auto">
                             {leaderboard.map((p, i) => (
                                 <div key={p.UserID} className="flex items-center gap-4 p-4 hover:bg-white/5 transition-colors">

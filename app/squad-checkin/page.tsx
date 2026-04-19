@@ -121,7 +121,7 @@ function SquadCheckinContent() {
                     <div className={`rounded-3xl p-8 text-center space-y-3 ${alreadyIn ? 'bg-blue-900/30 border border-blue-500/30' : 'bg-emerald-900/30 border border-emerald-500/30'}`}>
                         <CheckCircle2 size={48} className={`mx-auto ${alreadyIn ? 'text-blue-400' : 'text-emerald-400'}`} />
                         <p className="font-black text-white text-lg">{message}</p>
-                        <p className="text-sm text-gray-400">小隊長可在導演報表查看到場名單。</p>
+                        <p className="text-sm text-gray-400">小隊長可在旅伴週報查看到場名單。</p>
                     </div>
                 ) : status === 'error' ? (
                     <div className="bg-red-900/30 border border-red-500/30 rounded-3xl p-6 text-center space-y-3">

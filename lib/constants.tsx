@@ -6,10 +6,6 @@ import {
 } from 'lucide-react';
 import { Quest } from '@/types';
 
-export const BASE_START_DATE_STR = "2026-05-10";
-export const END_DATE = "2026-07-12";
-export const ONE_TIME_TASK_DEADLINE = "2026-07-01";
-
 // ⚠️ ADMIN_PASSWORD 已移除（之前為明文 "123" hardcode）。
 // 請改用 process.env.ADMIN_PASSWORD（透過 server action 比對），
 // 客戶端不應再持有任何管理員密碼字串。
@@ -49,7 +45,6 @@ export const WEIGHTED_QUEST_IDS = new Set(['p1','p2','p3','p4','p5']);
 export const DAILY_WEIGHTED_LIMIT = 3;
 
 // ── 破曉打拳（獨立加成，不佔用名額）───────────────────────────────────────
-// 需同日已完成 p1（打拳）方可計算，不佔用加權定課 3 項名額
 export const DAWN_QUEST: Quest = {
     id: 'p1_dawn',
     title: '破曉打拳',

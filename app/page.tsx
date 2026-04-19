@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import {
   AlertTriangle, CheckCircle2, Sparkles,
   Loader2, RotateCcw,
-  CalendarDays, Clapperboard, Video, LayoutGrid, Trophy
+  CalendarDays, LayoutGrid, Trophy
 } from 'lucide-react';
-import { StarWandIcon, FilmStripIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
+import { StarWandIcon, RubySlipperIcon, EmeraldCastleIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
 
-import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
+import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, TeamSettings } from '@/types';
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
 import { standardizePhone } from '@/lib/utils/phone';
 import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
@@ -28,7 +28,7 @@ import CourseTab from '@/components/Tabs/CourseTab';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { processCheckInTransaction, clearTodayLogs } from '@/app/actions/quest';
 import { importRostersData, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
-import { drawWeeklyQuestForSquad, autoDrawAllSquads, getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
+import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
 import { NineGridTab } from '@/components/Tabs/NineGridTab';
@@ -93,7 +93,7 @@ export default function App() {
   const [modalMessage, setModalMessage] = useState<{ text: string, type: 'info' | 'error' | 'success' } | null>(null);
   const [undoTarget, setUndoTarget] = useState<Quest | null>(null);
   const [adminAuth, setAdminAuth] = useState(false);
-  const [teamSettings, setTeamSettings] = useState<any>(null);
+  const [teamSettings, setTeamSettings] = useState<TeamSettings | null>(null);
   const [teamMemberCount, setTeamMemberCount] = useState<number>(1);
 
   const [pendingBonusApps, setPendingBonusApps] = useState<BonusApplication[]>([]);
@@ -102,6 +102,7 @@ export default function App() {
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
 
   const [squadMembers, setSquadMembers] = useState<SquadMemberStats[]>([]);
+  const [squadMembersLoaded, setSquadMembersLoaded] = useState(false);
   const [battalionMembers, setBattalionMembers] = useState<Record<string, SquadMemberStats[]>>({});
 
   // LINE login progress flag to prevent flash of login page during async DB work
@@ -129,18 +130,36 @@ export default function App() {
   );
 
 
-  const todayCompletedQuestIds = useMemo(() => {
-    return logs.filter(l => getLogicalDateStr(l.Timestamp) === logicalTodayStr).map(l => l.QuestID);
-  }, [logs, logicalTodayStr]);
+  const refreshBonusApps = useCallback(async (stats: CharacterStats) => {
+    const tasks: Promise<void>[] = [];
+    if (stats.IsCaptain && stats.TeamName) {
+      tasks.push(
+        getBonusApplications({ squadName: stats.TeamName, status: 'pending' })
+          .then(r => { if (r.success) setPendingBonusApps(r.applications); })
+      );
+    }
+    if (stats.IsCommandant) {
+      tasks.push(
+        getBonusApplications({ status: 'squad_approved' })
+          .then(r => { if (r.success) setPendingFinalReviewApps(r.applications); })
+      );
+    }
+    await Promise.all(tasks);
+  }, []);
 
-  const loadAdminData = async () => {
+  const refreshAdminLogs = useCallback(async () => {
+    const res = await getAdminActivityLog(30);
+    if (res.success) setAdminLogs(res.logs as AdminLog[]);
+  }, []);
+
+  const loadAdminData = useCallback(async () => {
     const [w4Res, logsRes] = await Promise.all([
       getBonusApplications({ status: 'squad_approved' }),
       getAdminActivityLog(30),
     ]);
     if (w4Res.success) setPendingFinalReviewApps(w4Res.applications);
     if (logsRes.success) setAdminLogs(logsRes.logs as AdminLog[]);
-  };
+  }, []);
 
   const handleAdminAuth = async (e: { preventDefault: () => void; currentTarget: HTMLFormElement }) => {
     e.preventDefault();
@@ -171,35 +190,13 @@ export default function App() {
     }
   };
 
-  const handleDrawWeeklyQuest = async () => {
-    if (!userData?.TeamName || !userData.IsCaptain) return;
-    setIsSyncing(true);
-    try {
-      const res = await drawWeeklyQuestForSquad(userData.TeamName, userData.UserID);
-      if (res.success) {
-        setTeamSettings((prev: any) => ({
-          ...prev,
-          mandatory_quest_id: res.questId,
-          mandatory_quest_week: res.weekLabel,
-          quest_draw_history: [...(prev?.quest_draw_history || []), res.questId],
-        }));
-        setModalMessage({ text: `本週推薦通告已抽出：「${res.questName}」`, type: 'success' });
-      } else {
-        setModalMessage({ text: res.error || '抽籤失敗', type: 'error' });
-      }
-    } catch (e: any) {
-      setModalMessage({ text: '系統異常：' + e.message, type: 'error' });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-
   const handleOpenCaptainTab = () => {
     setActiveTab('captain');
     if ((userData?.IsCaptain || userData?.IsGM) && userData?.UserID) {
+      setSquadMembersLoaded(false);
       getSquadMembersStats(userData.UserID).then(res => {
         if (res.success && res.members) setSquadMembers(res.members);
+        setSquadMembersLoaded(true);
       });
     }
   };
@@ -222,24 +219,6 @@ export default function App() {
         setModalMessage({ text: `分配完成！共 ${res.totalPlayers} 位旅人，${res.squadCount} 支小隊，${res.battalionCount} 個大隊。`, type: 'success' });
       } else {
         setModalMessage({ text: '分配失敗：' + res.error, type: 'error' });
-      }
-    } catch (e: any) {
-      setModalMessage({ text: '系統異常：' + e.message, type: 'error' });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleAutoDrawAllSquads = async () => {
-    if (!confirm("確定要為所有本週尚未抽籤的小隊自動抽選本週任務？")) return;
-    setIsSyncing(true);
-    try {
-      const res = await autoDrawAllSquads();
-      if (res.success) {
-        const summary = res.drawn?.map((d: { squadName: string; questName: string }) => `${d.squadName}→${d.questName}`).join('、') || '（無）';
-        setModalMessage({ text: `自動抽籤完成！${res.drawnCount} 個小隊已抽選，${res.skippedCount} 個已跳過。\n${summary}`, type: 'success' });
-      } else {
-        setModalMessage({ text: '自動抽籤失敗：' + res.error, type: 'error' });
       }
     } catch (e: any) {
       setModalMessage({ text: '系統異常：' + e.message, type: 'error' });
@@ -312,7 +291,7 @@ export default function App() {
     }
   };
 
-  const handleReviewBonusBySquad = async (appId: string, approve: boolean, notes: string) => {
+  const handleReviewBonusBySquad = useCallback(async (appId: string, approve: boolean, notes: string) => {
     if (!userData) return;
     const res = await reviewBonusBySquadLeader(appId, userData.UserID, approve, notes);
     if (res.success) {
@@ -325,21 +304,20 @@ export default function App() {
     } else {
       setModalMessage({ text: res.error || '審核失敗', type: 'error' });
     }
-  };
+  }, [userData]);
 
-  const handleFinalReviewBonus = async (appId: string, approve: boolean, notes: string) => {
+  const handleFinalReviewBonus = useCallback(async (appId: string, approve: boolean, notes: string) => {
     const res = await reviewBonusByAdmin(appId, approve ? 'approve' : 'reject', notes);
     if (res.success) {
       setPendingFinalReviewApps(prev => prev.filter(a => a.id !== appId));
       setModalMessage({ text: approve ? '已核准！積分已發放。' : '已駁回申請。', type: approve ? 'success' : 'info' });
-      const logsRes = await getAdminActivityLog(30);
-      if (logsRes.success) setAdminLogs(logsRes.logs as AdminLog[]);
+      await refreshAdminLogs();
     } else {
       setModalMessage({ text: (res as any).error || '審核失敗', type: 'error' });
     }
-  };
+  }, [refreshAdminLogs]);
 
-  const handleCheckInAction = async (quest: Quest) => {
+  const handleCheckInAction = useCallback(async (quest: Quest) => {
     if (!userData) return;
     setIsSyncing(true);
     try {
@@ -376,7 +354,7 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [userData]);
 
   const handleUndoCheckInAction = async (quest: Quest | null) => {
     if (!userData || !quest) return;
@@ -447,22 +425,16 @@ export default function App() {
     const name = (fd.get('name') as string).trim();
     const phoneSuffix = (fd.get('phone') as string).trim();
     try {
-      const { data: allUsers, error: queryError } = await supabase.from('CharacterStats').select('*');
+      const { data: matched, error: queryError } = await supabase
+        .from('CharacterStats')
+        .select('*')
+        .eq('Name', name)
+        .like('UserID', `%${phoneSuffix}`);
       if (queryError) throw new Error(queryError.message);
-      const match = (allUsers as CharacterStats[])?.find(u => u.Name === name && u.UserID.endsWith(phoneSuffix));
+      const match = matched?.[0] as CharacterStats | undefined;
       if (match) {
-
-        const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', match.UserID);
-        const logsArray = (userLogs as DailyLog[]) || [];
-
-        if (match.TeamName) {
-          const { data: ts } = await supabase.from('TeamSettings').select('*').eq('team_name', match.TeamName).single();
-          if (ts) setTeamSettings(ts);
-        }
-
+        await loadUserSession(match);
         saveSession(match.UserID);
-        setUserData(match);
-        setLogs(logsArray);
         setView('app');
       } else { setModalMessage({ text: "查無此觀影者帳號。", type: 'error' }); }
     } catch (err) { setModalMessage({ text: "系統連線異常。", type: 'error' }); } finally { setIsSyncing(false); }
@@ -576,9 +548,64 @@ export default function App() {
     loadStaticData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 載入使用者資料並進入 app 視圖的共用邏輯
+  const loadUserSession = useCallback(async (stats: CharacterStats) => {
+    const [logsRes, teamCountRes] = await Promise.all([
+      supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID),
+      stats.TeamName
+        ? supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName)
+        : Promise.resolve({ count: null }),
+    ]);
+    setLogs((logsRes.data as DailyLog[]) || []);
+    if (stats.TeamName) {
+      setTeamMemberCount(teamCountRes.count || 1);
+      const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
+      if (tSettings) setTeamSettings(tSettings as TeamSettings);
+    }
+    await refreshBonusApps(stats);
+    setUserData(stats);
+  }, [refreshBonusApps]);
+
+  // LINE OAuth callback 處理：?line_auth=1
+  const handleLineOAuthCallback = useCallback(async (): Promise<boolean> => {
+    lineLoginInProgress.current = true;
+    const sessionRes = await fetch('/api/auth/session');
+    if (!sessionRes.ok) {
+      lineLoginInProgress.current = false;
+      setView('login');
+      return true;
+    }
+    const { userId } = await sessionRes.json();
+    const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', userId).single();
+    if (stats && !error) {
+      await loadUserSession(stats as CharacterStats);
+      saveSession(userId);
+      lineLoginInProgress.current = false;
+      setView('app');
+    } else {
+      lineLoginInProgress.current = false;
+      setView('login');
+    }
+    return true;
+  }, [loadUserSession]);
+
+  // localStorage session 恢復
+  const restoreSessionFromStorage = useCallback(async (): Promise<boolean> => {
+    const storedUid = getStoredSession();
+    if (!storedUid) return false;
+    const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', storedUid).single();
+    if (stats && !error) {
+      await loadUserSession(stats as CharacterStats);
+      saveSession(storedUid);
+      setView('app');
+      return true;
+    }
+    clearSession();
+    return false;
+  }, [loadUserSession]);
+
   useEffect(() => {
     const init = async () => {
-      // LINE OAuth session handoff — handle ?line_auth, ?line_bound, ?line_error params
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const lineAuth = params.get('line_auth');
@@ -587,43 +614,7 @@ export default function App() {
         if (lineAuth || lineBound || lineError) {
           window.history.replaceState({}, '', '/');
           if (lineAuth === '1') {
-            lineLoginInProgress.current = true;
-            // Exchange HttpOnly cookie for UserID — UserID never touches the URL
-            const sessionRes = await fetch('/api/auth/session');
-            if (!sessionRes.ok) {
-              lineLoginInProgress.current = false;
-              setView('login');
-              return;
-            }
-            const { userId } = await sessionRes.json();
-            const uid: string = userId;
-            const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', uid).single();
-            if (stats && !error) {
-              const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID);
-              const logsArray = (userLogs as DailyLog[]) || [];
-              if (stats.TeamName) {
-                const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
-                if (tSettings) setTeamSettings(tSettings);
-                const { count } = await supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName);
-                setTeamMemberCount(count || 1);
-              }
-              setUserData(stats as CharacterStats);
-              setLogs(logsArray);
-              if (stats.IsCaptain && stats.TeamName) {
-                const pendingRes = await getBonusApplications({ squadName: stats.TeamName, status: 'pending' });
-                if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
-              }
-              if (stats.IsCommandant) {
-                const commandantRes = await getBonusApplications({ status: 'squad_approved' });
-                if (commandantRes.success) setPendingFinalReviewApps(commandantRes.applications);
-              }
-              saveSession(uid);
-              lineLoginInProgress.current = false;
-              setView('app');
-            } else {
-              lineLoginInProgress.current = false;
-              setView('login');
-            }
+            await handleLineOAuthCallback();
             return;
           } else if (lineBound === 'success') {
             setModalMessage({ text: '✅ LINE 帳號綁定成功！下次可直接以 LINE 登入。', type: 'success' });
@@ -639,37 +630,9 @@ export default function App() {
         }
       }
 
-      // 嘗試從 localStorage 恢復 session（30 分鐘內有效）
       if (!lineLoginInProgress.current) {
-        const storedUid = getStoredSession();
-        if (storedUid) {
-          const { data: stats, error } = await supabase.from('CharacterStats').select('*').eq('UserID', storedUid).single();
-          if (stats && !error) {
-            const { data: userLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID);
-            setLogs((userLogs as DailyLog[]) || []);
-            if (stats.TeamName) {
-              const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
-              if (tSettings) setTeamSettings(tSettings);
-              const { count } = await supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName);
-              setTeamMemberCount(count || 1);
-            }
-            if (stats.IsCaptain && stats.TeamName) {
-              const pendingRes = await getBonusApplications({ squadName: stats.TeamName, status: 'pending' });
-              if (pendingRes.success) setPendingBonusApps(pendingRes.applications);
-            }
-            if (stats.IsCommandant) {
-              const commandantRes = await getBonusApplications({ status: 'squad_approved' });
-              if (commandantRes.success) setPendingFinalReviewApps(commandantRes.applications);
-            }
-            saveSession(storedUid); // 每次成功恢復就刷新過期時間
-            setUserData(stats as CharacterStats);
-            setView('app');
-            return;
-          } else {
-            clearSession();
-          }
-        }
-        setView(v => v === 'loading' ? 'login' : v);
+        const restored = await restoreSessionFromStorage();
+        if (!restored) setView(v => v === 'loading' ? 'login' : v);
       }
     };
     init();
@@ -678,7 +641,10 @@ export default function App() {
 
   useEffect(() => {
     const fetchRank = async () => {
-      const { data: rankData } = await supabase.from('CharacterStats').select('*').order('Score', { ascending: false });
+      const { data: rankData } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name, Score, Streak, SquadName, TeamName, IsCaptain, IsCommandant, IsGM, LineUserId')
+        .order('Score', { ascending: false });
       if (rankData) setLeaderboard(rankData as CharacterStats[]);
     };
     if (activeTab === 'rank' || view === 'admin') fetchRank();
@@ -757,7 +723,7 @@ export default function App() {
 
       <nav className="sticky top-0 z-20 bg-[#1A6B4A] flex p-3 gap-2 border-b border-[#0F4A30] shadow-xl overflow-x-auto no-scrollbar">
         {([
-          { id: 'daily',    label: '每日踏程', icon: <FilmStripIcon size={13} /> },
+          { id: 'daily',    label: '每日踏程', icon: <RubySlipperIcon size={13} /> },
           { id: 'weekly',   label: '旅伴週報', icon: <MegaphoneIcon size={13} /> },
           { id: 'ninegrid', label: '人生大戲', icon: <LayoutGrid size={13} /> },
           { id: 'rank',     label: '旅人榜',   icon: <Trophy size={13} /> },
@@ -793,7 +759,7 @@ export default function App() {
                 ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(245,200,66,0.4)]'
                 : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
-            <Clapperboard size={13} />
+            <StarWandIcon size={13} />
             隊長基地
           </button>
         )}
@@ -805,7 +771,7 @@ export default function App() {
                 ? 'bg-[#F5C842] text-black shadow-[0_0_15px_rgba(245,200,66,0.4)]'
                 : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
-            <Video size={13} />
+            <EmeraldCastleIcon size={13} />
             大隊長總部
           </button>
         )}
@@ -815,7 +781,6 @@ export default function App() {
         {activeTab === 'daily' && (
           <DailyQuestsTab
             userId={userData?.UserID || ''}
-            weeklyQuestId={teamSettings?.mandatory_quest_id}
             logs={logs}
             logicalTodayStr={logicalTodayStr}
             onCheckIn={handleCheckInAction}
@@ -873,11 +838,11 @@ export default function App() {
             teamName={userData.TeamName || '未編組'}
             captainId={userData.UserID}
             captainName={userData.Name}
-            teamSettings={teamSettings}
+            teamSettings={teamSettings ?? undefined}
             pendingBonusApps={pendingBonusApps}
-            onDrawWeeklyQuest={handleDrawWeeklyQuest}
             onReviewBonus={handleReviewBonusBySquad}
             squadMembers={squadMembers}
+            squadMembersLoaded={squadMembersLoaded}
           />
         )}
         {activeTab === 'commandant' && showCommandantTab && userData && (
@@ -952,7 +917,6 @@ export default function App() {
           onAddTempQuest={handleAddTempQuest}
           onToggleTempQuest={handleToggleTempQuest}
           onDeleteTempQuest={handleDeleteTempQuest}
-          onAutoDrawAllSquads={handleAutoDrawAllSquads}
           onImportRoster={handleImportRoster}
           onFinalReviewBonus={handleFinalReviewBonus}
           onClose={handleAdminClose}

@@ -37,7 +37,7 @@ Requires `.env.local` with:
 
 `app/page.tsx` is a large monolithic client component (`"use client"`) that owns all game state and orchestrates every tab. It's intentionally a single page — do not split it into separate routes.
 
-Tab navigation: `daily(每日觀影) | weekly(導演報表) | stats(觀影分析) | rank(票房榜) | captain(製片總部) | commandant(片商總部) | course(首映曆)` rendered under `<main>` via `activeTab` state.
+Tab navigation: `daily(每日踏程) | weekly(旅伴週報) | ninegrid(人生大戲) | rank(旅人榜) | stats(我的旅程) | course(親證曆) | captain(隊長基地) | commandant(大隊長總部)` rendered under `<main>` via `activeTab` state.
 
 ### Two Database Access Patterns
 

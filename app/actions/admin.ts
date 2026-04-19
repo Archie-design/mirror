@@ -24,89 +24,6 @@ export async function logAdminAction(
     } catch (_) { /* log failure should never break the main flow */ }
 }
 
-export async function checkWeeklyW3Compliance(startMondayISO?: string, endMondayISO?: string) {
-
-    const client = await connectDb();
-    try {
-        // 計算雙週範圍：預設為「前兩週週一」至「本週週一」（共 14 天）
-        let weekStart: Date;
-        let weekEnd: Date;
-
-        if (startMondayISO && endMondayISO) {
-            weekStart = new Date(startMondayISO);
-            // endMondayISO 是第二週的週一，加 7 天得週日結束
-            weekEnd = new Date(endMondayISO);
-            weekEnd.setDate(weekEnd.getDate() + 7);
-        } else {
-            // 預設：往回推 14 天（兩週前週一 → 本週週一）
-            const today = new Date();
-            const day = today.getDay() || 7;
-            const thisMonday = new Date(today);
-            thisMonday.setDate(today.getDate() - (day - 1));
-            thisMonday.setHours(0, 0, 0, 0);
-            weekStart = new Date(thisMonday);
-            weekStart.setDate(thisMonday.getDate() - 14);
-            weekEnd = new Date(thisMonday);
-        }
-
-        // period_label 類似 "2026-03-03~2026-03-10"（兩週起訖週一）
-        const isoW1 = weekStart.toISOString().slice(0, 10);
-        const w2Start = new Date(weekStart);
-        w2Start.setDate(w2Start.getDate() + 7);
-        const isoW2 = w2Start.toISOString().slice(0, 10);
-        const periodLabel = `${isoW1}~${isoW2}`;
-
-        // Get all users
-        const usersRes = await client.query<{ UserID: string; Name: string; TotalFines: number }>(
-            `SELECT "UserID", "Name", "TotalFines" FROM "CharacterStats"`
-        );
-
-        // Get all w3 logs in that bi-weekly range
-        const logsRes = await client.query<{ UserID: string }>(
-            `SELECT "UserID" FROM "DailyLogs"
-             WHERE "QuestID" LIKE 'w3%'
-               AND "Timestamp" >= $1 AND "Timestamp" < $2`,
-            [weekStart.toISOString(), weekEnd.toISOString()]
-        );
-
-        const completedUserIds = new Set(logsRes.rows.map(r => r.UserID));
-
-        const violators: { userId: string; name: string }[] = [];
-
-        await client.query('BEGIN');
-        for (const user of usersRes.rows) {
-            if (!completedUserIds.has(user.UserID)) {
-                violators.push({ userId: user.UserID, name: user.Name });
-                await client.query(
-                    `UPDATE "CharacterStats" SET "TotalFines" = "TotalFines" + 200 WHERE "UserID" = $1`,
-                    [user.UserID]
-                );
-            }
-        }
-        await client.query('COMMIT');
-
-        await logAdminAction('w3_compliance', 'admin', undefined, periodLabel, {
-            totalUsers: usersRes.rowCount || 0,
-            violatorCount: violators.length,
-            violators: violators.map(v => v.name),
-            periodLabel,
-        });
-        return {
-            success: true,
-            periodLabel,
-            totalUsers: usersRes.rowCount || 0,
-            violatorCount: violators.length,
-            violators,
-        };
-    } catch (error: any) {
-        await client.query('ROLLBACK');
-        await logAdminAction('w3_compliance', 'admin', undefined, undefined, { error: error.message }, 'error');
-        return { success: false, error: error.message };
-    } finally {
-        await client.end();
-    }
-}
-
 
 const ZH_NUMS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
     '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
@@ -151,25 +68,40 @@ export async function autoAssignSquadsForTesting(
             squads.push({ battalionName, squadName, members: allUsers.slice(i, i + squadSize) });
         }
 
-        // 3. 更新 CharacterStats + upsert TeamSettings
+        // 3. 更新 CharacterStats + upsert TeamSettings（批次操作避免 N+1）
+        const userIds: string[] = [];
+        const squadNames: string[] = [];
+        const teamNames: string[] = [];
+        const isCaptainFlags: boolean[] = [];
+        const distinctTeamNames: string[] = [];
+
         for (const squad of squads) {
+            distinctTeamNames.push(squad.squadName);
             for (let mi = 0; mi < squad.members.length; mi++) {
-                const user = squad.members[mi];
-                const isCaptain = mi === 0;
-                await client.query(
-                    `UPDATE "CharacterStats"
-                     SET "SquadName" = $1, "TeamName" = $2, "IsCaptain" = $3
-                     WHERE "UserID" = $4`,
-                    [squad.battalionName, squad.squadName, isCaptain, user.UserID]
-                );
+                userIds.push(squad.members[mi].UserID);
+                squadNames.push(squad.battalionName);
+                teamNames.push(squad.squadName);
+                isCaptainFlags.push(mi === 0);
             }
-            await client.query(
-                `INSERT INTO "TeamSettings" (team_name, team_coins)
-                 VALUES ($1, 0)
-                 ON CONFLICT (team_name) DO NOTHING`,
-                [squad.squadName]
-            );
         }
+
+        await client.query(
+            `UPDATE "CharacterStats" AS cs
+             SET "SquadName" = v.squad_name,
+                 "TeamName"  = v.team_name,
+                 "IsCaptain" = v.is_captain
+             FROM UNNEST($1::text[], $2::text[], $3::text[], $4::boolean[])
+               AS v(user_id, squad_name, team_name, is_captain)
+             WHERE cs."UserID" = v.user_id`,
+            [userIds, squadNames, teamNames, isCaptainFlags]
+        );
+
+        await client.query(
+            `INSERT INTO "TeamSettings" (team_name, team_coins)
+             SELECT UNNEST($1::text[]), 0
+             ON CONFLICT (team_name) DO NOTHING`,
+            [distinctTeamNames]
+        );
 
         await client.query('COMMIT');
 
@@ -256,88 +188,13 @@ export async function importRostersData(csvContent: string) {
     }
 }
 
-// ── 全服天使通話配對抽籤 ──────────────────────────────────
-export async function runAngelCallPairing() {
-    const supabase = createClient(_supabaseUrl, _supabaseKey);
-
-    // 取得所有有隸屬小隊的成員
-    const { data: users, error } = await supabase
-        .from('CharacterStats')
-        .select('UserID, Name, TeamName')
-        .not('TeamName', 'is', null);
-
-    if (error || !users) {
-        return { success: false, error: error?.message || '無法取得成員資料' };
-    }
-
-    // 依小隊分組
-    const teamMap = new Map<string, Array<{ id: string; name: string }>>();
-    for (const u of users) {
-        if (!u.TeamName) continue;
-        if (!teamMap.has(u.TeamName)) teamMap.set(u.TeamName, []);
-        teamMap.get(u.TeamName)!.push({ id: u.UserID, name: u.Name });
-    }
-
-    const allPairings: Array<{ teamName: string; group: Array<{ id: string; name: string }> }> = [];
-
-    for (const [teamName, members] of teamMap) {
-        if (members.length < 2) continue;
-
-        // 隨機洗牌
-        const shuffled = [...members].sort(() => Math.random() - 0.5);
-
-        let i = 0;
-        while (i < shuffled.length) {
-            const remaining = shuffled.length - i;
-            if (remaining <= 1) break;
-            // 剩3人或2人：整組配對
-            if (remaining <= 3) {
-                allPairings.push({ teamName, group: shuffled.slice(i) });
-                break;
-            }
-            // 一般情況：兩兩配對
-            allPairings.push({ teamName, group: shuffled.slice(i, i + 2) });
-            i += 2;
-        }
-    }
-
-    // 取本週週一日期作為 key
-    const now = new Date();
-    const day = now.getDay() || 7;
-    now.setDate(now.getDate() - (day - 1));
-    const weekOf = now.toISOString().slice(0, 10);
-
-    const pairingsJson = JSON.stringify({ weekOf, pairings: allPairings });
-    const { error: saveErr } = await supabase.from('SystemSettings').upsert(
-        { SettingName: 'AngelCallPairings', Value: pairingsJson },
-        { onConflict: 'SettingName' }
-    );
-    if (saveErr) return { success: false, error: '儲存失敗：' + saveErr.message };
-
-    await logAdminAction('angel_call_pairing', 'admin', undefined, undefined, { weekOf, pairCount: allPairings.length });
-
-    return { success: true, weekOf, pairings: allPairings };
-}
-
-// ── 玩家設定生日 ────────────────────────────────────────
-export async function saveBirthday(userId: string, birthday: string) {
-    // Validate format YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return { success: false, error: '日期格式錯誤，請使用 YYYY-MM-DD' };
-    const supabase = createClient(_supabaseUrl, _supabaseKey);
-    const { error } = await supabase
-        .from('CharacterStats')
-        .update({ Birthday: birthday })
-        .eq('UserID', userId);
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-}
 
 // ── 成員管理：列出全部成員 ────────────────────────────────
 export async function listAllMembers() {
     const supabase = createClient(_supabaseUrl, _supabaseKey);
     const { data, error } = await supabase
         .from('CharacterStats')
-        .select('UserID, Name, Email, SquadName, TeamName, IsCaptain, IsCommandant, Level, Exp')
+        .select('UserID, Name, Email, SquadName, TeamName, IsCaptain, IsCommandant, Score, Streak')
         .order('Name');
     if (error) return { success: false, error: error.message, members: [] };
     return { success: true, members: data || [] };
@@ -367,21 +224,25 @@ export async function transferMember(
     return { success: true };
 }
 
-// ── 成員管理：設定隊長/大隊長角色 ────────────────────────────
+// ── 成員管理：更新角色（隊長 / 大隊長）────────────────────────
 export async function setMemberRole(
     targetUserId: string,
     role: 'captain' | 'commandant' | 'none',
     actorName: string = 'admin'
 ) {
     const supabase = createClient(_supabaseUrl, _supabaseKey);
-    const update: Record<string, boolean> = {};
-    if (role === 'captain') { update.IsCaptain = true; update.IsCommandant = false; }
-    else if (role === 'commandant') { update.IsCaptain = false; update.IsCommandant = true; }
-    else { update.IsCaptain = false; update.IsCommandant = false; }
+    const { data: member } = await supabase.from('CharacterStats').select('Name').eq('UserID', targetUserId).single();
+    if (!member) return { success: false, error: '找不到此成員' };
 
-    const { error } = await supabase.from('CharacterStats').update(update).eq('UserID', targetUserId);
+    const { error } = await supabase
+        .from('CharacterStats')
+        .update({
+            IsCaptain: role === 'captain',
+            IsCommandant: role === 'commandant',
+        })
+        .eq('UserID', targetUserId);
     if (error) return { success: false, error: error.message };
 
-    await logAdminAction('member_role_change', actorName, targetUserId, undefined, { role });
+    await logAdminAction('set_member_role', actorName, targetUserId, member.Name, { role });
     return { success: true };
 }

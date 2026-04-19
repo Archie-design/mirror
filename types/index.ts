@@ -115,12 +115,6 @@ export interface Testimony {
   created_at: string;
 }
 
-export interface TopicHistory {
-  id: number;
-  TopicTitle: string;
-  created_at: string;
-}
-
 export interface NineGridCell {
   label: string;
   description: string;
@@ -166,12 +160,4 @@ export interface SquadMemberStats {
   lastCheckIn?: string; // 最近一筆 DailyLogs Timestamp（YYYY-MM-DD）
 }
 
-export interface AngelCallPairing {
-  teamName: string;
-  group: Array<{ id: string; name: string }>;
-}
 
-export interface AngelCallPairingsData {
-  weekOf: string;
-  pairings: AngelCallPairing[];
-}

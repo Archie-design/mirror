@@ -26,66 +26,6 @@ const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
 // 戲劇進修類：一級審核（小隊長核准即最終，直接入帳）
 const DRAMA_TRAINING_QUEST_IDS = new Set(['o2_1', 'o2_2', 'o2_3', 'o2_4']);
 
-// ── 學員：提交一次性任務申請（o1–o7）────────────────────────────────────────
-export async function submitOneTimeApplication(
-    userId: string,
-    userName: string,
-    squadName: string | null,
-    battalionName: string | null,
-    questId: 'o1' | 'o2_1' | 'o2_2' | 'o2_3' | 'o2_4' | 'o3' | 'o4' | 'o5' | 'o6' | 'o7',
-    target: string,       // 申請描述（課程名稱、說明、傳愛對象…）
-    date: string,         // YYYY-MM-DD
-    description: string = '',
-    screenshotUrl?: string
-) {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // 截止日檢查
-    const ONE_TIME_DEADLINE = '2026-07-01';
-    if (new Date().toISOString().slice(0, 10) > ONE_TIME_DEADLINE) {
-        return { success: false, error: `一次性任務申請已截止（截止日：${ONE_TIME_DEADLINE}）` };
-    }
-
-    const config = BONUS_QUEST_CONFIG[questId];
-    if (!config) return { success: false, error: '無效的任務 ID' };
-
-    // o5/o6 報高階允許多次（每階一次），o7 傳愛無上限，其他每人限 1 次
-    const isSingleSubmission = !['o5', 'o6', 'o7'].includes(questId);
-    if (isSingleSubmission) {
-        const { data: existing } = await supabase
-            .from('BonusApplications')
-            .select('id, status')
-            .eq('user_id', userId)
-            .eq('quest_id', questId)
-            .neq('status', 'rejected')
-            .maybeSingle();
-
-        if (existing) {
-            return { success: false, error: `「${config.title}」已有申請記錄，無法重複提交` };
-        }
-    }
-
-    const { data, error } = await supabase
-        .from('BonusApplications')
-        .insert({
-            user_id: userId,
-            user_name: userName,
-            squad_name: squadName,
-            battalion_name: battalionName,
-            interview_target: target,
-            interview_date: date,
-            description,
-            quest_id: questId,
-            screenshot_url: screenshotUrl,
-            status: 'pending',
-        })
-        .select()
-        .single();
-
-    if (error) return { success: false, error: '提交失敗：' + error.message };
-    return { success: true, application: data as BonusApplication };
-}
-
 // ── 小隊長：初審────────────────────────────────────────────────────────────
 // o2_1–o2_4 戲劇進修（一級審核）：初審通過直接入帳
 // o1 / o3–o7（二級審核）：初審通過後進入大隊長終審佇列

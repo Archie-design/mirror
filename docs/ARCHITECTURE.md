@@ -53,7 +53,7 @@
 flowchart LR
     User([會員 Browser]) -- HTTPS --> Vercel
     Volunteer([志工 / 隊長]) -- HTTPS --> Vercel
-    Admin([Admin / 製片總部]) -- HTTPS --> Vercel
+    Admin([Admin / 管理後台]) -- HTTPS --> Vercel
     LineUser([LINE App 會員]) -- LINE Bot --> LINE
     LINE[LINE Server] -- Webhook POST --> Vercel
     Vercel[Vercel Functions / Edge] -- SQL & RPC --> Supabase[(Supabase PG + Storage)]
@@ -366,7 +366,7 @@ erDiagram
 | 核心 | `TeamSettings` | 小隊設定（指定通告、抽籤歷史） |
 | 任務 | `BonusApplications` | 一次性任務 o1–o7 的兩段審核狀態機 |
 | 任務 | `MandatoryQuestHistory` | 每週指定通告抽籤的稽核軌跡 |
-| 任務 | `temporaryquests` | 製片總部臨時加任務（小寫 PostgreSQL 預設名稱） |
+| 任務 | `temporaryquests` | 管理後台臨時加任務（小寫 PostgreSQL 預設名稱） |
 | 課程 | `CourseRegistrations` / `CourseAttendance` | 親證班報名 + QR 簽到 |
 | 聚會 | `SquadGatheringCheckins` | 小隊聯誼會（wk3）出席紀錄 |
 | 九宮格 | `UserNineGrid` / `NineGridTemplates` | 五大運勢九宮格進度與管理員模板 |
@@ -581,7 +581,7 @@ sequenceDiagram
     autonumber
     actor User as 會員
     actor Captain as 隊長
-    actor Admin as 製片總部
+    actor Admin as 管理後台
     participant SA as bonus.ts
     participant Quest as quest.ts<br/>processCheckInTransaction
     participant DB as BonusApplications
@@ -816,7 +816,7 @@ flowchart LR
 
 **關鍵觀察**：
 
-- `processCheckInTransaction` 是**中央入帳函式**（粗線節點 `Q`），被四條路徑共用：日常打卡、九宮格完成、隊長 bonus 審核、製片總部 bonus 審核。任何修改都會影響全部入帳。
+- `processCheckInTransaction` 是**中央入帳函式**（粗線節點 `Q`），被四條路徑共用：日常打卡、九宮格完成、隊長 bonus 審核、管理後台 bonus 審核。任何修改都會影響全部入帳。
 - `pg` 直連目前只有 `fines.ts`、`admin.ts` 用到（顯式交易需求）。
 - 沒有 caller 指向 `dice.ts` 或 `items.ts` — 這兩個檔案可在下次清理時刪除。
 
@@ -836,7 +836,7 @@ flowchart LR
 | **週一 12:00 抽通告** | Cron + ~50 隊長 | 1 分鐘 | `autoDrawAllSquads` × 1 + 隊長手動 ×N |
 | **聯誼會 wk3 集中掃 QR** | ~50 人 / 30 秒 | 30 秒 | `checkInToGathering` 連續觸發 |
 | **親證班開場前 15 分鐘** | ~80–120 人同時 | 15 分鐘 | `registerForCourse` + 志工 `markAttendance` 交錯 |
-| **製片總部刷新 dashboard** | 1–2 admin | 持續 | `getBattalionMembersStats` 多次 round-trip |
+| **管理後台刷新 dashboard** | 1–2 admin | 持續 | `getBattalionMembersStats` 多次 round-trip |
 
 ### 6.2 壓力破口清單
 

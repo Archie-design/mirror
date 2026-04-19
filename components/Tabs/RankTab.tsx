@@ -142,7 +142,7 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
                                     {/* 名字 */}
                                     <div className="flex-1 text-left">
                                         <p className={`font-bold text-base ${isSelf ? 'text-[#C0392B]' : 'text-[#1A2A1A]'}`}>
-                                            {p.Name}{isSelf && ' 🍿'}
+                                            {p.Name}{isSelf && ' 👣'}
                                         </p>
                                         <p className="text-sm text-gray-400 italic uppercase tracking-widest">
                                             {p.TeamName || p.SquadName || ''}

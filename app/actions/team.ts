@@ -80,19 +80,17 @@ export async function autoDrawAllSquads() {
     const supabase = createClient(supabaseUrl, supabaseActionKey);
     const weekMondayStr = getCurrentWeekMondayStr();
 
-    // Collect all distinct squad names from CharacterStats and ensure TeamSettings rows exist
-    const { data: squadsInStats } = await supabase
-        .from('CharacterStats')
-        .select('TeamName')
-        .not('TeamName', 'is', null);
+    // 確保所有出現在 CharacterStats 的小隊都有 TeamSettings 紀錄（批次 insert，避免 N+1）
+    const [{ data: squadsInStats }, { data: existingSettings }] = await Promise.all([
+        supabase.from('CharacterStats').select('TeamName').not('TeamName', 'is', null),
+        supabase.from('TeamSettings').select('team_name'),
+    ]);
     if (squadsInStats) {
-        const distinctNames = [...new Set(squadsInStats.map((r: any) => r.TeamName).filter(Boolean))];
-        for (const name of distinctNames) {
-            const { data: exists } = await supabase
-                .from('TeamSettings').select('team_name').eq('team_name', name).maybeSingle();
-            if (!exists) {
-                await supabase.from('TeamSettings').insert({ team_name: name, team_coins: 0 });
-            }
+        const distinctNames = [...new Set(squadsInStats.map((r: any) => r.TeamName).filter(Boolean))] as string[];
+        const existingSet = new Set((existingSettings || []).map((r: any) => r.team_name));
+        const missing = distinctNames.filter(n => !existingSet.has(n));
+        if (missing.length > 0) {
+            await supabase.from('TeamSettings').insert(missing.map(name => ({ team_name: name, team_coins: 0 })));
         }
     }
 
@@ -100,6 +98,7 @@ export async function autoDrawAllSquads() {
     if (error || !allTeams) return { success: false, error: error?.message || '無法讀取劇組列表' };
 
     const drawn: { squadName: string; questId: string; questName: string }[] = [];
+    const batchUpdates: Array<Record<string, unknown>> = [];
 
     for (const ts of allTeams) {
         if (ts.mandatory_quest_week === weekMondayStr) continue;
@@ -110,14 +109,13 @@ export async function autoDrawAllSquads() {
         const questId = pool[Math.floor(Math.random() * pool.length)];
         const updatedHistory = remaining.length > 0 ? [...history, questId] : [questId];
 
-        await supabase.from('TeamSettings').update({
-            mandatory_quest_id: questId,
-            mandatory_quest_week: weekMondayStr,
-            quest_draw_history: updatedHistory,
-        }).eq('team_name', ts.team_name);
-
         const questName = DAILY_BASIC_CONFIG.find(q => q.id === questId)?.title || questId;
         drawn.push({ squadName: ts.team_name, questId, questName });
+        batchUpdates.push({ ...ts, mandatory_quest_id: questId, mandatory_quest_week: weekMondayStr, quest_draw_history: updatedHistory });
+    }
+
+    if (batchUpdates.length > 0) {
+        await supabase.from('TeamSettings').upsert(batchUpdates, { onConflict: 'team_name' });
     }
 
     if (drawn.length > 0) {
@@ -250,16 +248,3 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
     return { success: true, members: grouped };
 }
 
-export async function setSquadRole(captainUserId: string, targetUserId: string, role: string | null) {
-    const supabase = createClient(supabaseUrl, supabaseActionKey);
-
-    const { error } = await supabase
-        .from('CharacterStats')
-        .update({ SquadRole: role })
-        .eq('UserID', targetUserId);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAdminAction('set_squad_role', captainUserId, targetUserId, undefined, { role: role ?? null });
-    return { success: true };
-}
