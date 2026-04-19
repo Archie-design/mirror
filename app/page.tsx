@@ -833,8 +833,12 @@ export default function App() {
               setUserData(prev => prev ? { ...prev, ...updates } : prev);
             }}
             onRefresh={async () => {
-              const r = await getMemberGrid(userData.UserID);
-              if (r.success) setUserGrid(r.grid);
+              const [gridRes, statsRes] = await Promise.all([
+                getMemberGrid(userData.UserID),
+                supabase.from('CharacterStats').select('*').eq('UserID', userData.UserID).single(),
+              ]);
+              if (gridRes.success) setUserGrid(gridRes.grid);
+              if (statsRes.data) setUserData(statsRes.data as CharacterStats);
             }}
           />
         )}
