@@ -1,12 +1,15 @@
 import React from 'react';
 import { Star, Cake } from 'lucide-react';
-import { CharacterStats } from '@/types';
+import { CharacterStats, BonusApplication } from '@/types';
+import { BonusQuestsSection } from '@/components/Tabs/BonusQuestsSection';
 
 interface StatsTabProps {
     userData: CharacterStats;
+    myBonusApps: BonusApplication[];
+    onBonusRefresh: () => void;
 }
 
-export function StatsTab({ userData }: StatsTabProps) {
+export function StatsTab({ userData, myBonusApps, onBonusRefresh }: StatsTabProps) {
 
     const displayAge = userData.Birthday
         ? Math.floor((Date.now() - new Date(userData.Birthday).getTime()) / (365.25 * 24 * 3600 * 1000))
@@ -43,6 +46,11 @@ export function StatsTab({ userData }: StatsTabProps) {
                 </span>
             </div>
 
+            <BonusQuestsSection
+                userData={userData}
+                myApplications={myBonusApps}
+                onRefresh={onBonusRefresh}
+            />
         </div>
     );
 }

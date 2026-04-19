@@ -187,6 +187,63 @@ export async function reviewBonusByAdmin(
     return { success: true, newStatus };
 }
 
+// ── 學員：提交一次性任務申請 ──────────────────────────────────────────────────
+const MULTI_SUBMIT_QUEST_IDS = new Set(['o5', 'o6', 'o7']);
+
+export async function submitBonusApplication(
+    userId: string,
+    userName: string,
+    squadName: string,
+    battalionName: string,
+    questId: string,
+    interviewTarget: string,
+    interviewDate: string,
+    description?: string
+): Promise<{ success: boolean; error?: string }> {
+    if (new Date() > new Date('2026-07-02T00:00:00+08:00')) {
+        return { success: false, error: '一次性任務已截止（2026-07-01）' };
+    }
+    if (!interviewTarget.trim()) return { success: false, error: '申請說明不可為空' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(interviewDate)) return { success: false, error: '日期格式錯誤，請填寫 YYYY-MM-DD' };
+    if (!BONUS_QUEST_CONFIG[questId]) return { success: false, error: '無效的任務 ID' };
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (!MULTI_SUBMIT_QUEST_IDS.has(questId)) {
+        const { data: existing } = await supabase
+            .from('BonusApplications')
+            .select('id, status')
+            .eq('user_id', userId)
+            .eq('quest_id', questId)
+            .in('status', ['pending', 'squad_approved', 'approved'])
+            .maybeSingle();
+
+        if (existing) {
+            const statusLabel: Record<string, string> = {
+                pending: '審核中',
+                squad_approved: '初審通過',
+                approved: '已核准',
+            };
+            return { success: false, error: `此任務已有申請記錄（${statusLabel[existing.status] ?? existing.status}）` };
+        }
+    }
+
+    const { error } = await supabase.from('BonusApplications').insert({
+        user_id: userId,
+        user_name: userName,
+        squad_name: squadName,
+        battalion_name: battalionName,
+        quest_id: questId,
+        interview_target: interviewTarget.trim(),
+        interview_date: interviewDate,
+        description: description?.trim() || null,
+        status: 'pending',
+    });
+
+    if (error) return { success: false, error: '提交失敗：' + error.message };
+    return { success: true };
+}
+
 // ── 查詢申請列表 ─────────────────────────────────────────────────────────────
 export async function getBonusApplications(filter: {
     userId?: string;

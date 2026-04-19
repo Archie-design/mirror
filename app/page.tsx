@@ -101,6 +101,7 @@ export default function App() {
   const [teamMemberCount, setTeamMemberCount] = useState<number>(1);
 
   const [pendingBonusApps, setPendingBonusApps] = useState<BonusApplication[]>([]);
+  const [myBonusApps, setMyBonusApps] = useState<BonusApplication[]>([]);
 
   const [pendingFinalReviewApps, setPendingFinalReviewApps] = useState<BonusApplication[]>([]);
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
@@ -203,6 +204,10 @@ export default function App() {
         if (res.success && res.members) setSquadMembers(res.members);
         setSquadMembersLoaded(true);
       });
+      if (userData.TeamName) {
+        getBonusApplications({ squadName: userData.TeamName, status: 'pending' })
+          .then(r => { if (r.success) setPendingBonusApps(r.applications); });
+      }
     }
   };
 
@@ -559,7 +564,11 @@ export default function App() {
       const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
       if (tSettings) setTeamSettings(tSettings as TeamSettings);
     }
-    await refreshBonusApps(stats);
+    await Promise.all([
+      refreshBonusApps(stats),
+      getBonusApplications({ userId: stats.UserID, questIdPrefix: 'o' })
+        .then(r => { if (r.success) setMyBonusApps(r.applications); }),
+    ]);
     setUserData(stats);
   }, [refreshBonusApps]);
 
@@ -830,7 +839,16 @@ export default function App() {
           />
         )}
         {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} />}
-        {activeTab === 'stats' && userData && <StatsTab userData={userData} />}
+        {activeTab === 'stats' && userData && (
+          <StatsTab
+            userData={userData}
+            myBonusApps={myBonusApps}
+            onBonusRefresh={() =>
+              getBonusApplications({ userId: userData.UserID, questIdPrefix: 'o' })
+                .then(r => { if (r.success) setMyBonusApps(r.applications); })
+            }
+          />
+        )}
         {activeTab === 'captain' && showCaptainTab && userData && (
           <CaptainTab
             teamName={userData.TeamName || '未編組'}

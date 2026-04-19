@@ -41,7 +41,9 @@ export function Header({ userData, onLogout, companionType }: HeaderProps) {
                 )}
                 <p className="text-sm text-yellow-300/60 font-black uppercase tracking-[0.25em] mb-1">你的黃磚路</p>
                 <div className="flex justify-between items-end">
-                    <p className="text-sm text-white/60 font-bold uppercase tracking-widest italic truncate">{userData?.SquadName} 小隊</p>
+                    <p className="text-sm text-white/60 font-bold uppercase tracking-widest italic truncate">
+                        {userData?.SquadName}{userData?.TeamName ? ` ${userData.TeamName.replace(`${userData.SquadName}-`, '')}` : ''}
+                    </p>
                     <p className="text-base text-yellow-200 font-mono tracking-tighter shrink-0">
                         {(userData?.Score ?? 0).toLocaleString()} 分
                     </p>
