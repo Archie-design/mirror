@@ -1,8 +1,12 @@
 'use client';
-import React, { useState } from 'react';
-import { CharacterStats, UserNineGrid } from '@/types';
+import React, { useMemo, useState } from 'react';
+import { Mic, Award } from 'lucide-react';
+import { CharacterStats, UserNineGrid, DailyLog, Quest } from '@/types';
 import { NineGridCard } from '@/components/NineGridCard';
-import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
+import { FORTUNE_COMPANIONS } from '@/components/Login/RegisterForm';
+import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
+import { getLogicalDateStr } from '@/lib/utils/time';
+import { WeekCalendarRow } from '@/components/WeekCalendarRow';
 
 const COMPANION_DETAILS: Record<string, {
     name: string; archetype: string; symbol: string; story: string; color: string; bgColor: string;
@@ -49,9 +53,19 @@ interface NineGridTabProps {
     grid: UserNineGrid | null;
     onFortuneSave: (fortunes: Record<string, number>) => Promise<void>;
     onRefresh: () => void;
+    logs: DailyLog[];
+    currentWeeklyMonday: Date;
+    onCheckIn: (q: Quest) => void;
+    onUndo: (q: Quest) => void;
+    questRewardOverrides?: Record<string, number>;
+    disabledQuests?: string[];
 }
 
-export function NineGridTab({ userId, userName, userData, grid, onFortuneSave, onRefresh }: NineGridTabProps) {
+export function NineGridTab({
+    userId, userName, userData, grid, onFortuneSave, onRefresh,
+    logs, currentWeeklyMonday, onCheckIn, onUndo,
+    questRewardOverrides, disabledQuests,
+}: NineGridTabProps) {
     const hasFortuneData = FORTUNE_COMPANIONS.some(f => (userData[f.dbCol as keyof CharacterStats] as number ?? 0) > 0);
 
     const [fortunes, setFortunes] = useState<Record<string, number>>(() => {
@@ -62,7 +76,6 @@ export function NineGridTab({ userId, userName, userData, grid, onFortuneSave, o
         return init;
     });
     const [saving, setSaving] = useState(false);
-    const lowestFortune = getLowestFortune(fortunes);
 
     const handleSubmit = async () => {
         setSaving(true);
@@ -70,10 +83,77 @@ export function NineGridTab({ userId, userName, userData, grid, onFortuneSave, o
         setSaving(false);
     };
 
+    const { hasCompletedCellThisWeek, wk4SmallQuest, wk4LargeQuest, wk4SmallCount, wk4LargeCount } = useMemo(() => {
+        if (!grid) return {
+            hasCompletedCellThisWeek: false,
+            wk4SmallQuest: undefined as Quest | undefined,
+            wk4LargeQuest: undefined as Quest | undefined,
+            wk4SmallCount: 0,
+            wk4LargeCount: 0,
+        };
+        const hasCell = grid.cells.some(
+            c => c.completed && c.completed_at && new Date(c.completed_at) >= currentWeeklyMonday
+        );
+        const disabledSet = new Set(disabledQuests || []);
+        const allWk4 = WEEKLY_QUEST_CONFIG
+            .filter(q => (q.id === 'wk4_small' || q.id === 'wk4_large') && !disabledSet.has(q.id))
+            .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
+        const countThisWeek = (qId: string) =>
+            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= currentWeeklyMonday).length;
+        return {
+            hasCompletedCellThisWeek: hasCell,
+            wk4SmallQuest: allWk4.find(q => q.id === 'wk4_small'),
+            wk4LargeQuest: allWk4.find(q => q.id === 'wk4_large'),
+            wk4SmallCount: countThisWeek('wk4_small'),
+            wk4LargeCount: countThisWeek('wk4_large'),
+        };
+    }, [grid, logs, currentWeeklyMonday, questRewardOverrides, disabledQuests]);
+
     if (grid) {
         const detail = COMPANION_DETAILS[grid.companion_type];
         const tagColor = detail?.color ?? '#1A6B4A';
         const tagBg = tagColor === '#1A6B4A' ? '#2E8B5A' : tagColor;
+
+        const makeWeekHandler = (questId: string, quest: Quest) => ({
+            onCheckIn: (_qid: string, day: Date) => {
+                const qId = `${questId}|${getLogicalDateStr(day)}`;
+                onCheckIn({ ...quest, id: qId });
+            },
+            onUndo: (_qid: string, day: Date) => {
+                const qId = `${questId}|${getLogicalDateStr(day)}`;
+                onUndo({ ...quest, id: qId });
+            },
+        });
+
+        const renderShareCard = (quest: Quest, count: number, icon: React.ReactNode) => {
+            const isCapped = count >= 1;
+            const isDisabled = isCapped || !hasCompletedCellThisWeek;
+            return (
+                <div className={`p-5 rounded-3xl border space-y-4 shadow-sm ${isCapped ? 'opacity-60 bg-white border-[#B2DFC0]' : 'bg-white border-[#B2DFC0]'}`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0">{icon}</div>
+                            <div>
+                                <p className="font-bold text-[#1A2A1A] text-base">{quest.title}</p>
+                                <p className="text-sm text-gray-500">每週 1 次 · +{quest.reward.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <span className={`text-sm font-bold ${isCapped ? 'text-[#C0392B]' : 'text-gray-500'}`}>{count} / 1</span>
+                    </div>
+                    {!hasCompletedCellThisWeek && !isCapped && (
+                        <p className="text-xs text-amber-600 font-bold px-1">請先完成本週至少一個格子</p>
+                    )}
+                    <WeekCalendarRow
+                        questId={quest.id}
+                        logs={logs}
+                        disabled={isDisabled}
+                        currentWeeklyMonday={currentWeeklyMonday}
+                        {...makeWeekHandler(quest.id, quest)}
+                    />
+                </div>
+            );
+        };
+
         return (
             <div className="space-y-4">
                 <div className="flex items-center gap-2 px-1">
@@ -107,6 +187,17 @@ export function NineGridTab({ userId, userName, userData, grid, onFortuneSave, o
                     </div>
                 )}
                 <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} />
+
+                {/* 人生大戲分享 */}
+                {(wk4SmallQuest || wk4LargeQuest) && (
+                    <section className="space-y-3 pt-2">
+                        <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">人生大戲分享</h2>
+                        <div className="space-y-3">
+                            {wk4SmallQuest && renderShareCard(wk4SmallQuest, wk4SmallCount, <Mic size={22} />)}
+                            {wk4LargeQuest && renderShareCard(wk4LargeQuest, wk4LargeCount, <Award size={22} />)}
+                        </div>
+                    </section>
+                )}
             </div>
         );
     }

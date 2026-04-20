@@ -1,22 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { getSessionUser } from '@/lib/auth';
 
-// Consumes the short-lived LINE login handoff cookie and returns the UserID.
-// The cookie is set by /api/auth/line/callback and is HttpOnly — the client
-// cannot read it directly, so it calls this endpoint to exchange it.
-export async function GET(request: NextRequest) {
-    const uid = request.cookies.get('line_session_uid')?.value;
-
+// 驗證 HMAC 簽章 session cookie 並回傳 UserID。
+// 不再清除 cookie——cookie 是長效 session，供後續 server action 身分驗證使用。
+export async function GET() {
+    const uid = await getSessionUser();
     if (!uid) {
         return NextResponse.json({ error: 'no_session' }, { status: 401 });
     }
-
-    // Clear the cookie immediately — single-use handoff token
-    const res = NextResponse.json({ userId: uid });
-    res.cookies.set('line_session_uid', '', {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 0,
-        path: '/',
-    });
-    return res;
+    return NextResponse.json({ userId: uid });
 }

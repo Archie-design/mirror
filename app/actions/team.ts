@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { DAILY_BASIC_CONFIG } from "@/lib/constants";
 import { logAdminAction } from "@/app/actions/admin";
 import { SquadMemberStats } from "@/types";
+import { requireSelf, authErrorResponse } from "@/lib/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseActionKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -27,6 +28,8 @@ function getCurrentWeekMondayStr(): string {
  * - 已抽過的不重複，全部抽完後重置循環
  */
 export async function drawWeeklyQuestForSquad(squadName: string, captainUserId: string) {
+    try { await requireSelf(captainUserId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseActionKey);
     const weekMondayStr = getCurrentWeekMondayStr();
 
@@ -145,6 +148,8 @@ export async function autoDrawAllSquads() {
  * 小隊長查看本隊成員狀態（含最近打卡日）
  */
 export async function getSquadMembersStats(captainUserId: string): Promise<{ success: boolean; members?: SquadMemberStats[]; error?: string }> {
+    try { await requireSelf(captainUserId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseActionKey);
 
     const { data: captain } = await supabase
@@ -196,6 +201,8 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
  * 大隊長查看全大隊各小隊成員狀態，以 TeamName 分組
  */
 export async function getBattalionMembersStats(commandantUserId: string): Promise<{ success: boolean; members?: Record<string, SquadMemberStats[]>; error?: string }> {
+    try { await requireSelf(commandantUserId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseActionKey);
 
     const { data: commandant } = await supabase

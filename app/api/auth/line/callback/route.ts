@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { signUserId, SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth';
 
 // Handles LINE Login OAuth callback
 // GET /api/auth/line/callback?code=XXX&state=YYY
@@ -105,12 +106,12 @@ export async function GET(request: NextRequest) {
                 return NextResponse.redirect(`${appUrl}/?line_error=not_bound&lid=${encodeURIComponent(lineUserId)}`);
             }
 
-            // Hand off UserID via HttpOnly cookie (never expose in URL)
+            // 設定長效簽章 session cookie（HMAC-signed UserID），供 server action 驗證身分
             const res = NextResponse.redirect(`${appUrl}/?line_auth=1`);
-            res.cookies.set('line_session_uid', user.UserID, {
+            res.cookies.set(SESSION_COOKIE, signUserId(user.UserID), {
                 httpOnly: true,
                 sameSite: 'lax',
-                maxAge: 120, // 2-minute window for the handoff, then expires
+                maxAge: SESSION_TTL_SECONDS,
                 path: '/',
                 secure: process.env.NODE_ENV === 'production',
             });

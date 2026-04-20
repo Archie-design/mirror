@@ -3,26 +3,13 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { NineGridTemplate, UserNineGrid, UserNineGridCell } from '@/types';
-import { processCheckInTransaction } from '@/app/actions/quest';
 import { logAdminAction } from '@/app/actions/admin';
+import { requireSelf, authErrorResponse } from '@/lib/auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-import { COMPANION_TYPES, type CompanionType } from '@/lib/constants';
-
-// ── 九宮格連線檢查（3格連線：橫3 + 直3 + 斜2 = 8條）───────────────────────
-const NINE_GRID_LINES = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // 橫
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // 直
-    [0, 4, 8], [2, 4, 6],             // 斜
-];
-
-function countCompletedLines(cells: UserNineGridCell[]): number {
-    return NINE_GRID_LINES.filter(([a, b, c]) =>
-        cells[a]?.completed && cells[b]?.completed && cells[c]?.completed
-    ).length;
-}
+import { type CompanionType } from '@/lib/constants';
 
 // ── 管理員：取得所有公版模板 ──────────────────────────────────────────────────
 export async function getTemplates(): Promise<{ success: boolean; templates: NineGridTemplate[]; error?: string }> {
@@ -49,7 +36,7 @@ export async function updateTemplate(
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { error } = await supabase
         .from('NineGridTemplates')
-        .update({ cells, cell_score: cellScore, updated_at: new Date().toISOString() })
+        .update({ cells, cell_score: cellScore })
         .eq('companion_type', companionType);
 
     if (error) return { success: false, error: '模板更新失敗：' + error.message };
@@ -64,6 +51,8 @@ export async function updateTemplate(
 
 // ── 學員：初始化個人九宮格（從公版模板複製）────────────────────────────────────
 export async function initMemberGrid(userId: string, companionType: CompanionType) {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // 取得公版模板
@@ -90,7 +79,6 @@ export async function initMemberGrid(userId: string, companionType: CompanionTyp
             companion_type: companionType,
             cells,
             cell_score: template.cell_score,
-            updated_at: new Date().toISOString(),
         }, { onConflict: 'member_id' });
 
     if (error) return { success: false, error: '初始化失敗：' + error.message };
@@ -111,57 +99,28 @@ export async function getMemberGrid(userId: string): Promise<{ success: boolean;
 }
 
 // ── 學員：完成一格打卡 ────────────────────────────────────────────────────────
-export async function completeCell(userId: string, userName: string, cellIndex: number) {
+// 走 DB RPC process_nine_grid_cell：RPC 以 SELECT FOR UPDATE 鎖定 UserNineGrid row，
+// 在同一 transaction 完成 cells 更新、DailyLogs 記錄、連線加分，避免 race condition。
+export async function completeCell(userId: string, _userName: string, cellIndex: number) {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
     if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data: gridRow } = await supabase
-        .from('UserNineGrid')
-        .select('*')
-        .eq('member_id', userId)
-        .single();
+    const { data, error } = await supabase.rpc('process_nine_grid_cell', {
+        p_user_id: userId,
+        p_cell_index: cellIndex,
+    });
 
-    if (!gridRow) return { success: false, error: '尚未初始化九宮格，請先選擇旅伴' };
-
-    const cells: UserNineGridCell[] = gridRow.cells;
-    if (cells[cellIndex].completed) return { success: false, error: '此格已完成，不可重複打卡' };
-
-    // 標記格子完成
-    const prevLines = countCompletedLines(cells);
-    cells[cellIndex] = { ...cells[cellIndex], completed: true, completed_at: new Date().toISOString() };
-    const newLines = countCompletedLines(cells);
-
-    // 更新 DB
-    const { error: updateErr } = await supabase
-        .from('UserNineGrid')
-        .update({ cells, updated_at: new Date().toISOString() })
-        .eq('member_id', userId);
-
-    if (updateErr) return { success: false, error: '更新失敗：' + updateErr.message };
-
-    // 發放格子分數
-    const cellScore = gridRow.cell_score as number;
-    const cellQuestId = `nine_grid_cell|${cellIndex}`;
-    const cellResult = await processCheckInTransaction(userId, cellQuestId, `九宮格第${cellIndex + 1}格`, cellScore);
-    if (!cellResult.success) {
-        return { success: true, warning: `格子已標記完成，但分數入帳失敗：${cellResult.error}` };
-    }
-
-    // 發放連線獎勵（每條+300，最多8條）
-    const newLineCount = newLines - prevLines;
-    let lineBonus = 0;
-    if (newLineCount > 0) {
-        lineBonus = newLineCount * 300;
-        const lineQuestId = `nine_grid_line|cell${cellIndex}`;
-        await processCheckInTransaction(userId, lineQuestId, `九宮格連線加分（${newLineCount}條）`, lineBonus);
+    if (error) return { success: false, error: 'RPC 錯誤：' + error.message };
+    if (!data || data.success === false) {
+        return { success: false, error: (data && data.error) || '打卡失敗' };
     }
 
     return {
         success: true,
-        cellScore,
-        lineBonus,
-        newLinesCompleted: newLineCount,
-        totalLinesCompleted: newLines,
+        lineBonus: data.lineBonus ?? 0,
+        newLinesCompleted: data.newLinesCompleted ?? 0,
+        totalLinesCompleted: data.totalLinesCompleted ?? 0,
     };
 }
 
@@ -175,6 +134,7 @@ export async function updateMemberCellText(
     label: string,
     description: string
 ) {
+    try { await requireSelf(captainId); } catch (e) { return authErrorResponse(e)!; }
     if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -212,7 +172,7 @@ export async function updateMemberCellText(
 
     const { error } = await supabase
         .from('UserNineGrid')
-        .update({ cells, updated_at: new Date().toISOString() })
+        .update({ cells })
         .eq('member_id', memberId);
 
     if (error) return { success: false, error: '更新失敗：' + error.message };
@@ -227,6 +187,11 @@ export async function updateMemberCellText(
 
 // ── 小隊長：查看小隊所有成員的九宮格 ─────────────────────────────────────────
 export async function getSquadGrids(captainId: string): Promise<{ success: boolean; grids: (UserNineGrid & { user_name: string })[]; error?: string }> {
+    try { await requireSelf(captainId); } catch (e) {
+        const r = authErrorResponse(e)!;
+        return { success: false, grids: [], error: r.error };
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: captain } = await supabase

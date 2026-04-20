@@ -2,7 +2,7 @@
 
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import { processCheckInTransaction } from '@/app/actions/quest';
+import { requireSelf, authErrorResponse } from '@/lib/auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -26,6 +26,8 @@ export async function checkInToGathering(
     userId: string,
     userName: string
 ): Promise<{ success: boolean; error?: string; alreadyCheckedIn?: boolean }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { error } = await supabase
@@ -80,6 +82,8 @@ export async function getUserGatheringCheckin(
     gatheringId: string,
     userId: string
 ): Promise<{ checkedIn: boolean }> {
+    try { await requireSelf(userId); } catch { return { checkedIn: false }; }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data } = await supabase
         .from('SquadGatheringCheckins')

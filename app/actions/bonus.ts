@@ -3,8 +3,10 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { BonusApplication } from '@/types';
-import { processCheckInTransaction } from '@/app/actions/quest';
+import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
+import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { verifyAdminSession } from '@/app/actions/admin-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -35,6 +37,8 @@ export async function reviewBonusBySquadLeader(
     approve: boolean,
     notes: string = ''
 ) {
+    try { await requireSelf(reviewerId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: reviewer } = await supabase
@@ -88,7 +92,7 @@ export async function reviewBonusBySquadLeader(
 
         if (updateErr) return { success: false, error: '審核更新失敗：' + updateErr.message };
 
-        const checkInRes = await processCheckInTransaction(
+        const checkInRes = await processCheckInCore(
             app.user_id,
             app.quest_id,
             bonusInfo.title,
@@ -133,6 +137,8 @@ export async function reviewBonusByAdmin(
     notes: string = '',
     reviewerName: string = 'admin'
 ) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: app } = await supabase
@@ -163,7 +169,7 @@ export async function reviewBonusByAdmin(
         const reward = bonusInfo ? bonusInfo.reward : 1000;
         const rewardTitle = bonusInfo ? bonusInfo.title : '一次性任務獎勵';
 
-        const checkInRes = await processCheckInTransaction(
+        const checkInRes = await processCheckInCore(
             app.user_id,
             app.quest_id,
             rewardTitle,
@@ -200,6 +206,8 @@ export async function submitBonusApplication(
     interviewDate: string,
     description?: string
 ): Promise<{ success: boolean; error?: string }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
     if (new Date() > new Date('2026-07-02T00:00:00+08:00')) {
         return { success: false, error: '一次性任務已截止（2026-07-01）' };
     }

@@ -44,32 +44,34 @@ interface NineGridCardProps {
 export function NineGridCard({ grid, userId, userName, onRefresh }: NineGridCardProps) {
     const [completing, setCompleting] = React.useState<number | null>(null);
     const [msg, setMsg] = React.useState('');
+    // ref-based lock：state 更新是 async，極快雙擊可能在 setCompleting 生效前觸發兩次，
+    // 造成同格重複呼叫 server（server dedup 擋得住，但先在前端擋可避免無用 RPC）
+    const completingRef = React.useRef<number | null>(null);
 
     const color = getCompanionColor(grid.companion_type);
     const completedLines = getCompletedLines(grid.cells);
     const completedCells = grid.cells.filter(c => c.completed).length;
-    const cellScore = grid.cell_score;
     const lineBonus = completedLines.length * 300;
-    const totalScore = completedCells * cellScore + lineBonus;
     const highlightedIndices = new Set(completedLines.flat());
 
     const handleComplete = async (idx: number) => {
         if (grid.cells[idx].completed) return;
+        if (completingRef.current !== null) return;
+        completingRef.current = idx;
         setCompleting(idx);
         setMsg('');
-        const res = await completeCell(userId, userName, idx);
-        if (res.success) {
-            let notice = `+${res.cellScore} 分`;
-            if (res.lineBonus && res.lineBonus > 0) notice += `　連線獎勵 +${res.lineBonus}！`;
-            setMsg(notice);
-            onRefresh();
-        } else if (res.warning) {
-            setMsg(res.warning);
-            onRefresh();
-        } else {
-            setMsg('失敗：' + (res as { error?: string }).error);
+        try {
+            const res = await completeCell(userId, userName, idx);
+            if (res.success) {
+                if (res.lineBonus && res.lineBonus > 0) setMsg(`連線獎勵 +${res.lineBonus}！`);
+                onRefresh();
+            } else {
+                setMsg('失敗：' + (res as { error?: string }).error);
+            }
+        } finally {
+            completingRef.current = null;
+            setCompleting(null);
         }
-        setCompleting(null);
     };
 
     return (
@@ -86,7 +88,7 @@ export function NineGridCard({ grid, userId, userName, onRefresh }: NineGridCard
                 </div>
                 <div className="text-right">
                     <p className="text-xs text-[#5A7A5A]">{completedCells}/9 格完成</p>
-                    <p className="text-xs font-black" style={{ color }}>+{totalScore} 分</p>
+                    {lineBonus > 0 && <p className="text-xs font-black" style={{ color }}>連線 +{lineBonus} 分</p>}
                 </div>
             </div>
 
@@ -166,11 +168,12 @@ export function NineGridCard({ grid, userId, userName, onRefresh }: NineGridCard
             )}
 
             {/* Score breakdown */}
-            <div className="flex gap-3 text-[10px] text-[#7A9A7A]">
-                <span>格子分：{completedCells} × {cellScore} = {completedCells * cellScore}</span>
-                <span>連線獎勵：{lineBonus}</span>
-                <span className="font-black" style={{ color }}>合計：{totalScore}</span>
-            </div>
+            {lineBonus > 0 && (
+                <div className="flex gap-3 text-[10px] text-[#7A9A7A]">
+                    <span>連線獎勵：{lineBonus}</span>
+                    <span className="font-black" style={{ color }}>合計：{lineBonus}</span>
+                </div>
+            )}
 
             {/* Feedback message */}
             {msg && (

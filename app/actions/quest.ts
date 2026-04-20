@@ -3,6 +3,8 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { getLogicalDateStr } from '@/lib/utils/time';
+import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { processCheckInCore } from '@/lib/checkin-core';
 
 function getServiceClient() {
     return createClient(
@@ -11,31 +13,17 @@ function getServiceClient() {
     );
 }
 
-// 通用打卡入帳：呼叫 process_checkin RPC（含每日上限檢查）
-// quest logic 已移至 SQL 函式（參見 202604160001_new_quest_system.sql）
+// 用戶本人直接打卡（UI→server action）：以 session cookie 驗證呼叫者即 userId
+// server-to-server 場景（審核者替他人入帳）請改用 `processCheckInCore`，
+// 並在呼叫端自行驗證審核者身分（例如 requireSelf(reviewerId) + IsCaptain 檢查）。
 export async function processCheckInTransaction(
     userId: string,
     questId: string,
     questTitle: string,
     questReward: number
 ) {
-    const supabase = getServiceClient();
-    const logicalTodayStr = getLogicalDateStr();
-
-    const { data, error } = await supabase.rpc('process_checkin', {
-        p_user_id:       userId,
-        p_quest_id:      questId,
-        p_quest_title:   questTitle,
-        p_quest_reward:  questReward,
-        p_logical_today: logicalTodayStr,
-    });
-
-    if (error) return { success: false, error: error.message };
-
-    const result = data as { success: boolean; error?: string; rewardCapped?: boolean; user?: any };
-    if (!result.success) return { success: false, error: result.error };
-
-    return { success: true, rewardCapped: result.rewardCapped ?? false, user: result.user };
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+    return processCheckInCore(userId, questId, questTitle, questReward);
 }
 
 export async function undoCheckIn(userId: string, questId: string): Promise<{
@@ -44,6 +32,8 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
     rewardDeducted?: number;
     newScore?: number;
 }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = getServiceClient();
     const logicalTodayStr = getLogicalDateStr();
 
@@ -81,6 +71,8 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
 }
 
 export async function clearTodayLogs(userId: string) {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
     const supabase = getServiceClient();
     const logicalTodayStr = getLogicalDateStr();
 

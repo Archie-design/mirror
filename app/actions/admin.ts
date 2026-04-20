@@ -3,6 +3,7 @@
 import 'server-only';
 import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
+import { verifyAdminSession } from '@/app/actions/admin-auth';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -37,7 +38,8 @@ export async function autoAssignSquadsForTesting(
     squadSize = 4,
     squadsPerBattalion = 3
 ) {
-    
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
     const client = await connectDb();
     try {
         await client.query('BEGIN');
@@ -130,6 +132,8 @@ export async function autoAssignSquadsForTesting(
 }
 
 export async function importRostersData(csvContent: string) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
     // Parse all rows first, then batch-insert with UNNEST (avoids N+1 per-row queries)
     const emails: string[] = [];
     const names: (string | null)[] = [];
@@ -201,6 +205,8 @@ export async function importRostersData(csvContent: string) {
 
 // ── 成員管理：列出全部成員 ────────────────────────────────
 export async function listAllMembers() {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作', members: [] };
+
     const supabase = createClient(_supabaseUrl, _supabaseKey);
     const { data, error } = await supabase
         .from('CharacterStats')
@@ -217,6 +223,8 @@ export async function transferMember(
     newTeamName: string | null,
     actorName: string = 'admin'
 ) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
     const supabase = createClient(_supabaseUrl, _supabaseKey);
     const { data: before } = await supabase.from('CharacterStats').select('Name, SquadName, TeamName').eq('UserID', targetUserId).single();
     if (!before) return { success: false, error: '找不到此成員' };
@@ -240,6 +248,8 @@ export async function setMemberRole(
     role: 'captain' | 'commandant' | 'none',
     actorName: string = 'admin'
 ) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
     const supabase = createClient(_supabaseUrl, _supabaseKey);
     const { data: member } = await supabase.from('CharacterStats').select('Name').eq('UserID', targetUserId).single();
     if (!member) return { success: false, error: '找不到此成員' };

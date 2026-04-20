@@ -12,7 +12,6 @@ import { StarWandIcon, RubySlipperIcon, EmeraldCastleIcon, FilmReelIcon, Glasses
 
 import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, TeamSettings } from '@/types';
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
-import { standardizePhone } from '@/lib/utils/phone';
 import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
 
 import { Header } from '@/components/Layout/Header';
@@ -33,6 +32,7 @@ import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
 import { NineGridTab } from '@/components/Tabs/NineGridTab';
 import { getMemberGrid, initMemberGrid } from '@/app/actions/nine-grid';
+import { loginWithPhone, registerAccount, logoutUser } from '@/app/actions/auth';
 import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
 import { UserNineGrid } from '@/types';
 
@@ -126,8 +126,14 @@ export default function App() {
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
-  const logicalTodayStr = getLogicalDateStr();
-  const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), []);
+  // 每分鐘觸發一次 tick，讓依賴「今天 / 本週一」的計算跨午夜時自動刷新
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const logicalTodayStr = useMemo(() => getLogicalDateStr(), [nowTick]);
+  const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), [nowTick]);
 
 
   const isTopicDone = useMemo(() =>
@@ -427,63 +433,40 @@ export default function App() {
     const name = (fd.get('name') as string).trim();
     const phoneSuffix = (fd.get('phone') as string).trim();
     try {
-      const { data: matched, error: queryError } = await supabase
-        .from('CharacterStats')
-        .select('*')
-        .eq('Name', name)
-        .like('UserID', `%${phoneSuffix}`);
-      if (queryError) throw new Error(queryError.message);
-      const match = matched?.[0] as CharacterStats | undefined;
-      if (match) {
-        await loadUserSession(match);
-        saveSession(match.UserID);
+      const res = await loginWithPhone(name, phoneSuffix);
+      if (res.success && res.stats) {
+        await loadUserSession(res.stats);
+        saveSession(res.stats.UserID);
         setView('app');
-      } else { setModalMessage({ text: "查無此觀影者帳號。", type: 'error' }); }
+      } else {
+        setModalMessage({ text: res.error || '查無此觀影者帳號。', type: 'error' });
+      }
     } catch (err) { setModalMessage({ text: "系統連線異常。", type: 'error' }); } finally { setIsSyncing(false); }
   };
 
   const handleRegisterInput = async (data: any) => {
     setIsSyncing(true);
     const { name, phone: phoneRaw, email: emailRaw, fortunes } = data;
-    const email = emailRaw?.trim()?.toLowerCase();
-    const phone = standardizePhone(phoneRaw);
-
-    const newChar: any = {
-      UserID: phone, Name: name.trim(),
-      Score: 0, Streak: 0, LastCheckIn: null,
-      Email: email,
-    };
-
-    // 五運分數
-    if (fortunes) {
-      for (const f of FORTUNE_COMPANIONS) {
-        newChar[f.dbCol] = fortunes[f.key] ?? 0;
-      }
-    }
 
     try {
-      if (email) {
-        const { data: rosterMatch } = await supabase.from('Rosters').select('*').eq('email', email).single();
-        if (rosterMatch) {
-          newChar.SquadName = rosterMatch.squad_name;
-          newChar.TeamName = rosterMatch.team_name;
-          newChar.IsCaptain = rosterMatch.is_captain;
-        }
+      const res = await registerAccount({
+        name,
+        phone: phoneRaw,
+        email: emailRaw,
+        fortunes,
+      });
+      if (!res.success || !res.stats || !res.userId) {
+        setModalMessage({ text: res.error || '註冊失敗', type: 'error' });
+        return;
       }
-      await supabase.from('CharacterStats').insert([newChar]);
 
-      // 根據最低分自動初始化九宮格
       if (fortunes) {
-        const lowestFortune = getLowestFortune(fortunes);
-        const gridResult = await initMemberGrid(phone, lowestFortune.companion);
-        if (gridResult.success) {
-          const gridRes = await getMemberGrid(phone);
-          if (gridRes.success) setUserGrid(gridRes.grid);
-        }
+        const gridRes = await getMemberGrid(res.userId);
+        if (gridRes.success) setUserGrid(gridRes.grid);
       }
 
-      saveSession(phone);
-      setUserData(newChar);
+      saveSession(res.userId);
+      setUserData(res.stats);
       setModalMessage({ text: '帳號建立成功，開始你的黃磚路旅程！', type: 'success' });
       setView('app');
     } catch (err) {
@@ -495,7 +478,12 @@ export default function App() {
 
 
 
-  const handleLogout = () => { clearSession(); setUserData(null); setView('login'); };
+  const handleLogout = async () => {
+    await logoutUser();
+    clearSession();
+    setUserData(null);
+    setView('login');
+  };
 
   const handleAdminClose = async () => {
     await logoutAdmin();
@@ -800,20 +788,13 @@ export default function App() {
         )}
         {activeTab === 'weekly' && userData && (
           <WeeklyTopicTab
-            userId={userData.UserID}
-            systemSettings={systemSettings}
-            logicalTodayStr={logicalTodayStr}
             logs={logs}
             currentWeeklyMonday={currentWeeklyMonday}
-            isTopicDone={isTopicDone}
             temporaryQuests={temporaryQuests.filter(t => t.active)}
             onCheckIn={handleCheckInAction}
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
-            isCaptain={!!(userData?.IsCaptain || userData?.IsGM)}
-            teamName={userData?.TeamName || ''}
-            squadMemberCount={squadMembers.length}
           />
         )}
         {activeTab === 'ninegrid' && userData && (
@@ -840,6 +821,12 @@ export default function App() {
               if (gridRes.success) setUserGrid(gridRes.grid);
               if (statsRes.data) setUserData(statsRes.data as CharacterStats);
             }}
+            logs={logs}
+            currentWeeklyMonday={currentWeeklyMonday}
+            onCheckIn={handleCheckInAction}
+            onUndo={setUndoTarget}
+            questRewardOverrides={systemSettings?.QuestRewardOverrides}
+            disabledQuests={systemSettings?.DisabledQuests}
           />
         )}
         {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} />}

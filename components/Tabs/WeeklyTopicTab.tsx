@@ -1,119 +1,58 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
-    Phone, Mic, Award, Users, Zap,
+    Phone, Users, Zap,
     Map, Star,
 } from 'lucide-react';
 import { Quest, DailyLog, SystemSettings, TemporaryQuest } from '@/types';
 import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { getLogicalDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
+import { WeekCalendarRow } from '@/components/WeekCalendarRow';
 
 interface WeeklyTopicTabProps {
-    userId: string;
-    systemSettings: SystemSettings;
-    logicalTodayStr: string;
     logs: DailyLog[];
     currentWeeklyMonday: Date;
-    isTopicDone: boolean;
     temporaryQuests: TemporaryQuest[];
     onCheckIn: (q: Quest) => void;
     onUndo: (q: Quest) => void;
     questRewardOverrides?: Record<string, number>;
     disabledQuests?: string[];
-    isCaptain?: boolean;
-    teamName?: string;
-    squadMemberCount?: number;
-}
-
-// ── 週曆打卡列 ───────────────────────────────────────────────────────────
-function WeekCalendarRow({
-    questId,
-    logs,
-    disabled,
-    onCheckIn,
-    onUndo,
-}: {
-    questId: string;
-    logs: DailyLog[];
-    limit?: number;
-    disabled: boolean;
-    currentWeeklyMonday?: Date;
-    onCheckIn: (qId: string, day: Date) => void;
-    onUndo: (qId: string, day: Date) => void;
-}) {
-    return (
-        <div className="flex justify-between items-center px-1">
-            {['一', '二', '三', '四', '五', '六', '日'].map((dayLabel, idx) => {
-                const d = new Date();
-                const currentDay = d.getDay() || 7;
-                d.setDate(d.getDate() + (idx + 1 - currentDay));
-                const qId = `${questId}|${getLogicalDateStr(d)}`;
-                const isDone = logs.some(l => l.QuestID === qId);
-                const isDisabled = disabled && !isDone;
-                return (
-                    <div key={idx} className="flex flex-col items-center gap-1.5">
-                        <span className="text-sm text-gray-500 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
-                        <button
-                            disabled={isDisabled}
-                            onClick={() => isDone ? onUndo(questId, d) : onCheckIn(questId, d)}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all
-                                ${isDone
-                                    ? 'bg-[#C0392B] text-white shadow-lg'
-                                    : isDisabled
-                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-[#B2DFC0] hover:text-[#1A6B4A] active:scale-90'}`}
-                        >
-                            {dayLabel}
-                        </button>
-                    </div>
-                );
-            })}
-        </div>
-    );
 }
 
 export function WeeklyTopicTab({
-    userId,
-    systemSettings,
-    logicalTodayStr,
     logs,
     currentWeeklyMonday,
-    isTopicDone,
     temporaryQuests,
     onCheckIn,
     onUndo,
     questRewardOverrides,
     disabledQuests,
-    isCaptain = false,
-    teamName = '',
-    squadMemberCount = 0,
 }: WeeklyTopicTabProps) {
     // ── 當前電影主題週期 ──
     const themePeriod = getCurrentThemePeriod();
 
-    // ── 動態分值覆寫與停用過濾 ──
-    const disabledSet = new Set(disabledQuests || []);
-    const weeklyQuests = WEEKLY_QUEST_CONFIG
-        .filter(q => !disabledSet.has(q.id))
-        .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
-
-    // ── 各任務本週完成次數 ──
-    const countThisWeek = (qId: string) =>
-        logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= currentWeeklyMonday).length;
-
-    const wk1Quest = weeklyQuests.find(q => q.id === 'wk1');
-    const wk2Quest = weeklyQuests.find(q => q.id === 'wk2');
-    const wk3OnlineQuest = weeklyQuests.find(q => q.id === 'wk3_online');
-    const wk3OfflineQuest = weeklyQuests.find(q => q.id === 'wk3_offline');
-    const wk4SmallQuest = weeklyQuests.find(q => q.id === 'wk4_small');
-    const wk4LargeQuest = weeklyQuests.find(q => q.id === 'wk4_large');
-
-    const wk1Count = countThisWeek('wk1');
-    const wk2Count = countThisWeek('wk2');
-    const wk3OnlineCount = countThisWeek('wk3_online');
-    const wk3OfflineCount = countThisWeek('wk3_offline');
-    const wk4SmallCount = countThisWeek('wk4_small');
-    const wk4LargeCount = countThisWeek('wk4_large');
+    const {
+        wk1Quest, wk2Quest, wk3OnlineQuest, wk3OfflineQuest,
+        wk1Count, wk2Count, wk3OnlineCount, wk3OfflineCount,
+    } = useMemo(() => {
+        const disabledSet = new Set(disabledQuests || []);
+        const weeklyQuests = WEEKLY_QUEST_CONFIG
+            .filter(q => !disabledSet.has(q.id))
+            .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
+        const countThisWeek = (qId: string) =>
+            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= currentWeeklyMonday).length;
+        return {
+            wk1Quest: weeklyQuests.find(q => q.id === 'wk1'),
+            wk2Quest: weeklyQuests.find(q => q.id === 'wk2'),
+            wk3OnlineQuest: weeklyQuests.find(q => q.id === 'wk3_online'),
+            wk3OfflineQuest: weeklyQuests.find(q => q.id === 'wk3_offline'),
+            wk1Count: countThisWeek('wk1'),
+            wk2Count: countThisWeek('wk2'),
+            wk3OnlineCount: countThisWeek('wk3_online'),
+            wk3OfflineCount: countThisWeek('wk3_offline'),
+        };
+    }, [logs, currentWeeklyMonday, questRewardOverrides, disabledQuests]);
 
     const makeWeekHandler = (questId: string, quest: Quest) => ({
         onCheckIn: (_qid: string, day: Date) => {
@@ -153,7 +92,6 @@ export function WeeklyTopicTab({
                     <WeekCalendarRow
                         questId={quest.id}
                         logs={logs}
-                        limit={limit}
                         disabled={isCapped}
                         currentWeeklyMonday={currentWeeklyMonday}
                         {...makeWeekHandler(quest.id, quest)}
@@ -213,7 +151,6 @@ export function WeeklyTopicTab({
                                 <WeekCalendarRow
                                     questId="wk3_online"
                                     logs={logs}
-                                    limit={1}
                                     disabled={wk3OnlineCount >= 1}
                                     currentWeeklyMonday={currentWeeklyMonday}
                                     {...makeWeekHandler('wk3_online', wk3OnlineQuest)}
@@ -235,63 +172,9 @@ export function WeeklyTopicTab({
                                 <WeekCalendarRow
                                     questId="wk3_offline"
                                     logs={logs}
-                                    limit={1}
                                     disabled={wk3OfflineCount >= 1}
                                     currentWeeklyMonday={currentWeeklyMonday}
                                     {...makeWeekHandler('wk3_offline', wk3OfflineQuest)}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </section>
-            )}
-
-            {/* ── wk4：人生大戲分享 ── */}
-            {(wk4SmallQuest || wk4LargeQuest) && (
-                <section className="space-y-3">
-                    <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">人生大戲分享</h2>
-                    <div className="space-y-3">
-                        {wk4SmallQuest && (
-                            <div className={`p-5 rounded-3xl border space-y-4 shadow-sm ${wk4SmallCount >= 1 ? 'opacity-60 bg-white border-[#B2DFC0]' : 'bg-white border-[#B2DFC0]'}`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><Mic size={22} /></div>
-                                        <div>
-                                            <p className="font-bold text-[#1A2A1A] text-base">{wk4SmallQuest.title}</p>
-                                            <p className="text-sm text-gray-500">+{wk4SmallQuest.reward}</p>
-                                        </div>
-                                    </div>
-                                    <span className={`text-sm font-bold ${wk4SmallCount >= 1 ? 'text-[#C0392B]' : 'text-gray-500'}`}>{wk4SmallCount} / 1</span>
-                                </div>
-                                <WeekCalendarRow
-                                    questId="wk4_small"
-                                    logs={logs}
-                                    limit={1}
-                                    disabled={wk4SmallCount >= 1}
-                                    currentWeeklyMonday={currentWeeklyMonday}
-                                    {...makeWeekHandler('wk4_small', wk4SmallQuest)}
-                                />
-                            </div>
-                        )}
-                        {wk4LargeQuest && (
-                            <div className={`p-5 rounded-3xl border space-y-4 shadow-sm ${wk4LargeCount >= 1 ? 'opacity-60 bg-white border-[#B2DFC0]' : 'bg-white border-[#B2DFC0]'}`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><Award size={22} /></div>
-                                        <div>
-                                            <p className="font-bold text-[#1A2A1A] text-base">{wk4LargeQuest.title}</p>
-                                            <p className="text-sm text-gray-500">+{wk4LargeQuest.reward}</p>
-                                        </div>
-                                    </div>
-                                    <span className={`text-sm font-bold ${wk4LargeCount >= 1 ? 'text-[#C0392B]' : 'text-gray-500'}`}>{wk4LargeCount} / 1</span>
-                                </div>
-                                <WeekCalendarRow
-                                    questId="wk4_large"
-                                    logs={logs}
-                                    limit={1}
-                                    disabled={wk4LargeCount >= 1}
-                                    currentWeeklyMonday={currentWeeklyMonday}
-                                    {...makeWeekHandler('wk4_large', wk4LargeQuest)}
                                 />
                             </div>
                         )}
@@ -319,9 +202,8 @@ export function WeeklyTopicTab({
                                 </div>
                                 <div className="flex justify-between items-center">
                                     {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
-                                        const d = new Date();
-                                        const cd = d.getDay() || 7;
-                                        d.setDate(d.getDate() + (idx + 1 - cd));
+                                        const d = new Date(currentWeeklyMonday);
+                                        d.setDate(d.getDate() + idx);
                                         const qId = `${tq.id}|${getLogicalDateStr(d)}`;
                                         const isDone = logs.some(l => l.QuestID === qId);
                                         return (

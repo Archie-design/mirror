@@ -41,7 +41,7 @@
 | 後端 | Next.js Server Actions、API Route Handlers、Vercel Cron |
 | 資料庫 | Supabase（PostgreSQL）+ RPC functions（PL/pgSQL）+ Supabase Storage |
 | 直連 DB | `pg` (node-postgres)，用於需要顯式 BEGIN/COMMIT 的場景 |
-| 身分驗證 | LINE Login OAuth + HttpOnly cookie（2 分鐘 handoff）+ localStorage（30 分鐘 session）|
+| 身分驗證 | LINE Login OAuth／姓名+手機末三碼 → HMAC-signed HttpOnly cookie（`line_session_uid`, 120 天 TTL, `AUTH_SESSION_SECRET`）；server action 以 `requireSelf(userId)` 核對 |
 | 訊息整合 | LINE Messaging API（Bot）、LINE Login |
 | 檔案存放 | Google Drive API（OAuth2 refresh token）、Supabase Storage |
 | 部署 | Vercel（含 Vercel Analytics） |
@@ -878,7 +878,7 @@ flowchart LR
 | **S1** | ~~`ADMIN_PASSWORD = "123"` hardcode~~ | [lib/constants.tsx](../lib/constants.tsx) | 🟢 **已修（2026-04-18）** | 已移除 client 端常數，改由 [app/actions/admin-auth.ts](../app/actions/admin-auth.ts) server action 比對 `process.env.ADMIN_PASSWORD`；setup-richmenu 改為 `POST` + `Authorization: Bearer` header |
 | **S2** | ~~`SUPABASE_SERVICE_ROLE_KEY` 在多個 server action 直接使用~~ | [app/actions/*](../app/actions/) | 🟢 **已修（2026-04-18）** | 全 13 個 `app/actions/*.ts` 已加 `import 'server-only'`；build artifact 經 `grep` 驗證無 service role key 與 admin 密碼洩漏 |
 | **S3** | RLS 全部 `USING (true)`：應用層被繞過就裸奔 | 所有資料表 | 🔴 **嚴重** | 至少對 `CharacterStats`、`BonusApplications`、`FinePayments`、`Testimonies` 加 owner-check policy（`auth.uid() = UserID` 或自帶 jwt claim） |
-| **S4** | 隊長 / 大隊長動作只信任 `IsCaptain` 旗標 + 前端傳的 `captainUserId`；未驗證呼叫者身分 | [team.ts](../app/actions/team.ts)、[fines.ts](../app/actions/fines.ts)、[bonus.ts](../app/actions/bonus.ts)、[nine-grid.ts](../app/actions/nine-grid.ts) | 🟠 高 | 在 server action 入口讀 `line_session_uid` cookie（已有）+ 比對與傳入 `captainUserId` 是否一致 |
+| **S4** | ~~隊長 / 大隊長動作只信任 `IsCaptain` 旗標 + 前端傳的 `captainUserId`；未驗證呼叫者身分~~ | [team.ts](../app/actions/team.ts)、[bonus.ts](../app/actions/bonus.ts)、[nine-grid.ts](../app/actions/nine-grid.ts)、[quest.ts](../app/actions/quest.ts)、[squad-gathering.ts](../app/actions/squad-gathering.ts) | 🟢 **已修（2026-04-20）** | 新增 [lib/auth.ts](../lib/auth.ts) HMAC-signed session cookie（120 天 TTL）；所有 user-facing server action 開頭呼叫 `requireSelf(userId)` 核對呼叫者與傳入 userId；審核代入帳邏輯獨立至 [lib/checkin-core.ts](../lib/checkin-core.ts)（非 `'use server'`，client 無法直接觸發） |
 | **S5** | `registerForCourse` 用「姓名 + 手機末三碼」當身份比對 | [course.ts](../app/actions/course.ts) | 🟠 高 | 200 人裡同名概率高；末三碼 collision 約 1/1000；建議：登入後直接抓 `LineUserId`，無需重複輸入 |
 | **S6** | LINE webhook 對 `parseTestimony` 內容無長度上限 | [/api/webhook/line/route.ts](../app/api/webhook/line/route.ts) | 🟡 中 | 訂上限（如 10 KB）；超過拒收並回提示 |
 | **S7** | bonus-screenshot 上傳僅檢查 5 MB，未驗證 MIME / magic bytes | [/api/upload/bonus-screenshot/route.ts](../app/api/upload/bonus-screenshot/route.ts) | 🟡 中 | 白名單 MIME `image/png|jpeg|webp`；用 file-type 套件比對 magic bytes；考慮用 Vercel Blob 並開啟掃描 |
@@ -935,7 +935,7 @@ quadrantChart
 
 ### Sprint 1：開營第一週（2026-05-10 ~ 05-17）
 
-6. **S3 / S4 / S11** — 為 `CharacterStats`、`BonusApplications`、`FinePayments`、`Testimonies` 加 owner-check RLS policy；server action 入口統一驗證 `line_session_uid` cookie 與傳入 `userId` 一致。
+6. **S3 / S11** — 為 `CharacterStats`、`BonusApplications`、`FinePayments`、`Testimonies` 加 owner-check RLS policy（S4 已於 2026-04-20 於應用層以 `requireSelf()` 修補）。
 7. **P5** — LINE webhook 內 Drive 上傳改非同步（`waitUntil()` 或 Vercel Queues），確保 P95 < 2 s。
 8. **S15** — LINE OAuth state 加 server-signed nonce，callback 比對。
 9. **P11** — 移除「打卡後重抓全部 logs」的背景 sync，改信任 RPC 回傳值。
@@ -968,6 +968,7 @@ quadrantChart
 |---|---|---|---|
 | 2026-04-18 | 1.0 | 初版（涵蓋至 commit `f2ed6d9`） | Claude (Opus 4.7) |
 | 2026-04-18 | 1.1 | Sprint 0 安全修補：S1 / S2 / S11（部分）/ S17 已修；setup-richmenu 改 POST + Bearer | Claude (Opus 4.7) |
+| 2026-04-20 | 1.2 | P1 #1 / #2 / #3 / #4 全數完成：九宮格 cell RPC 原子化、wk4 server 強制、signed session cookie + `requireSelf()` | Claude (Opus 4.7) |
 
 ### 1.1 版本變更明細
 
@@ -984,9 +985,24 @@ quadrantChart
 **未修復（需另開 Sprint 處理）**：
 
 - **S3（RLS）**：所有表的 `USING (true)` 政策未動。原因：service role 設計上會繞過 RLS，需先建立「以 LineUserId 為主的 JWT」的 auth 路徑後，才能讓 owner-check policy 真的有作用。為避免半套保護產生誤導，留待 Sprint 1 一併處理。
-- **S4（隊長身分驗證）**：目前無 server-side 持久 session（`line_session_uid` cookie 是 2 分鐘單次 handoff）。需先擴充 LINE callback 設長期簽章 cookie，並逐個 server action 改寫驗證。
+- **S4（隊長身分驗證）**：~~目前無 server-side 持久 session~~ ✅ 已於 v1.2（2026-04-20）完成，詳見下方 v1.2 變更明細。
 - **S5（課程身份比對）**：需 UX 變更（登入後自動帶入身份）。
 - **P1（連線池化）**：屬 infra 設定，建議由維運將 `DATABASE_URL` 改用 Supabase Pooler（port 6543, transaction mode），不需改程式。
+
+### 1.2 版本變更明細
+
+**v1.2（2026-04-20）：P1 #1 race、#2/#3 wk4 server 強制、#4 IDOR 全數修補**
+
+- **P1 #1（九宮格 cell race）**：新增 [supabase/migrations/202604200002_nine_grid_cell_atomic.sql](../supabase/migrations/202604200002_nine_grid_cell_atomic.sql) 建立 `process_nine_grid_cell(p_user_id, p_cell_index)` RPC；`SELECT FOR UPDATE` 鎖 `UserNineGrid` row，於同一 transaction 更新 cells、計算新連線、發 `nine_grid_line|cellN` 加分。[app/actions/nine-grid.ts:completeCell](../app/actions/nine-grid.ts) 改為呼叫 RPC。
+- **P1 #2/#3（wk4 server 強制 + 週內 dedup）**：[supabase/migrations/202604200001_wk4_server_enforcement.sql](../supabase/migrations/202604200001_wk4_server_enforcement.sql) 在 `process_checkin` 新增 `wk4_small|%` / `wk4_large|%` 分支，伺服端驗證「當週 ≥1 格已完成」且本週同前綴無既有入帳。
+- **P1 #4（IDOR）**：
+  - 新增 [lib/auth.ts](../lib/auth.ts) HMAC-signed HttpOnly cookie（cookie 名 `line_session_uid`，TTL 120 天，`SameSite=Lax`；Token 格式 `${userId}.${hmac(userId, AUTH_SESSION_SECRET)}`）。匯出 `requireUser()` / `requireSelf(expectedUserId)` / `setSessionCookie()` / `clearSessionCookie()` / `authErrorResponse()`。
+  - 新增 [app/actions/auth.ts](../app/actions/auth.ts) `loginWithPhone` / `registerAccount` / `logoutUser`；server 端統一簽 cookie。[app/page.tsx](../app/page.tsx) `handleLogin` / `handleRegisterInput` / `handleLogout` 改呼叫 server action。
+  - [/api/auth/session](../app/api/auth/session/route.ts) 改為純讀 session，不再清除 cookie。LINE OAuth callback 改以 `signUserId()` 簽 cookie。
+  - 拆出 [lib/checkin-core.ts](../lib/checkin-core.ts)（非 `'use server'`）供 bonus 審核流程代他人入帳使用；`processCheckInTransaction` 先 `requireSelf` 再 delegate。
+  - 以下 server actions 加上 `requireSelf(userId)`：[quest.ts](../app/actions/quest.ts)（checkin / undo / clear）、[nine-grid.ts](../app/actions/nine-grid.ts)（initMemberGrid / completeCell / updateMemberCellText / getSquadGrids）、[team.ts](../app/actions/team.ts)（drawWeeklyQuestForSquad / getSquadMembersStats / getBattalionMembersStats）、[bonus.ts](../app/actions/bonus.ts)（reviewBonusBySquadLeader / submitBonusApplication）、[squad-gathering.ts](../app/actions/squad-gathering.ts)（checkInToGathering / getUserGatheringCheckin）。
+  - [admin.ts](../app/actions/admin.ts) 的 `autoAssignSquadsForTesting` / `importRostersData` / `listAllMembers` / `transferMember` / `setMemberRole` 以及 [bonus.ts](../app/actions/bonus.ts) `reviewBonusByAdmin` 改以 `verifyAdminSession()` 守門。
+- **上線配套**：新增環境變數 `AUTH_SESSION_SECRET`（32+ byte random）。既有使用者 cookie 不相容，**全員需重登**；上線前由 LINE Rich Menu 公告「需重新登入」。
 
 ---
 
