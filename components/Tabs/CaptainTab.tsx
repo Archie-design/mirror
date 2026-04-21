@@ -1,8 +1,20 @@
-import { useState, useEffect } from 'react';
-import { ShieldAlert, Loader2, Grid3x3, Users, Edit3, Check, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ShieldAlert, Loader2, Grid3x3, Users, Edit3, Check, X, Crown, Calendar as CalendarIcon, Send, Star } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { SQUAD_ROLES } from '@/lib/constants';
 import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
 import { getSquadGrids, updateMemberCellText } from '@/app/actions/nine-grid';
+import {
+    getTeamGatheringContext,
+    submitGatheringForReview,
+    type TeamGatheringContext,
+} from '@/app/actions/squad-gathering';
+import {
+    listPendingOnlineGatheringsForCaptain,
+    reviewOnlineGathering,
+    type OnlineGatheringApp,
+} from '@/app/actions/online-gathering';
+import { getLogicalDateStr } from '@/lib/utils/time';
 import type { UserNineGrid } from '@/types';
 
 interface SquadMemberRole {
@@ -213,6 +225,233 @@ function SquadNineGridSection({ captainId, captainName }: { captainId: string; c
     );
 }
 
+// ── 本週實體凝聚（wk3_offline） ─────────────────────────────────────────────
+function SquadGatheringSection({ captainId }: { captainId: string }) {
+    const [ctx, setCtx] = useState<TeamGatheringContext | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await getTeamGatheringContext(captainId);
+        if (res.success) setCtx(res.context ?? null);
+        setLoading(false);
+    }, [captainId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    // 當處於排定中時每 15 秒刷新一次出席進度
+    useEffect(() => {
+        if (!ctx?.session || ctx.session.status !== 'scheduled') return;
+        const id = setInterval(reload, 15000);
+        return () => clearInterval(id);
+    }, [ctx?.session, reload]);
+
+    const handleSubmit = async () => {
+        if (!ctx?.session) return;
+        setSubmitting(true);
+        setErr(null);
+        const res = await submitGatheringForReview(captainId, ctx.session.id);
+        if (!res.success) setErr(res.error ?? '送審失敗');
+        await reload();
+        setSubmitting(false);
+    };
+
+    if (loading) return (
+        <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl">
+            <div className="flex items-center gap-2 text-rose-600 text-sm font-black">
+                <CalendarIcon size={16} /> 本週實體凝聚
+            </div>
+            <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-rose-500" /></div>
+        </section>
+    );
+
+    const session = ctx?.session;
+    const attendees = ctx?.attendees ?? [];
+    const teamMemberCount = ctx?.teamMemberCount ?? 0;
+    const hasCommandant = attendees.some(a => a.isCommandant);
+    const isToday = session?.gatheringDate === getLogicalDateStr();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
+
+    return (
+        <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                <CalendarIcon size={18} className="text-rose-500" /> 本週實體凝聚
+            </h3>
+
+            {!session && (
+                <p className="text-sm text-gray-400 text-center py-6">
+                    本週尚未排定實體凝聚，請等待大隊長 / 管理員安排
+                </p>
+            )}
+
+            {session && session.status === 'scheduled' && !isToday && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                    <p className="font-black text-amber-700">預定凝聚日：{session.gatheringDate}</p>
+                    <p className="text-sm text-amber-500 mt-1">當日將顯示掃碼 QR Code</p>
+                </div>
+            )}
+
+            {session && session.status === 'scheduled' && isToday && (
+                <div className="space-y-4">
+                    <div className="bg-gray-50 rounded-2xl p-5 flex flex-col items-center gap-3 border border-gray-200">
+                        <p className="text-sm font-black text-gray-700">請隊員 / 大隊長掃以下 QR 完成報到</p>
+                        <div className="bg-white p-3 rounded-xl">
+                            <QRCode value={qrUrl} size={180} />
+                        </div>
+                        <p className="text-xs text-gray-400 break-all text-center">{qrUrl}</p>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-2xl p-4 space-y-2 border border-gray-200">
+                        <div className="flex items-center gap-2 text-sm font-black text-gray-700">
+                            <Users size={14} /> 出席進度 {attendees.length} / {teamMemberCount}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                            <Crown size={14} className={hasCommandant ? 'text-amber-500' : 'text-gray-400'} />
+                            <span className={hasCommandant ? 'text-amber-600 font-bold' : 'text-gray-500'}>
+                                {hasCommandant ? '大隊長已到場（每人 +100）' : '大隊長尚未到場'}
+                            </span>
+                        </div>
+                        {attendees.length > 0 && (
+                            <div className="pt-2 border-t border-gray-200 grid grid-cols-2 gap-1">
+                                {attendees.map(a => (
+                                    <span key={a.userId} className="text-sm text-gray-600 flex items-center gap-1">
+                                        <Check size={12} className="text-emerald-500" />
+                                        {a.userName ?? a.userId}
+                                        {a.isCommandant && <Crown size={10} className="text-amber-500" />}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        disabled={submitting || attendees.length === 0}
+                        onClick={handleSubmit}
+                        className="w-full py-3 bg-rose-600 text-white font-black rounded-2xl shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                        送出審核（交大隊長終審）
+                    </button>
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
+                </div>
+            )}
+
+            {session && session.status === 'pending_review' && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-center space-y-2">
+                    <p className="font-black text-yellow-700">審核中…等待大隊長終審</p>
+                    <p className="text-sm text-yellow-600">
+                        出席 {attendees.length} / {teamMemberCount}
+                        {hasCommandant && ' · 大隊長已到'}
+                    </p>
+                </div>
+            )}
+
+            {session && session.status === 'approved' && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center space-y-2">
+                    <p className="font-black text-emerald-700">
+                        ✓ 已核准 — 每人 +{session.approvedRewardPerPerson ?? 300} 分
+                    </p>
+                    <p className="text-sm text-emerald-600">
+                        出席 {session.approvedAttendeeCount ?? attendees.length} / {session.approvedMemberCount ?? teamMemberCount}
+                        {session.approvedHasCommandant && ' · 大隊長到場'}
+                    </p>
+                </div>
+            )}
+
+            {session && session.status === 'rejected' && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center space-y-2">
+                    <p className="font-black text-red-700">已退回</p>
+                    {session.notes && <p className="text-sm text-red-600 italic">{session.notes}</p>}
+                </div>
+            )}
+        </section>
+    );
+}
+
+// ── 本週線上凝聚初審（wk3_online 一級審核）────────────────────────────────
+function SquadOnlineGatheringReviewSection({ captainId }: { captainId: string }) {
+    const [apps, setApps] = useState<OnlineGatheringApp[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [reviewingId, setReviewingId] = useState<string | null>(null);
+    const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+    const [err, setErr] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await listPendingOnlineGatheringsForCaptain(captainId);
+        if (res.success) setApps(res.apps ?? []);
+        setLoading(false);
+    }, [captainId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleReview = async (appId: string, approve: boolean) => {
+        setReviewingId(appId);
+        setErr(null);
+        const res = await reviewOnlineGathering(captainId, appId, approve, notesMap[appId] || '');
+        if (!res.success) setErr(res.error ?? '審核失敗');
+        else if (res.warning) setErr(res.warning);
+        await reload();
+        setNotesMap(prev => { const n = { ...prev }; delete n[appId]; return n; });
+        setReviewingId(null);
+    };
+
+    return (
+        <section className="bg-white border-2 border-emerald-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                <Star size={18} className="text-emerald-500" /> 本週線上凝聚審核（一級）
+            </h3>
+            {loading ? (
+                <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-emerald-500" /></div>
+            ) : apps.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">目前無待審線上凝聚申請</p>
+            ) : (
+                <div className="space-y-3">
+                    {apps.map(app => (
+                        <div key={app.id} className="bg-gray-50 rounded-2xl p-4 space-y-3 border border-gray-200">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="font-black text-gray-900">{app.userName ?? app.userId}</p>
+                                    <p className="text-sm text-gray-500">週一：{app.weekMonday}</p>
+                                </div>
+                                <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">+100 分</span>
+                            </div>
+                            {app.notes && (
+                                <p className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-2 italic">「{app.notes}」</p>
+                            )}
+                            <textarea
+                                placeholder="備註（選填，退回時建議填寫原因）"
+                                value={notesMap[app.id] || ''}
+                                onChange={e => setNotesMap(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                rows={2}
+                                className="w-full bg-white border border-gray-200 rounded-xl p-2 text-gray-900 text-sm outline-none focus:border-emerald-400 resize-none"
+                            />
+                            <div className="flex gap-3">
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, false)}
+                                    className="flex-1 py-2 bg-red-50 text-red-500 font-black rounded-xl border border-red-200 active:scale-95 disabled:opacity-50"
+                                >
+                                    ❌ 退回
+                                </button>
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, true)}
+                                    className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl shadow-lg active:scale-95 disabled:opacity-50"
+                                >
+                                    {reviewingId === app.id ? <Loader2 size={14} className="animate-spin inline" /> : '✅ 核准並入帳 +100'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
+                </div>
+            )}
+        </section>
+    );
+}
+
 export function CaptainTab({
     teamName, teamSettings, pendingBonusApps, onReviewBonus,
     squadMembersForRoles = [], onSetSquadRole,
@@ -280,6 +519,12 @@ export function CaptainTab({
                     </div>
                 )}
             </section>
+
+            {/* ── 📅 本週實體凝聚 ── */}
+            <SquadGatheringSection captainId={captainId} />
+
+            {/* ── 🌐 本週線上凝聚審核 ── */}
+            <SquadOnlineGatheringReviewSection captainId={captainId} />
 
             {/* ── 🌐 小隊九宮格總覽 ── */}
             <SquadNineGridSection captainId={captainId} captainName={captainName} />

@@ -3,7 +3,7 @@ import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, User
 import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 
 interface MemberRow {
@@ -26,6 +26,7 @@ function MemberManagementSection() {
     const [editTeam, setEditTeam] = React.useState('');
     const [editRole, setEditRole] = React.useState<'captain' | 'commandant' | 'none'>('none');
     const [saving, setSaving] = React.useState(false);
+    const [deletingId, setDeletingId] = React.useState<string | null>(null);
     const [msg, setMsg] = React.useState('');
 
     const load = async () => {
@@ -41,6 +42,7 @@ function MemberManagementSection() {
         ? members.filter(m =>
             m.Name?.includes(search) ||
             m.Email?.includes(search) ||
+            m.UserID?.includes(search) ||
             m.SquadName?.includes(search) ||
             m.TeamName?.includes(search)
         )
@@ -52,6 +54,18 @@ function MemberManagementSection() {
         setEditTeam(m.TeamName || '');
         setEditRole(m.IsCommandant ? 'commandant' : m.IsCaptain ? 'captain' : 'none');
         setMsg('');
+    };
+
+    const handleDelete = async (m: MemberRow) => {
+        const label = `${m.Name}${m.SquadName ? `（${m.SquadName}${m.TeamName ? ` / ${m.TeamName}` : ''}）` : ''}`;
+        if (!window.confirm(`確認將「${label}」從名單中完全移除？\n此操作會同時刪除打卡記錄、申請、報到、九宮格等所有資料，且無法復原。`)) return;
+        setDeletingId(m.UserID); setMsg('');
+        const res = await deleteMember(m.UserID);
+        setDeletingId(null);
+        if (!res.success) { setMsg(res.error || '移除失敗'); return; }
+        setMsg(`已將「${m.Name}」從名單中移除`);
+        if (editingId === m.UserID) setEditingId(null);
+        await load();
     };
 
     const handleSave = async (m: MemberRow) => {
@@ -83,7 +97,7 @@ function MemberManagementSection() {
             <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-4xl space-y-4 shadow-xl">
                 <div className="flex gap-2">
                     <input
-                        placeholder="搜尋姓名 / 信箱 / 大隊 / 小隊"
+                        placeholder="搜尋姓名 / 手機 / 信箱 / 大隊 / 小隊"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-cyan-500"
@@ -108,7 +122,16 @@ function MemberManagementSection() {
                                     {m.IsCommandant && <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-full">大隊長</span>}
                                     <span className="text-slate-600 text-[10px]">{(m.Score ?? 0).toLocaleString()} 分</span>
                                     {!isEditing && (
-                                        <button onClick={() => startEdit(m)} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold shrink-0">編輯</button>
+                                        <>
+                                            <button onClick={() => startEdit(m)} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold shrink-0">編輯</button>
+                                            <button
+                                                onClick={() => handleDelete(m)}
+                                                disabled={deletingId === m.UserID}
+                                                className="text-rose-400 hover:text-rose-300 text-[10px] font-bold shrink-0 disabled:opacity-50"
+                                            >
+                                                {deletingId === m.UserID ? '移除中…' : '移除'}
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                                 {isEditing && (
@@ -164,6 +187,9 @@ const ACTION_LABELS: Record<string, string> = {
     bonus_final_reject: '一次性任務終審駁回',
     drama_training_squad_approve: '戲劇進修初審核准',
     topic_title_update: '更新主題名稱',
+    member_transfer: '成員轉隊',
+    set_member_role: '更新成員角色',
+    member_delete: '移除成員',
 };
 
 interface AdminDashboardProps {

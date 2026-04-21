@@ -1,9 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
-import { CheckCircle2, XCircle, RefreshCw, Sword, Users, ChevronDown, ChevronUp, ScrollText } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { CheckCircle2, XCircle, RefreshCw, Sword, Users, ChevronDown, ChevronUp, ScrollText, CalendarPlus, Calendar as CalendarIcon, Loader2, Crown, Trash2 } from 'lucide-react';
 import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
 import { reviewBonusByAdmin } from '@/app/actions/bonus';
+import {
+    scheduleSquadGathering,
+    cancelSquadGathering,
+    listGatheringSessions,
+    listPendingGatherings,
+    reviewGathering,
+    type SquadGatheringSession,
+    type PendingGatheringReview,
+} from '@/app/actions/squad-gathering';
 
 const ONE_TIME_QUEST_LABELS: Record<string, string> = {
     o1: '超越巔峰',
@@ -35,6 +44,256 @@ function isActive(lastCheckIn?: string): boolean {
     return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
 }
 
+
+// ── 安排 / 管理實體凝聚排期 ──────────────────────────────────────────────────
+function GatheringScheduler({
+    battalionMembers,
+    onShowMessage,
+}: {
+    battalionMembers: Record<string, SquadMemberStats[]>;
+    onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+}) {
+    const teamOptions = Object.keys(battalionMembers).sort();
+    const [team, setTeam] = useState<string>(teamOptions[0] ?? '');
+    const [date, setDate] = useState<string>('');
+    const [saving, setSaving] = useState(false);
+    const [sessions, setSessions] = useState<SquadGatheringSession[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const reload = useCallback(async () => {
+        const res = await listGatheringSessions();
+        if (res.success) setSessions(res.sessions ?? []);
+        setLoading(false);
+    }, []);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleCreate = async () => {
+        if (!team || !date) return;
+        setSaving(true);
+        const res = await scheduleSquadGathering(team, date);
+        setSaving(false);
+        if (res.success) {
+            onShowMessage('✅ 已排定實體凝聚', 'success');
+            setDate('');
+            reload();
+        } else {
+            onShowMessage(res.error ?? '排定失敗', 'error');
+        }
+    };
+
+    const handleCancel = async (sessionId: string) => {
+        if (!confirm('確定要取消此凝聚？')) return;
+        const res = await cancelSquadGathering(sessionId);
+        if (res.success) {
+            onShowMessage('已取消凝聚', 'info');
+            reload();
+        } else {
+            onShowMessage(res.error ?? '取消失敗', 'error');
+        }
+    };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const upcoming = sessions.filter(s => s.status === 'scheduled' || s.status === 'pending_review');
+
+    return (
+        <div className="bg-white border-2 border-rose-100 rounded-3xl p-5 space-y-4 shadow-md">
+            <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                <CalendarPlus size={15} className="text-rose-400" /> 安排實體凝聚
+            </h3>
+            <div className="space-y-3">
+                <div>
+                    <label className="text-xs font-black text-gray-500">小隊</label>
+                    <select
+                        value={team}
+                        onChange={e => setTeam(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-rose-400 mt-1"
+                    >
+                        {teamOptions.length === 0 && <option value="">（尚無小隊資料）</option>}
+                        {teamOptions.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="text-xs font-black text-gray-500">凝聚日期</label>
+                    <input
+                        type="date"
+                        min={today}
+                        value={date}
+                        onChange={e => setDate(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-rose-400 mt-1"
+                    />
+                </div>
+                <button
+                    disabled={saving || !team || !date}
+                    onClick={handleCreate}
+                    className="w-full py-2.5 bg-rose-600 text-white font-black rounded-xl active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <CalendarPlus size={14} />}
+                    排定凝聚
+                </button>
+            </div>
+
+            <div className="border-t border-gray-200 pt-3 space-y-2">
+                <p className="text-sm font-black text-gray-700">已排定 / 審核中</p>
+                {loading ? (
+                    <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-rose-400" /></div>
+                ) : upcoming.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-3">暫無排期</p>
+                ) : (
+                    <div className="space-y-2">
+                        {upcoming.map(s => (
+                            <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-gray-900 truncate">{s.teamName}</p>
+                                    <p className="text-xs text-gray-500">
+                                        {s.gatheringDate}
+                                        <span className={`ml-2 font-bold ${s.status === 'scheduled' ? 'text-amber-600' : 'text-yellow-600'}`}>
+                                            {s.status === 'scheduled' ? '排定中' : '審核中'}
+                                        </span>
+                                    </p>
+                                </div>
+                                {s.status === 'scheduled' && (
+                                    <button
+                                        onClick={() => handleCancel(s.id)}
+                                        className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ── 待審實體凝聚（終審） ────────────────────────────────────────────────────
+function GatheringPendingReviews({
+    reviewerId,
+    onShowMessage,
+}: {
+    reviewerId: string;
+    onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+}) {
+    const [items, setItems] = useState<PendingGatheringReview[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [notes, setNotes] = useState<Record<string, string>>({});
+    const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await listPendingGatherings();
+        if (res.success) setItems(res.items ?? []);
+        setLoading(false);
+    }, []);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleReview = async (sessionId: string, approve: boolean) => {
+        setReviewingId(sessionId);
+        const res = await reviewGathering(reviewerId, sessionId, approve, notes[sessionId] || undefined);
+        setReviewingId(null);
+        if (res.success) {
+            onShowMessage(
+                approve
+                    ? `✅ 已核准，每人 +${res.rewardPerPerson} 分（${res.attendeeCount} 人）`
+                    : '已退回此凝聚',
+                approve ? 'success' : 'info',
+            );
+            reload();
+        } else {
+            onShowMessage(res.error ?? '操作失敗', 'error');
+        }
+    };
+
+    if (loading) return (
+        <div className="bg-white border-2 border-rose-100 rounded-3xl p-5 shadow-md">
+            <div className="flex items-center gap-2 text-rose-500 font-black text-sm">
+                <CalendarIcon size={14} /> 待審實體凝聚
+            </div>
+            <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-rose-400" /></div>
+        </div>
+    );
+
+    return (
+        <div className="bg-white border-2 border-rose-100 rounded-3xl p-5 space-y-3 shadow-md">
+            <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                <CalendarIcon size={15} className="text-rose-400" /> 待審實體凝聚（終審）
+            </h3>
+            {items.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">暫無待審凝聚</p>
+            ) : (
+                <div className="space-y-4">
+                    {items.map(item => (
+                        <div key={item.session.id} className="bg-gray-50 rounded-2xl p-4 space-y-3 border border-gray-200">
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-black text-gray-900 text-base">{item.session.teamName}</p>
+                                    <p className="text-sm text-gray-500">凝聚日：{item.session.gatheringDate}</p>
+                                </div>
+                                <span className="shrink-0 text-sm font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                                    每人 +{item.projectedReward}
+                                </span>
+                            </div>
+
+                            <div className="bg-white rounded-xl p-3 space-y-1.5 border border-gray-200">
+                                <p className="text-sm text-gray-700 font-bold flex items-center gap-2">
+                                    <Users size={12} /> 出席 {item.attendees.length} / {item.teamMemberCount}
+                                    {item.attendees.length >= item.teamMemberCount && item.teamMemberCount > 0 && (
+                                        <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">全員到齊</span>
+                                    )}
+                                </p>
+                                <p className="text-xs flex items-center gap-1">
+                                    <Crown size={11} className={item.attendees.some(a => a.isCommandant) ? 'text-amber-500' : 'text-gray-400'} />
+                                    <span className={item.attendees.some(a => a.isCommandant) ? 'text-amber-600 font-bold' : 'text-gray-500'}>
+                                        {item.attendees.some(a => a.isCommandant) ? '大隊長到場（+100）' : '大隊長未到場'}
+                                    </span>
+                                </p>
+                                <div className="pt-1 border-t border-gray-100 grid grid-cols-2 gap-1">
+                                    {item.attendees.map(a => (
+                                        <span key={a.userId} className="text-xs text-gray-600 flex items-center gap-1">
+                                            <CheckCircle2 size={10} className="text-emerald-500" />
+                                            {a.userName ?? a.userId}
+                                            {a.isCommandant && <Crown size={9} className="text-amber-500" />}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <textarea
+                                placeholder="終審備註（選填）"
+                                value={notes[item.session.id] || ''}
+                                onChange={e => setNotes(prev => ({ ...prev, [item.session.id]: e.target.value }))}
+                                rows={2}
+                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-rose-400 resize-none"
+                            />
+
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={reviewingId === item.session.id}
+                                    onClick={() => handleReview(item.session.id, false)}
+                                    className="flex-1 py-2 bg-red-50 text-red-500 font-black rounded-xl text-sm border border-red-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    <XCircle size={13} /> 退回
+                                </button>
+                                <button
+                                    disabled={reviewingId === item.session.id}
+                                    onClick={() => handleReview(item.session.id, true)}
+                                    className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl text-sm shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    <CheckCircle2 size={13} /> {reviewingId === item.session.id ? '處理中…' : `核准（+${item.projectedReward}）`}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battalionMembers = {} }: CommandantTabProps) {
     const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -138,6 +397,12 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                     </div>
                 </div>
             )}
+
+            {/* 實體凝聚排期 */}
+            <GatheringScheduler battalionMembers={battalionMembers} onShowMessage={onShowMessage} />
+
+            {/* 實體凝聚終審 */}
+            <GatheringPendingReviews reviewerId={userData.UserID} onShowMessage={onShowMessage} />
 
             {/* Application list */}
             {apps.length === 0 ? (

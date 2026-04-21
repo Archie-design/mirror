@@ -795,6 +795,7 @@ export default function App() {
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
+            userId={userData.UserID}
           />
         )}
         {activeTab === 'ninegrid' && userData && (

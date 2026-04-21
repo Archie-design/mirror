@@ -242,6 +242,64 @@ export async function transferMember(
     return { success: true };
 }
 
+// ── 成員管理：從名單中移除成員 ───────────────────────────────
+// 用於開營一週內無條件退出：刪除學員的所有相關資料（CharacterStats、申請、報到、繳費、九宮格、Rosters 名冊等）
+// DailyLogs 透過 ON DELETE CASCADE 自動清除
+export async function deleteMember(
+    targetUserId: string,
+    actorName: string = 'admin'
+) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data: before } = await supabase
+        .from('CharacterStats')
+        .select('Name, Email, SquadName, TeamName, IsCaptain, IsCommandant')
+        .eq('UserID', targetUserId)
+        .single();
+    if (!before) return { success: false, error: '找不到此成員' };
+
+    const client = await connectDb();
+    try {
+        await client.query('BEGIN');
+
+        // 依序刪除所有引用此 UserID 的業務資料
+        await client.query(`DELETE FROM "BonusApplications"         WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "CourseRegistrations"       WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "CourseAttendance"          WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "SquadGatheringCheckins"    WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "SquadGatheringAttendances" WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "OnlineGatheringApplications" WHERE user_id = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "UserNineGrid"              WHERE member_id = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "FinePayments"              WHERE user_id   = $1`, [targetUserId]);
+
+        // 主角色（DailyLogs 會 CASCADE）
+        await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = $1`, [targetUserId]);
+
+        // 名冊（以 email 為主鍵；若無 email 則跳過）
+        if (before.Email) {
+            await client.query(`DELETE FROM "Rosters" WHERE email = $1`, [before.Email]);
+        }
+
+        await client.query('COMMIT');
+
+        await logAdminAction('member_delete', actorName, targetUserId, before.Name, {
+            squad: before.SquadName,
+            team: before.TeamName,
+            isCaptain: before.IsCaptain,
+            isCommandant: before.IsCommandant,
+            email: before.Email,
+        });
+        return { success: true };
+    } catch (error: any) {
+        await client.query('ROLLBACK');
+        await logAdminAction('member_delete', actorName, targetUserId, before.Name, { error: error.message }, 'error');
+        return { success: false, error: error.message };
+    } finally {
+        await client.end();
+    }
+}
+
 // ── 成員管理：更新角色（隊長 / 大隊長）────────────────────────
 export async function setMemberRole(
     targetUserId: string,

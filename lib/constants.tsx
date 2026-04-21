@@ -70,8 +70,8 @@ export const DIET_QUEST_IDS = new Set(['diet_veg', 'diet_seafood']);
 export const WEEKLY_QUEST_CONFIG: Quest[] = [
     { id: 'wk1',         title: '破框練習',         sub: '做不習慣、討厭、害怕的事；在小群分享',              reward: 200, limit: 3 },
     { id: 'wk2',         title: '天使通話',         sub: '與夥伴進行天使通話，分享近期親證狀況',              reward: 200, limit: 2 },
-    { id: 'wk3_online',  title: '小組凝聚（線上）', sub: '線上小組聚會，須審核',                             reward: 100, limit: 1 },
-    { id: 'wk3_offline', title: '小組凝聚（實體）', sub: '實體小組聚會（全到+400，大隊長出席再+100），須審核', reward: 300, limit: 1 },
+    { id: 'wk3_online',  title: '小組凝聚（線上）', sub: '線上小組聚會（學員自行提交，小隊長初審通過後入帳 +100）', reward: 100, limit: 1 },
+    { id: 'wk3_offline', title: '小組凝聚（實體）', sub: '實體小組聚會（QR 掃碼報到，全到+100、大隊長出席再+100）', reward: 300, limit: 1 },
     { id: 'wk4_small',   title: '人生大戲（小群）', sub: '選定最弱一運，在小群分享親證狀況',                  reward: 200, limit: 1 },
     { id: 'wk4_large',   title: '人生大戲（大群）', sub: '選定最弱一運，在大群（全隊）分享親證狀況',           reward: 300, limit: 1 },
 ];
