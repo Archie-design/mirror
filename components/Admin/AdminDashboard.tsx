@@ -17,6 +17,36 @@ interface MemberRow {
     Score?: number;
 }
 
+// 統一章節標頭：羅馬數字銘牌 + 襯線標題 + 延伸的黃銅細線
+type Accent = 'gold' | 'emerald' | 'ruby' | 'pink' | 'teal' | 'amber';
+const ACCENT_MAP: Record<Accent, { text: string; ring: string; rule: string }> = {
+    gold:    { text: 'text-[#F5C842]',   ring: 'border-[#F5C842]/60',   rule: 'from-[#F5C842]/50' },
+    emerald: { text: 'text-emerald-300',  ring: 'border-emerald-400/50', rule: 'from-emerald-400/40' },
+    ruby:    { text: 'text-[#E07A6E]',    ring: 'border-[#E07A6E]/60',   rule: 'from-[#E07A6E]/50' },
+    pink:    { text: 'text-pink-300',     ring: 'border-pink-400/50',    rule: 'from-pink-400/40' },
+    teal:    { text: 'text-teal-300',     ring: 'border-teal-400/50',    rule: 'from-teal-400/40' },
+    amber:   { text: 'text-amber-300',    ring: 'border-amber-400/50',   rule: 'from-amber-400/40' },
+};
+
+function SectionHeading({ numeral, title, subtitle, accent = 'gold', icon }: {
+    numeral: string; title: string; subtitle?: string; accent?: Accent; icon?: React.ReactNode;
+}) {
+    const c = ACCENT_MAP[accent];
+    return (
+        <div className="flex items-center gap-3 md:gap-4">
+            <span className={`shrink-0 w-9 h-9 rounded-full bg-[#081812] font-display font-black text-[11px] flex items-center justify-center tracking-widest border ${c.ring} ${c.text}`}>
+                {numeral}
+            </span>
+            <div className="flex items-baseline gap-2 min-w-0">
+                {icon && <span className={`${c.text} opacity-80`}>{icon}</span>}
+                <h3 className={`font-display text-base md:text-lg font-black tracking-wide ${c.text} truncate`}>{title}</h3>
+                {subtitle && <span className="text-[10px] uppercase tracking-[0.25em] text-emerald-200/40 hidden md:inline">{subtitle}</span>}
+            </div>
+            <div className={`flex-1 h-px bg-gradient-to-r to-transparent ${c.rule}`} />
+        </div>
+    );
+}
+
 function MemberManagementSection() {
     const [members, setMembers] = React.useState<MemberRow[]>([]);
     const [loading, setLoading] = React.useState(false);
@@ -92,86 +122,93 @@ function MemberManagementSection() {
     const teams = [...new Set(members.map(m => m.TeamName).filter(Boolean))];
 
     return (
-        <section className="space-y-6 md:col-span-2">
-            <div className="flex items-center gap-2 text-cyan-400 font-black text-sm uppercase tracking-widest"><UserCog size={16} /> 成員管理</div>
-            <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-4xl space-y-4 shadow-xl">
-                <div className="flex gap-2">
-                    <input
-                        placeholder="搜尋姓名 / 手機 / 信箱 / 大隊 / 小隊"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-cyan-500"
-                    />
-                    <button onClick={load} disabled={loading} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700 disabled:opacity-50">
-                        {loading ? '…' : '重整'}
-                    </button>
-                </div>
-                {msg && <p className="text-xs text-center font-bold text-emerald-400">{msg}</p>}
-                <div className="max-h-[400px] overflow-y-auto space-y-1">
-                    <datalist id="dl-squads">{squads.map(s => <option key={s} value={s!} />)}</datalist>
-                    <datalist id="dl-teams">{teams.map(t => <option key={t} value={t!} />)}</datalist>
-                    {filtered.length === 0 && <p className="text-xs text-slate-500 text-center py-4">無符合成員</p>}
-                    {filtered.map(m => {
-                        const isEditing = editingId === m.UserID;
-                        return (
-                            <div key={m.UserID} className={`rounded-xl p-3 text-xs ${isEditing ? 'bg-cyan-950/40 border border-cyan-500/30' : 'bg-slate-950/50 border border-transparent hover:border-slate-700'}`}>
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold text-white w-16 truncate">{m.Name}</span>
-                                    <span className="text-slate-500 flex-1 truncate">{m.SquadName || '-'} / {m.TeamName || '-'}</span>
-                                    {m.IsCaptain && <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-full">隊長</span>}
-                                    {m.IsCommandant && <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded-full">大隊長</span>}
-                                    <span className="text-slate-600 text-[10px]">{(m.Score ?? 0).toLocaleString()} 分</span>
-                                    {!isEditing && (
-                                        <>
-                                            <button onClick={() => startEdit(m)} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold shrink-0">編輯</button>
-                                            <button
-                                                onClick={() => handleDelete(m)}
-                                                disabled={deletingId === m.UserID}
-                                                className="text-rose-400 hover:text-rose-300 text-[10px] font-bold shrink-0 disabled:opacity-50"
-                                            >
-                                                {deletingId === m.UserID ? '移除中…' : '移除'}
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                                {isEditing && (
-                                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-                                        <div>
-                                            <label className="text-[10px] text-slate-500 block mb-0.5">大隊</label>
-                                            <input list="dl-squads" value={editSquad} onChange={e => setEditSquad(e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-xs outline-none focus:border-cyan-500" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-slate-500 block mb-0.5">小隊</label>
-                                            <input list="dl-teams" value={editTeam} onChange={e => setEditTeam(e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-xs outline-none focus:border-cyan-500" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-slate-500 block mb-0.5">角色</label>
-                                            <select value={editRole} onChange={e => setEditRole(e.target.value as any)}
-                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-xs outline-none focus:border-cyan-500">
-                                                <option value="none">一般學員</option>
-                                                <option value="captain">小隊長</option>
-                                                <option value="commandant">大隊長</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex gap-1">
-                                            <button disabled={saving} onClick={() => handleSave(m)}
-                                                className="flex-1 py-1.5 bg-cyan-600 text-white rounded-lg font-bold text-[10px] hover:bg-cyan-500 disabled:opacity-50">
-                                                {saving ? '…' : '儲存'}
-                                            </button>
-                                            <button onClick={() => setEditingId(null)}
-                                                className="py-1.5 px-2 bg-slate-700 text-slate-300 rounded-lg text-[10px] hover:bg-slate-600">取消</button>
-                                        </div>
+        <div className="bg-[#0d241b] border border-emerald-400/15 p-5 md:p-6 rounded-4xl space-y-4 brass-ring">
+            <div className="flex gap-2">
+                <input
+                    placeholder="搜尋姓名 / 手機 / 信箱 / 大隊 / 小隊"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="flex-1 bg-[#061410] border border-emerald-900/60 rounded-xl px-3 py-2.5 text-emerald-100 text-xs outline-none focus:border-emerald-400/60 placeholder:text-emerald-200/25 min-h-[44px]"
+                />
+                <button
+                    onClick={load}
+                    disabled={loading}
+                    className="px-4 rounded-xl text-xs font-black text-emerald-200/70 hover:text-[#F5C842] border border-emerald-900/60 hover:border-[#F5C842]/40 bg-[#081812] disabled:opacity-40 min-h-[44px] transition-colors"
+                >
+                    {loading ? '…' : '重整'}
+                </button>
+            </div>
+            {msg && (
+                <p className="text-xs text-center font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-2 animate-fade-up">
+                    {msg}
+                </p>
+            )}
+            <div className="max-h-[440px] overflow-y-auto space-y-1 pr-1">
+                <datalist id="dl-squads">{squads.map(s => <option key={s} value={s!} />)}</datalist>
+                <datalist id="dl-teams">{teams.map(t => <option key={t} value={t!} />)}</datalist>
+                {filtered.length === 0 && <p className="text-xs text-emerald-200/40 text-center py-8">無符合成員</p>}
+                {filtered.map(m => {
+                    const isEditing = editingId === m.UserID;
+                    return (
+                        <div key={m.UserID} className={`rounded-xl p-3 text-xs transition-colors ${isEditing ? 'bg-[#F5C842]/5 border border-[#F5C842]/30' : 'bg-[#061410]/60 border border-transparent hover:border-emerald-400/15'}`}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-display font-black text-emerald-50 w-16 truncate">{m.Name}</span>
+                                <span className="text-emerald-200/45 flex-1 truncate min-w-0">{m.SquadName || '—'} / {m.TeamName || '—'}</span>
+                                {m.IsCaptain && <span className="text-[10px] text-indigo-300 bg-indigo-400/10 border border-indigo-400/20 px-1.5 py-0.5 rounded-full">隊長</span>}
+                                {m.IsCommandant && <span className="text-[10px] text-[#E07A6E] bg-[#E07A6E]/10 border border-[#E07A6E]/20 px-1.5 py-0.5 rounded-full">大隊長</span>}
+                                <span className="text-[#F5C842]/60 text-[10px] font-display font-black">{(m.Score ?? 0).toLocaleString()} 分</span>
+                                {!isEditing && (
+                                    <div className="flex gap-1.5 shrink-0">
+                                        <button onClick={() => startEdit(m)} className="text-emerald-300 hover:text-emerald-200 text-[11px] font-bold px-2 py-1 rounded-lg hover:bg-emerald-400/10 transition-colors">編輯</button>
+                                        <button
+                                            onClick={() => handleDelete(m)}
+                                            disabled={deletingId === m.UserID}
+                                            className="text-[#E07A6E] hover:text-[#E07A6E] hover:bg-[#E07A6E]/10 text-[11px] font-bold px-2 py-1 rounded-lg disabled:opacity-40 transition-colors"
+                                        >
+                                            {deletingId === m.UserID ? '移除中…' : '移除'}
+                                        </button>
                                     </div>
                                 )}
                             </div>
-                        );
-                    })}
-                </div>
-                <p className="text-[10px] text-slate-600 text-center">共 {members.length} 人{search && `，篩選結果 ${filtered.length} 人`}</p>
+                            {isEditing && (
+                                <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+                                    <div>
+                                        <label className="text-[10px] text-emerald-200/50 block mb-1 uppercase tracking-widest">大隊</label>
+                                        <input list="dl-squads" value={editSquad} onChange={e => setEditSquad(e.target.value)}
+                                            className="w-full bg-[#061410] border border-emerald-900/60 rounded-lg px-2 py-1.5 text-emerald-100 text-xs outline-none focus:border-[#F5C842]/50" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-emerald-200/50 block mb-1 uppercase tracking-widest">小隊</label>
+                                        <input list="dl-teams" value={editTeam} onChange={e => setEditTeam(e.target.value)}
+                                            className="w-full bg-[#061410] border border-emerald-900/60 rounded-lg px-2 py-1.5 text-emerald-100 text-xs outline-none focus:border-[#F5C842]/50" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-emerald-200/50 block mb-1 uppercase tracking-widest">角色</label>
+                                        <select value={editRole} onChange={e => setEditRole(e.target.value as 'captain' | 'commandant' | 'none')}
+                                            className="w-full bg-[#061410] border border-emerald-900/60 rounded-lg px-2 py-1.5 text-emerald-100 text-xs outline-none focus:border-[#F5C842]/50">
+                                            <option value="none">一般學員</option>
+                                            <option value="captain">小隊長</option>
+                                            <option value="commandant">大隊長</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        <button disabled={saving} onClick={() => handleSave(m)}
+                                            className="flex-1 py-2 bg-[#F5C842] text-[#1A2A1A] rounded-lg font-black text-[11px] hover:brightness-110 disabled:opacity-50 transition-all">
+                                            {saving ? '…' : '儲存'}
+                                        </button>
+                                        <button onClick={() => setEditingId(null)}
+                                            className="py-2 px-3 bg-[#061410] text-emerald-200/70 border border-emerald-900/60 rounded-lg text-[11px] hover:text-emerald-200 transition-colors">取消</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
-        </section>
+            <p className="text-[10px] text-emerald-200/40 text-center tracking-widest uppercase">
+                共 {members.length} 人{search && ` · 篩選 ${filtered.length} 人`}
+            </p>
+        </div>
     );
 }
 
@@ -259,15 +296,29 @@ export function AdminDashboard({
 
     if (!adminAuth) {
         return (
-            <div className="min-h-screen bg-slate-950 text-slate-200 p-8 flex flex-col justify-center items-center animate-in fade-in">
-                <div className="max-w-sm w-full space-y-8 text-center mx-auto">
-                    <div className="w-20 h-20 bg-slate-800 rounded-3xl mx-auto flex items-center justify-center border border-slate-700 text-orange-500"><Lock size={40} /></div>
-                    <h1 className="text-3xl font-black text-white text-center mx-auto">大會中樞驗證</h1>
-                    <form onSubmit={onAuth} className="space-y-6">
-                        <input name="password" type="password" required className="w-full bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 text-white text-center text-xl outline-none focus:border-orange-500 font-bold" placeholder="密令" autoFocus />
-                        <div className="flex gap-4">
-                            <button type="button" onClick={onClose} className="flex-1 py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl">取消</button>
-                            <button className="flex-2 py-4 bg-orange-600 text-white font-black rounded-2xl shadow-lg active:scale-95 transition-all">驗證登入</button>
+            <div className="admin-grain min-h-screen text-emerald-50 p-8 flex flex-col justify-center items-center animate-in fade-in relative overflow-hidden">
+                <div className="relative z-10 max-w-sm w-full space-y-10 text-center mx-auto animate-fade-up">
+                    <div className="space-y-4">
+                        <div className="w-24 h-24 rounded-full mx-auto flex items-center justify-center border-2 border-[#F5C842]/40 bg-[#081812] text-[#F5C842] shadow-[0_0_40px_-8px_rgba(245,200,66,0.5)]">
+                            <Lock size={36} strokeWidth={1.5} />
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.5em] text-[#F5C842]/70">Wizard&apos;s Chamber</p>
+                        <h1 className="font-display text-4xl font-black text-emerald-50 tracking-wider">大法師密室</h1>
+                        <div className="mx-auto w-24 h-px brass-rule" />
+                        <p className="text-xs text-emerald-200/60 tracking-wide">說出通關密語，方得入內。</p>
+                    </div>
+                    <form onSubmit={onAuth} className="space-y-5">
+                        <input
+                            name="password"
+                            type="password"
+                            required
+                            autoFocus
+                            placeholder="密令"
+                            className="w-full bg-[#061410] border border-[#F5C842]/30 rounded-2xl p-5 text-[#F5C842] text-center text-xl outline-none focus:border-[#F5C842] focus:shadow-[0_0_24px_-4px_rgba(245,200,66,0.4)] font-display font-black tracking-[0.6em] placeholder:text-emerald-200/25 placeholder:tracking-[0.3em] transition-all"
+                        />
+                        <div className="flex gap-3">
+                            <button type="button" onClick={onClose} className="flex-1 py-4 bg-[#081812] text-emerald-200/60 font-bold rounded-2xl border border-emerald-900/50 hover:text-emerald-200 transition-colors">返回</button>
+                            <button className="flex-[1.5] py-4 bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black text-base rounded-2xl shadow-[0_8px_24px_-8px_rgba(245,200,66,0.6)] active:scale-95 transition-all tracking-widest">進入密室</button>
                         </div>
                     </form>
                 </div>
@@ -276,89 +327,111 @@ export function AdminDashboard({
     }
 
     const TAB_CONFIG = [
-        { id: 'members' as const, label: '成員', icon: <Users size={14} /> },
-        { id: 'quests' as const, label: '任務', icon: <Sliders size={14} /> },
-        { id: 'review' as const, label: '審核', icon: <Settings size={14} /> },
-        { id: 'ninegrid' as const, label: '九宮格', icon: <Grid3X3 size={14} /> },
-        { id: 'system' as const, label: '系統', icon: <BarChart3 size={14} /> },
+        { id: 'members'  as const, label: '成員',   numeral: 'I',   icon: <Users size={14} /> },
+        { id: 'quests'   as const, label: '任務',   numeral: 'II',  icon: <Sliders size={14} /> },
+        { id: 'review'   as const, label: '審核',   numeral: 'III', icon: <Settings size={14} /> },
+        { id: 'ninegrid' as const, label: '九宮格', numeral: 'IV',  icon: <Grid3X3 size={14} /> },
+        { id: 'system'   as const, label: '系統',   numeral: 'V',   icon: <BarChart3 size={14} /> },
     ];
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 p-4 md:p-8 animate-in fade-in">
-            <div className="max-w-6xl mx-auto space-y-8 pb-20">
+        <div className="admin-grain min-h-screen text-emerald-50 p-4 md:p-8 animate-in fade-in relative">
+            <div className="relative z-10 max-w-6xl mx-auto space-y-8 pb-20">
                 <header className="flex justify-between items-center">
-                    <div className="flex items-center gap-3 md:gap-4">
-                        <div className="p-3 md:p-4 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl text-white shadow-2xl shadow-orange-950/20 ring-4 ring-orange-500/10"><Crown size={28} /></div>
+                    <div className="flex items-center gap-3 md:gap-5">
+                        <div className="relative p-3 md:p-4 rounded-2xl bg-[#081812] border border-[#F5C842]/40 text-[#F5C842] shadow-[0_0_32px_-8px_rgba(245,200,66,0.5)]">
+                            <Crown size={26} strokeWidth={1.75} />
+                            <span className="absolute -inset-px rounded-2xl pointer-events-none" style={{ boxShadow: 'inset 0 1px 0 rgba(245,200,66,0.25)' }} />
+                        </div>
                         <div className="text-left">
-                            <h1 className="text-2xl md:text-4xl font-black text-white italic tracking-tighter">大法師後台</h1>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1 ml-1 opacity-50 hidden md:block">Wizard&apos;s Back Office</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-[#F5C842]/70 hidden md:block">Wizard&apos;s Back Office</p>
+                            <h1 className="font-display text-3xl md:text-4xl font-black text-emerald-50 tracking-wider">大法師密室</h1>
+                            <div className="mt-1 w-32 h-px brass-rule hidden md:block" />
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-4 bg-slate-900/50 backdrop-blur-md rounded-2xl text-slate-500 border border-white/5 hover:text-red-400 hover:bg-slate-800 transition-all hover:rotate-90"><X size={20} /></button>
+                    <button
+                        onClick={onClose}
+                        aria-label="關閉"
+                        className="p-3 md:p-4 rounded-2xl text-emerald-200/60 border border-emerald-900/50 bg-[#081812]/70 backdrop-blur-md hover:text-[#E07A6E] hover:border-[#E07A6E]/40 transition-all hover:rotate-90"
+                    >
+                        <X size={20} />
+                    </button>
                 </header>
 
-                {/* Tab navigation */}
-                <div className="flex gap-2 bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
-                    {TAB_CONFIG.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveAdminTab(tab.id)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-black transition-all ${
-                                activeAdminTab === tab.id
-                                    ? 'bg-orange-600 text-white shadow-lg'
-                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
-                            }`}
-                        >
-                            {tab.icon}
-                            {tab.label}
-                        </button>
-                    ))}
+                {/* Tab navigation — 黃銅分頁（羅馬數字 + 底線） */}
+                <div className="relative">
+                    <div className="flex gap-1 bg-[#081812] p-1.5 rounded-2xl border border-[#F5C842]/15 overflow-x-auto no-scrollbar brass-ring">
+                        {TAB_CONFIG.map(tab => {
+                            const active = activeAdminTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveAdminTab(tab.id)}
+                                    className={`relative flex-1 min-w-[72px] flex flex-col items-center justify-center gap-0.5 py-2.5 px-2 rounded-xl text-[11px] font-black transition-all ${
+                                        active
+                                            ? 'bg-gradient-to-b from-[#F5C842]/15 to-transparent text-[#F5C842]'
+                                            : 'text-emerald-200/45 hover:text-emerald-100 hover:bg-emerald-950/40'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`font-display text-[10px] tracking-widest ${active ? 'text-[#F5C842]' : 'text-emerald-200/35'}`}>{tab.numeral}</span>
+                                        <span className="opacity-70">{tab.icon}</span>
+                                        <span>{tab.label}</span>
+                                    </div>
+                                    {active && <span className="absolute bottom-0 left-4 right-4 h-px bg-[#F5C842] shadow-[0_0_8px_rgba(245,200,66,0.8)]" />}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {/* ── Tab: 成員 ── */}
                 {activeAdminTab === 'members' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 學員名冊管理</div>
-                        <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-6 shadow-xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-up">
+                    <section className="space-y-5">
+                        <SectionHeading numeral="I.i" title="學員名冊管理" subtitle="Roster Entrance" accent="gold" icon={<Users size={16} />} />
+                        <div className="bg-[#0d241b] border border-[#F5C842]/15 p-6 md:p-7 rounded-4xl space-y-6 brass-ring">
                             <div className="space-y-3">
-                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">登入模式</p>
-                                <div className={`flex items-center justify-between p-4 rounded-2xl border-2 ${systemSettings.RegistrationMode === 'roster' ? 'border-indigo-500/50 bg-indigo-950/30' : 'border-emerald-500/50 bg-emerald-950/30'}`}>
+                                <p className="text-[10px] font-black text-[#F5C842]/60 uppercase tracking-[0.3em]">登入模式</p>
+                                <div className={`flex items-center justify-between p-4 rounded-2xl border ${systemSettings.RegistrationMode === 'roster' ? 'border-indigo-400/40 bg-indigo-950/20' : 'border-emerald-400/40 bg-emerald-950/30'}`}>
                                     <div>
-                                        <p className={`font-black text-sm ${systemSettings.RegistrationMode === 'roster' ? 'text-indigo-300' : 'text-emerald-300'}`}>
-                                            {systemSettings.RegistrationMode === 'roster' ? '🔐 名單驗證模式' : '🌐 自由註冊模式'}
+                                        <p className={`font-display font-black text-sm ${systemSettings.RegistrationMode === 'roster' ? 'text-indigo-200' : 'text-emerald-200'}`}>
+                                            {systemSettings.RegistrationMode === 'roster' ? '名單驗證模式' : '自由註冊模式'}
                                         </p>
-                                        <p className="text-[10px] text-slate-500 mt-0.5">
+                                        <p className="text-[10px] text-emerald-200/50 mt-0.5">
                                             {systemSettings.RegistrationMode === 'roster' ? '僅限名冊內信箱登入，新生需由管理員預先匯入' : '任何人可自行填表註冊'}
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => updateGlobalSetting('RegistrationMode', systemSettings.RegistrationMode === 'roster' ? 'open' : 'roster')}
-                                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${systemSettings.RegistrationMode === 'roster' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'}`}
+                                        className={`px-4 py-2.5 rounded-xl text-[11px] font-black transition-all min-h-[44px] ${systemSettings.RegistrationMode === 'roster' ? 'bg-emerald-500 text-emerald-50 hover:bg-emerald-400' : 'bg-indigo-500 text-indigo-50 hover:bg-indigo-400'}`}
                                     >
-                                        切換為{systemSettings.RegistrationMode === 'roster' ? '自由註冊' : '名單驗證'}
+                                        切換為{systemSettings.RegistrationMode === 'roster' ? '自由' : '名單'}
                                     </button>
                                 </div>
                             </div>
-                            <div className="border-t border-white/5 pt-4" />
-                            <form onSubmit={handleImportSubmit} className="space-y-4 text-center">
-                                <p className="text-xs text-slate-400 text-left">
+                            <div className="h-px brass-rule opacity-30" />
+                            <form onSubmit={handleImportSubmit} className="space-y-4">
+                                <p className="text-xs text-emerald-200/60 leading-relaxed">
                                     請貼上 CSV 格式資料（含表頭行將自動略過）<br />
-                                    格式：<span className="text-orange-400 font-mono">email, 姓名, 生日(YYYY-MM-DD), 大隊, 小隊, 是否小隊長, 是否大隊長</span>
+                                    格式：<span className="text-[#F5C842] font-mono text-[10px]">email, 姓名, 生日, 大隊, 小隊, is_captain, is_commandant</span>
                                 </p>
                                 <textarea
                                     value={csvInput}
                                     onChange={(e) => setCsvInput(e.target.value)}
-                                    placeholder={`ex:\nuser1@gmail.com,王小明,1960-03-15,第一大隊,第一小隊,true,false\nuser2@gmail.com,李大華,1985-07-22,第一大隊,第一小隊,false,false`}
-                                    className="w-full h-36 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs outline-none focus:border-orange-500 resize-none"
+                                    placeholder={`user1@gmail.com,王小明,1960-03-15,第一大隊,第一小隊,true,false\nuser2@gmail.com,李大華,1985-07-22,第一大隊,第一小隊,false,false`}
+                                    className="w-full h-36 bg-[#061410] border border-[#F5C842]/15 rounded-2xl p-4 text-emerald-100 font-mono text-xs outline-none focus:border-[#F5C842]/50 resize-none placeholder:text-emerald-200/20"
                                 />
-                                <button disabled={isImporting || !csvInput} className="w-full bg-emerald-600 p-4 rounded-2xl text-white font-black shadow-lg hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50">
-                                    {isImporting ? '匯入中...' : '📥 批量匯入名冊'}
+                                <button disabled={isImporting || !csvInput} className="w-full p-4 rounded-2xl bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black tracking-widest shadow-[0_8px_24px_-8px_rgba(245,200,66,0.5)] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                    {isImporting ? '匯入中…' : '批量匯入名冊'}
                                 </button>
                             </form>
                         </div>
                     </section>
-                    <MemberManagementSection />
+                    <section className="space-y-5">
+                        <SectionHeading numeral="I.ii" title="成員管理" subtitle="Member Registry" accent="emerald" icon={<UserCog size={16} />} />
+                        <MemberManagementSection />
+                    </section>
                 </div>
                 )}
 

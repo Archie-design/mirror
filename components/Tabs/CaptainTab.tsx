@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, Loader2, Grid3x3, Users, Edit3, Check, X, Crown, Calendar as CalendarIcon, Send, Star } from 'lucide-react';
+import { ShieldAlert, Loader2, Grid3x3, Users, Check, Crown, Calendar as CalendarIcon, Send, Star } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { SQUAD_ROLES } from '@/lib/constants';
 import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
-import { getSquadGrids, updateMemberCellText } from '@/app/actions/nine-grid';
+import { getSquadGrids } from '@/app/actions/nine-grid';
 import {
     getTeamGatheringContext,
     submitGatheringForReview,
@@ -88,45 +88,16 @@ function isActive(lastCheckIn?: string): boolean {
 }
 
 // ── 小隊九宮格總覽 ──────────────────────────────────────────────────────────
-function SquadNineGridSection({ captainId, captainName }: { captainId: string; captainName: string }) {
+function SquadNineGridSection({ captainId }: { captainId: string }) {
     type GridRow = UserNineGrid & { user_name: string };
     const [grids, setGrids] = useState<GridRow[]>([]);
     const [loading, setLoading] = useState(true);
-    const [editing, setEditing] = useState<{ memberId: string; cellIndex: number } | null>(null);
-    const [editLabel, setEditLabel] = useState('');
-    const [editDesc, setEditDesc] = useState('');
-    const [saving, setSaving] = useState(false);
-
     useEffect(() => {
         getSquadGrids(captainId).then(res => {
             if (res.success) setGrids(res.grids ?? []);
             setLoading(false);
         });
     }, [captainId]);
-
-    const startEdit = (memberId: string, cellIndex: number, label: string, desc: string) => {
-        setEditing({ memberId, cellIndex });
-        setEditLabel(label);
-        setEditDesc(desc);
-    };
-
-    const saveEdit = async () => {
-        if (!editing) return;
-        setSaving(true);
-        const memberName = grids.find(g => g.member_id === editing.memberId)?.user_name ?? '';
-        const res = await updateMemberCellText(captainId, captainName, editing.memberId, memberName, editing.cellIndex, editLabel, editDesc);
-        if (res.success) {
-            setGrids(prev => prev.map(g => {
-                if (g.member_id !== editing.memberId) return g;
-                const newCells = g.cells.map((c, i) =>
-                    i === editing.cellIndex ? { ...c, label: editLabel, description: editDesc } : c
-                );
-                return { ...g, cells: newCells };
-            }));
-            setEditing(null);
-        }
-        setSaving(false);
-    };
 
     if (loading) return (
         <section className="bg-white border-2 border-teal-100 p-6 rounded-4xl">
@@ -166,57 +137,15 @@ function SquadNineGridSection({ captainId, captainName }: { captainId: string; c
                                             ? 'bg-teal-50 border-teal-200'
                                             : 'bg-gray-50 border-gray-200'}`}
                                     >
-                                        <div className="flex items-start justify-between gap-1">
-                                            <span className={`text-sm font-black leading-tight ${cell.completed ? 'text-teal-700' : 'text-gray-600'}`}>
-                                                {cell.label || `格子 ${i + 1}`}
-                                            </span>
-                                            <button
-                                                onClick={() => startEdit(grid.member_id, i, cell.label, cell.description)}
-                                                className="text-gray-300 hover:text-teal-500 transition-colors shrink-0"
-                                            >
-                                                <Edit3 size={10} />
-                                            </button>
-                                        </div>
+                                        <span className={`text-sm font-black leading-tight ${cell.completed ? 'text-teal-700' : 'text-gray-600'}`}>
+                                            {cell.label || `格子 ${i + 1}`}
+                                        </span>
                                         {cell.completed && (
                                             <span className="text-sm text-teal-600 font-bold">✓ 已完成</span>
                                         )}
                                     </div>
                                 ))}
                             </div>}
-                            {/* 編輯格子文字 */}
-                            {editing?.memberId === grid.member_id && (
-                                <div className="bg-gray-50 rounded-2xl p-3 space-y-2 border border-teal-200">
-                                    <p className="text-sm font-black text-teal-600 uppercase">編輯格子 {editing.cellIndex + 1}</p>
-                                    <input
-                                        value={editLabel}
-                                        onChange={e => setEditLabel(e.target.value)}
-                                        placeholder="標題"
-                                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-teal-400"
-                                    />
-                                    <textarea
-                                        value={editDesc}
-                                        onChange={e => setEditDesc(e.target.value)}
-                                        placeholder="說明（選填）"
-                                        rows={2}
-                                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-teal-400 resize-none"
-                                    />
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setEditing(null)}
-                                            className="flex-1 py-2 text-sm font-black text-gray-500 bg-gray-100 rounded-xl active:scale-95"
-                                        >
-                                            <X size={12} className="inline mr-1" />取消
-                                        </button>
-                                        <button
-                                            disabled={saving}
-                                            onClick={saveEdit}
-                                            className="flex-[2] py-2 text-sm font-black text-white bg-teal-600 rounded-xl active:scale-95 disabled:opacity-50"
-                                        >
-                                            {saving ? <Loader2 size={12} className="animate-spin inline" /> : <><Check size={12} className="inline mr-1" />儲存</>}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     ))}
                 </div>
@@ -527,7 +456,7 @@ export function CaptainTab({
             <SquadOnlineGatheringReviewSection captainId={captainId} />
 
             {/* ── 🌐 小隊九宮格總覽 ── */}
-            <SquadNineGridSection captainId={captainId} captainName={captainName} />
+            <SquadNineGridSection captainId={captainId} />
 
             {/* ── 🎭 小隊角色職稱指派 ── */}
             {squadMembersForRoles.length > 0 && onSetSquadRole && (

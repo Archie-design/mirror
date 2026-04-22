@@ -208,8 +208,12 @@ export async function submitBonusApplication(
 ): Promise<{ success: boolean; error?: string }> {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
 
-    if (new Date() > new Date('2026-07-02T00:00:00+08:00')) {
-        return { success: false, error: '一次性任務已截止（2026-07-01）' };
+    const deadline = questId === 'o7'
+        ? new Date('2026-07-12T00:00:00+08:00')
+        : new Date('2026-07-02T00:00:00+08:00');
+    if (new Date() > deadline) {
+        const label = questId === 'o7' ? '2026-07-11' : '2026-07-01';
+        return { success: false, error: `一次性任務已截止（${label}）` };
     }
     if (!interviewTarget.trim()) return { success: false, error: '申請說明不可為空' };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(interviewDate)) return { success: false, error: '日期格式錯誤，請填寫 YYYY-MM-DD' };

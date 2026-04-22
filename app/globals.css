@@ -91,6 +91,37 @@ body {
   scrollbar-width: none;
 }
 
+/* ── Admin Dashboard Texture（翡翠城大法師密室）─────────────────────── */
+.admin-grain {
+  background-color: #0a1d16;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(26,107,74,0.35), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 95% 100%, rgba(245,200,66,0.08), transparent 60%),
+    radial-gradient(ellipse 100% 80% at 50% 120%, rgba(26,107,74,0.18), transparent 70%);
+}
+.admin-grain::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(245,200,66,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245,200,66,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+.brass-rule {
+  background-image: linear-gradient(90deg,
+    rgba(245,200,66,0.6) 0%,
+    rgba(245,200,66,0.25) 30%,
+    rgba(245,200,66,0) 100%);
+}
+.brass-ring {
+  box-shadow:
+    inset 0 0 0 1px rgba(245,200,66,0.20),
+    inset 0 1px 0 rgba(245,200,66,0.08),
+    0 24px 48px -24px rgba(0,0,0,0.6);
+}
+
 /* ── Reduced Motion ────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

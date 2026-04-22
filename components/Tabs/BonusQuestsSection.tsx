@@ -108,7 +108,7 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
         <div className="bg-white border-2 border-[#B2DFC0] rounded-[2.5rem] shadow-md overflow-hidden">
             <div className="px-5 pt-5 pb-3 flex items-center gap-2">
                 <CheckCircle size={16} className="text-[#1A6B4A]" />
-                <span className="text-sm font-black text-gray-500 tracking-widest uppercase">一次性任務（截止 7/1）</span>
+                <span className="text-sm font-black text-gray-500 tracking-widest uppercase">一次性任務（截止 7/1，傳愛截止 7/11）</span>
             </div>
 
             <div className="divide-y divide-gray-100">
