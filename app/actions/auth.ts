@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { setSessionCookie, clearSessionCookie } from '@/lib/auth';
 import { standardizePhone } from '@/lib/utils/phone';
 import { initMemberGrid } from '@/app/actions/nine-grid';
-import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
+import { FORTUNE_COMPANIONS, getLowestFortune } from '@/lib/fortune';
 import type { CharacterStats } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';

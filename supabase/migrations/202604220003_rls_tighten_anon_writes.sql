@@ -84,7 +84,15 @@ DROP POLICY IF EXISTS "Allow public access on SquadFineSubmissions" ON public."S
 -- 先啟用 RLS；沒有 policy 即代表 anon 無法讀寫；service_role 不受 RLS 約束
 ALTER TABLE public."SquadGatheringSessions"      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."SquadGatheringAttendances"   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public."OnlineGatheringApplications" ENABLE ROW LEVEL SECURITY;
+-- OnlineGatheringApplications 可能尚未在此環境建立；條件式啟用避免 migration 中斷
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'OnlineGatheringApplications'
+  ) THEN
+    ALTER TABLE public."OnlineGatheringApplications" ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
 -- ── 收緊後驗證提示（手動執行以確認 anon 確實被擋下）──────────────
 -- 以 anon key 嘗試：
