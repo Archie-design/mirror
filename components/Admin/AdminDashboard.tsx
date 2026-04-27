@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check } from 'lucide-react';
 import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
@@ -290,6 +290,7 @@ export function AdminDashboard({
         id: '', name: '', date: '', dateDisplay: '', time: '', location: '', enabled: true,
     });
     const [newEvent, setNewEvent] = React.useState<CourseEvent>(blankEvent());
+    const [editingEventId, setEditingEventId] = React.useState<string | null>(null);
 
     const handleImportSubmit = async (e: { preventDefault: () => void }) => {
         e.preventDefault();
@@ -747,32 +748,69 @@ export function AdminDashboard({
 
                     {/* 現有場次列表 */}
                     <div className="space-y-3">
-                        {courseEvents.map(ev => (
-                            <div key={ev.id} className="bg-[#0d241b] border border-[#F5C842]/15 p-4 rounded-3xl flex flex-col gap-2 brass-ring">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-black text-emerald-100 text-sm truncate">{ev.name || '（未命名）'}</p>
-                                        <p className="text-xs text-emerald-400/60 mt-0.5">{ev.dateDisplay} {ev.time}</p>
-                                        <p className="text-xs text-emerald-400/50">{ev.location}</p>
-                                        <p className="text-[10px] text-emerald-400/40 font-mono mt-1">ID: {ev.id}</p>
+                        {courseEvents.map(ev => {
+                            const isEditing = editingEventId === ev.id;
+                            return (
+                                <div key={ev.id} className="bg-[#0d241b] border border-[#F5C842]/15 p-4 rounded-3xl flex flex-col gap-3 brass-ring">
+                                    {/* 頂列：ID + 操作按鈕 */}
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-[10px] text-emerald-400/40 font-mono">ID: {ev.id}</p>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => setCourseEvents(prev => prev.map(e => e.id === ev.id ? { ...e, enabled: !e.enabled } : e))}
+                                                className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-xl border transition-all ${ev.enabled ? 'bg-emerald-950/40 border-emerald-400/30 text-emerald-300' : 'bg-slate-800/40 border-slate-600/30 text-slate-400'}`}
+                                            >
+                                                {ev.enabled ? <><ToggleRight size={14} /> 開放</> : <><ToggleLeft size={14} /> 截止</>}
+                                            </button>
+                                            <button
+                                                onClick={() => setEditingEventId(isEditing ? null : ev.id)}
+                                                className={`p-1.5 rounded-xl border transition-all ${isEditing ? 'text-teal-300 bg-teal-900/30 border-teal-500/40' : 'text-emerald-400/60 hover:text-emerald-200 border-transparent hover:border-emerald-700/50 hover:bg-emerald-900/30'}`}
+                                            >
+                                                {isEditing ? <Check size={14} /> : <Pencil size={14} />}
+                                            </button>
+                                            <button
+                                                onClick={() => { if (window.confirm(`確定刪除「${ev.name}」場次？`)) setCourseEvents(prev => prev.filter(e => e.id !== ev.id)); }}
+                                                className="p-1.5 rounded-xl text-[#E07A6E]/60 hover:text-[#E07A6E] hover:bg-[#E07A6E]/10 border border-transparent hover:border-[#E07A6E]/30 transition-all"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <button
-                                            onClick={() => setCourseEvents(prev => prev.map(e => e.id === ev.id ? { ...e, enabled: !e.enabled } : e))}
-                                            className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-xl border transition-all ${ev.enabled ? 'bg-emerald-950/40 border-emerald-400/30 text-emerald-300' : 'bg-slate-800/40 border-slate-600/30 text-slate-400'}`}
-                                        >
-                                            {ev.enabled ? <><ToggleRight size={14} /> 開放</> : <><ToggleLeft size={14} /> 截止</>}
-                                        </button>
-                                        <button
-                                            onClick={() => { if (window.confirm(`確定刪除「${ev.name}」場次？`)) setCourseEvents(prev => prev.filter(e => e.id !== ev.id)); }}
-                                            className="p-1.5 rounded-xl text-[#E07A6E]/60 hover:text-[#E07A6E] hover:bg-[#E07A6E]/10 border border-transparent hover:border-[#E07A6E]/30 transition-all"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
+
+                                    {/* 閱讀模式 */}
+                                    {!isEditing && (
+                                        <div>
+                                            <p className="font-black text-emerald-100 text-sm">{ev.name || '（未命名）'}</p>
+                                            <p className="text-xs text-emerald-400/60 mt-0.5">{ev.dateDisplay} {ev.time}</p>
+                                            <p className="text-xs text-emerald-400/50">{ev.location}</p>
+                                        </div>
+                                    )}
+
+                                    {/* 編輯模式 */}
+                                    {isEditing && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {([
+                                                { key: 'name',        label: '場次名稱',       placeholder: '大師覺醒講座' },
+                                                { key: 'date',        label: '日期 YYYY-MM-DD', placeholder: '2026-06-23' },
+                                                { key: 'dateDisplay', label: '顯示日期文字',    placeholder: '2026年6月23日（二）' },
+                                                { key: 'time',        label: '時間',            placeholder: '19:00–21:40' },
+                                                { key: 'location',    label: '地點',            placeholder: 'Ticc 國際會議中心' },
+                                            ] as { key: keyof CourseEvent; label: string; placeholder: string }[]).map(({ key, label, placeholder }) => (
+                                                <div key={key} className="space-y-1">
+                                                    <label className="text-[10px] text-emerald-400/50 font-black uppercase tracking-wider">{label}</label>
+                                                    <input
+                                                        className="w-full bg-[#081812] border border-emerald-900/60 rounded-xl px-3 py-2 text-sm text-emerald-100 placeholder-emerald-900 focus:border-teal-500/50 focus:outline-none transition-colors"
+                                                        placeholder={placeholder}
+                                                        value={String(ev[key] ?? '')}
+                                                        onChange={e => setCourseEvents(prev => prev.map(ce => ce.id === ev.id ? { ...ce, [key]: e.target.value } : ce))}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {courseEvents.length === 0 && (
                             <p className="text-sm text-emerald-400/40 text-center py-6">尚無場次，請在下方新增</p>
                         )}
