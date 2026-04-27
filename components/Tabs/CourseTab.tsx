@@ -4,16 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import QRCode from 'react-qr-code';
 import { registerForCourse, getCourseAttendanceList } from '@/app/actions/course';
-import { COURSE_INFO, type CourseKey } from '@/lib/courseConfig';
-import { type CharacterStats } from '@/types';
+import { DEFAULT_COURSE_EVENTS, courseLocalStorageKey } from '@/lib/courseConfig';
+import { type CharacterStats, type CourseEvent } from '@/types';
 import { ChevronLeft, MapPin, Clock, CalendarDays, QrCode, UserCheck } from 'lucide-react';
 
 const Scanner = dynamic(() => import('@/app/class/checkin/Scanner'), { ssr: false });
-
-const STORAGE_KEYS: Record<CourseKey, string> = {
-    class_b: 'course_class_b_reg',
-    class_c: 'course_class_c_reg',
-};
 
 type RegResult = { registrationId: string; userName: string };
 type StudentView = 'select' | 'register' | 'qr';
@@ -22,16 +17,16 @@ type TabView = 'student' | 'volunteer_login' | 'volunteer_scanner';
 interface CourseTabProps {
     userData: CharacterStats;
     volunteerPassword: string;
+    courseEvents?: CourseEvent[];
 }
 
-export default function CourseTab({ volunteerPassword }: CourseTabProps) {
+export default function CourseTab({ volunteerPassword, courseEvents }: CourseTabProps) {
+    const events = (courseEvents && courseEvents.length > 0) ? courseEvents : DEFAULT_COURSE_EVENTS;
+
     const [tabView, setTabView] = useState<TabView>('student');
     const [studentView, setStudentView] = useState<StudentView>('select');
-    const [selectedCourse, setSelectedCourse] = useState<CourseKey | null>(null);
-
-    const [regResults, setRegResults] = useState<Record<CourseKey, RegResult | null>>({
-        class_b: null, class_c: null,
-    });
+    const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+    const [regResults, setRegResults] = useState<Record<string, RegResult | null>>({});
 
     const [name, setName] = useState('');
     const [phone3, setPhone3] = useState('');
@@ -40,23 +35,27 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
 
     const [volPassword, setVolPassword] = useState('');
     const [volAuthError, setVolAuthError] = useState('');
-    const [volCourseKey, setVolCourseKey] = useState<CourseKey>('class_b');
+    const [volCourseId, setVolCourseId] = useState<string>(events[0]?.id ?? '');
     const [attendanceList, setAttendanceList] = useState<{ userId: string; userName: string; attendedAt: string }[]>([]);
 
     useEffect(() => {
-        const loaded: Record<CourseKey, RegResult | null> = { class_b: null, class_c: null };
-        for (const key of Object.keys(STORAGE_KEYS) as CourseKey[]) {
+        const loaded: Record<string, RegResult | null> = {};
+        for (const event of events) {
             try {
-                const raw = localStorage.getItem(STORAGE_KEYS[key]);
-                if (raw) loaded[key] = JSON.parse(raw);
+                const raw = localStorage.getItem(courseLocalStorageKey(event.id));
+                if (raw) loaded[event.id] = JSON.parse(raw);
+                else loaded[event.id] = null;
             } catch { /* ignore */ }
         }
         setRegResults(loaded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const handleSelectCourse = (key: CourseKey) => {
-        setSelectedCourse(key);
-        if (regResults[key]) {
+    const handleSelectCourse = (id: string) => {
+        const event = events.find(e => e.id === id);
+        if (!event || !event.enabled) return;
+        setSelectedCourseId(id);
+        if (regResults[id]) {
             setStudentView('qr');
         } else {
             setName('');
@@ -68,15 +67,15 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedCourse) return;
+        if (!selectedCourseId) return;
         setSubmitting(true);
         setFormError('');
-        const res = await registerForCourse(name, phone3, selectedCourse);
+        const res = await registerForCourse(name, phone3, selectedCourseId);
         setSubmitting(false);
         if (!res.success) { setFormError(res.error); return; }
         const result: RegResult = { registrationId: res.registrationId, userName: res.userName };
-        setRegResults(prev => ({ ...prev, [selectedCourse]: result }));
-        try { localStorage.setItem(STORAGE_KEYS[selectedCourse], JSON.stringify(result)); } catch { /* ignore */ }
+        setRegResults(prev => ({ ...prev, [selectedCourseId]: result }));
+        try { localStorage.setItem(courseLocalStorageKey(selectedCourseId), JSON.stringify(result)); } catch { /* ignore */ }
         setStudentView('qr');
     };
 
@@ -85,25 +84,25 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
         if (!volunteerPassword) { setVolAuthError('管理員尚未設定場務密碼，請聯繫工作人員'); return; }
         if (volPassword !== volunteerPassword) { setVolAuthError('密碼錯誤'); return; }
         setVolAuthError('');
-        loadAttendance(volCourseKey);
+        loadAttendance(volCourseId);
         setTabView('volunteer_scanner');
     };
 
-    const loadAttendance = useCallback(async (key: CourseKey) => {
-        const list = await getCourseAttendanceList(key, volPassword);
+    const loadAttendance = useCallback(async (id: string) => {
+        const list = await getCourseAttendanceList(id, volPassword);
         setAttendanceList(list);
     }, [volPassword]);
 
-    const handleVolCourseChange = (key: CourseKey) => {
-        setVolCourseKey(key);
-        loadAttendance(key);
+    const handleVolCourseChange = (id: string) => {
+        setVolCourseId(id);
+        loadAttendance(id);
     };
 
-    const courseKeys = Object.keys(COURSE_INFO) as CourseKey[];
+    const selectedEvent = events.find(e => e.id === selectedCourseId);
+    const volEvent = events.find(e => e.id === volCourseId);
 
     // ── Volunteer Scanner View ──────────────────────────────────────────────
     if (tabView === 'volunteer_scanner') {
-        const info = COURSE_INFO[volCourseKey];
         return (
             <div className="px-4 pb-8 space-y-5 max-w-lg mx-auto">
                 <div className="flex items-center gap-3 pt-4">
@@ -116,29 +115,37 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                     </div>
                 </div>
 
-                <div className="flex gap-2">
-                    {courseKeys.map(key => (
+                <div className="flex gap-2 flex-wrap">
+                    {events.map(event => (
                         <button
-                            key={key}
-                            onClick={() => handleVolCourseChange(key)}
-                            className={`flex-1 py-2.5 rounded-2xl text-xs font-black transition-all ${
-                                volCourseKey === key
+                            key={event.id}
+                            onClick={() => handleVolCourseChange(event.id)}
+                            className={`flex-1 py-2.5 rounded-2xl text-xs font-black transition-all min-w-0 ${
+                                volCourseId === event.id
                                     ? 'bg-[#1A6B4A] text-white shadow-lg'
                                     : 'bg-[#F5FAF7] text-[#5A7A5A] border border-[#B2DFC0]'
                             }`}
                         >
-                            {COURSE_INFO[key].name}
+                            {event.name}
                         </button>
                     ))}
                 </div>
 
-                <div className="bg-white border border-[#B2DFC0] rounded-3xl p-4 space-y-1 text-xs text-[#5A7A5A]">
-                    <p className="font-black text-[#1A2A1A]">{info.name}</p>
-                    <p>{info.dateDisplay}・{info.time}</p>
-                    <p>{info.location}</p>
-                </div>
+                {volEvent && (
+                    <div className="bg-white border border-[#B2DFC0] rounded-3xl p-4 space-y-1 text-xs text-[#5A7A5A]">
+                        <p className="font-black text-[#1A2A1A]">{volEvent.name}</p>
+                        <p>{volEvent.dateDisplay}・{volEvent.time}</p>
+                        <p>{volEvent.location}</p>
+                    </div>
+                )}
 
-                <Scanner courseKey={volCourseKey} onCheckedIn={() => loadAttendance(volCourseKey)} volunteerPassword={volPassword} />
+                <Scanner
+                    courseKey={volCourseId}
+                    courseName={volEvent?.name}
+                    courseDateDisplay={volEvent?.dateDisplay}
+                    onCheckedIn={() => loadAttendance(volCourseId)}
+                    volunteerPassword={volPassword}
+                />
 
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-[#1A6B4A] font-black text-xs uppercase tracking-widest">
@@ -202,9 +209,8 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
     }
 
     // ── Student QR View ─────────────────────────────────────────────────────
-    if (studentView === 'qr' && selectedCourse) {
-        const reg = regResults[selectedCourse];
-        const info = COURSE_INFO[selectedCourse];
+    if (studentView === 'qr' && selectedCourseId && selectedEvent) {
+        const reg = regResults[selectedCourseId];
         return (
             <div className="px-4 pb-8 max-w-sm mx-auto space-y-5 pt-4">
                 <div className="flex items-center gap-3">
@@ -213,7 +219,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                     </button>
                     <div>
                         <p className="text-[10px] text-[#F5C842] font-black uppercase tracking-widest">報名完成</p>
-                        <h2 className="text-lg font-black text-[#1A2A1A]">{info.name}・入場憑證</h2>
+                        <h2 className="text-lg font-black text-[#1A2A1A]">{selectedEvent.name}・入場憑證</h2>
                     </div>
                 </div>
 
@@ -230,17 +236,16 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                 </div>
 
                 <div className="bg-[#F5FAF7] border border-[#B2DFC0] rounded-2xl px-5 py-4 space-y-2 text-sm text-[#5A7A5A]">
-                    <div className="flex items-center gap-2"><CalendarDays size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.dateDisplay}</span></div>
-                    <div className="flex items-center gap-2"><Clock size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.time}</span></div>
-                    <div className="flex items-center gap-2"><MapPin size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.location}</span></div>
+                    <div className="flex items-center gap-2"><CalendarDays size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.dateDisplay}</span></div>
+                    <div className="flex items-center gap-2"><Clock size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.time}</span></div>
+                    <div className="flex items-center gap-2"><MapPin size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.location}</span></div>
                 </div>
             </div>
         );
     }
 
     // ── Registration Form ────────────────────────────────────────────────────
-    if (studentView === 'register' && selectedCourse) {
-        const info = COURSE_INFO[selectedCourse];
+    if (studentView === 'register' && selectedCourseId && selectedEvent) {
         return (
             <div className="px-4 pb-8 max-w-sm mx-auto space-y-5 pt-4">
                 <div className="flex items-center gap-3">
@@ -249,14 +254,14 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                     </button>
                     <div>
                         <p className="text-[10px] text-[#1A6B4A] font-black uppercase tracking-widest">慶典報名</p>
-                        <h2 className="text-lg font-black text-[#1A2A1A]">{info.name}</h2>
+                        <h2 className="text-lg font-black text-[#1A2A1A]">{selectedEvent.name}</h2>
                     </div>
                 </div>
 
                 <div className="bg-[#F5FAF7] border border-[#B2DFC0] rounded-2xl px-5 py-4 space-y-1.5 text-sm text-[#5A7A5A]">
-                    <div className="flex items-center gap-2"><CalendarDays size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.dateDisplay}</span></div>
-                    <div className="flex items-center gap-2"><Clock size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.time}</span></div>
-                    <div className="flex items-center gap-2"><MapPin size={13} className="text-[#1A6B4A] shrink-0" /><span>{info.location}</span></div>
+                    <div className="flex items-center gap-2"><CalendarDays size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.dateDisplay}</span></div>
+                    <div className="flex items-center gap-2"><Clock size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.time}</span></div>
+                    <div className="flex items-center gap-2"><MapPin size={13} className="text-[#1A6B4A] shrink-0" /><span>{selectedEvent.location}</span></div>
                 </div>
 
                 <form onSubmit={handleRegister} className="bg-white border-2 border-[#B2DFC0] rounded-3xl p-6 space-y-5 shadow-md">
@@ -316,51 +321,58 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
             </div>
 
             <div className="space-y-3">
-                {courseKeys.map(key => {
-                    const info = COURSE_INFO[key];
-                    const reg = regResults[key];
+                {events.map(event => {
+                    const reg = regResults[event.id];
                     const isRegistered = !!reg;
+                    const isClosed = !event.enabled;
 
                     return (
                         <div
-                            key={key}
+                            key={event.id}
                             className={`rounded-3xl border-2 p-5 space-y-3 transition-all shadow-md ${
                                 isRegistered
                                     ? 'bg-gradient-to-br from-[#FFFBEB] to-[#FFFEF5] border-[#F5C842]/60'
+                                    : isClosed
+                                    ? 'bg-[#F5F5F5] border-[#CCCCCC] opacity-70'
                                     : 'bg-white border-[#B2DFC0]'
                             }`}
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <h3 className="font-black text-[#1A2A1A] text-base">{info.name}</h3>
+                                        <h3 className="font-black text-[#1A2A1A] text-base">{event.name}</h3>
                                         {isRegistered && (
                                             <span className="text-[10px] px-2 py-0.5 bg-[#F5C842]/25 text-[#8B6914] font-black rounded-lg shrink-0 border border-[#F5C842]/40">已報名</span>
                                         )}
+                                        {isClosed && !isRegistered && (
+                                            <span className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-500 font-black rounded-lg shrink-0">報名已截止</span>
+                                        )}
                                     </div>
                                     <div className="space-y-1 text-xs text-[#5A7A5A]">
-                                        <div className="flex items-center gap-1.5"><CalendarDays size={11} className="text-[#1A6B4A] shrink-0" />{info.dateDisplay}</div>
-                                        <div className="flex items-center gap-1.5"><Clock size={11} className="text-[#1A6B4A] shrink-0" />{info.time}</div>
-                                        <div className="flex items-center gap-1.5"><MapPin size={11} className="text-[#1A6B4A] shrink-0" />{info.location}</div>
+                                        <div className="flex items-center gap-1.5"><CalendarDays size={11} className="text-[#1A6B4A] shrink-0" />{event.dateDisplay}</div>
+                                        <div className="flex items-center gap-1.5"><Clock size={11} className="text-[#1A6B4A] shrink-0" />{event.time}</div>
+                                        <div className="flex items-center gap-1.5"><MapPin size={11} className="text-[#1A6B4A] shrink-0" />{event.location}</div>
                                     </div>
                                 </div>
                             </div>
 
                             <button
-                                onClick={() => handleSelectCourse(key)}
+                                onClick={() => handleSelectCourse(event.id)}
+                                disabled={isClosed && !isRegistered}
                                 className={`w-full py-3.5 rounded-2xl font-black text-sm transition-all active:scale-95 ${
                                     isRegistered
                                         ? 'bg-[#F5C842] text-[#1A2A1A] hover:brightness-105 shadow-md'
+                                        : isClosed
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         : 'bg-[#C0392B] text-white hover:bg-[#A93226] shadow-md'
                                 }`}
-                                style={isRegistered
-                                    ? { boxShadow: '0 4px 12px rgba(245,200,66,0.35)' }
-                                    : { boxShadow: '0 4px 12px rgba(192,57,43,0.25)' }
-                                }
+                                style={isRegistered ? { boxShadow: '0 4px 12px rgba(245,200,66,0.35)' }
+                                    : !isClosed ? { boxShadow: '0 4px 12px rgba(192,57,43,0.25)' }
+                                    : undefined}
                             >
                                 {isRegistered
                                     ? <><QrCode size={14} className="inline mr-1.5" />查看入場憑證</>
-                                    : '立即報名'}
+                                    : isClosed ? '報名已截止' : '立即報名'}
                             </button>
                         </div>
                     );

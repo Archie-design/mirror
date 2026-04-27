@@ -1,6 +1,7 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3 } from 'lucide-react';
-import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog } from '@/types';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
+import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { listAllMembers, transferMember, setMemberRole, deleteMember } from '@/app/actions/admin';
@@ -259,7 +260,7 @@ export function AdminDashboard({
     const [reviewingW4Id, setReviewingW4Id] = React.useState<string | null>(null);
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
-    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid'>('members');
+    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course'>('members');
 
     // Quest Reward & Disable State
     const ALL_QUESTS = React.useMemo(() => [
@@ -277,6 +278,18 @@ export function AdminDashboard({
     );
     const [questSettingsSaved, setQuestSettingsSaved] = React.useState(false);
     const disabledSet = new Set(disabledQuests);
+
+    // Course event management state
+    const [courseEvents, setCourseEvents] = React.useState<CourseEvent[]>(
+        systemSettings.CourseEvents && systemSettings.CourseEvents.length > 0
+            ? systemSettings.CourseEvents
+            : DEFAULT_COURSE_EVENTS
+    );
+    const [courseEventsSaved, setCourseEventsSaved] = React.useState(false);
+    const blankEvent = (): CourseEvent => ({
+        id: '', name: '', date: '', dateDisplay: '', time: '', location: '', enabled: true,
+    });
+    const [newEvent, setNewEvent] = React.useState<CourseEvent>(blankEvent());
 
     const handleImportSubmit = async (e: { preventDefault: () => void }) => {
         e.preventDefault();
@@ -332,6 +345,7 @@ export function AdminDashboard({
         { id: 'review'   as const, label: '審核',   numeral: 'III', icon: <Settings size={14} /> },
         { id: 'ninegrid' as const, label: '九宮格', numeral: 'IV',  icon: <Grid3X3 size={14} /> },
         { id: 'system'   as const, label: '系統',   numeral: 'V',   icon: <BarChart3 size={14} /> },
+        { id: 'course'   as const, label: '課程',   numeral: 'VI',  icon: <Calendar size={14} /> },
     ];
 
     return (
@@ -722,6 +736,103 @@ export function AdminDashboard({
                     </div>
                     <div className="bg-slate-900 border-2 border-slate-800 p-6 md:p-8 rounded-4xl shadow-xl">
                         <NineGridTemplateEditor adminName="admin" />
+                    </div>
+                </div>
+                )}
+
+                {/* ── Tab: 課程場次 ── */}
+                {activeAdminTab === 'course' && (
+                <div className="space-y-6 animate-fade-up">
+                    <SectionHeading numeral="VI" title="課程場次管理" subtitle="Course Events" accent="teal" icon={<Calendar size={16} />} />
+
+                    {/* 現有場次列表 */}
+                    <div className="space-y-3">
+                        {courseEvents.map(ev => (
+                            <div key={ev.id} className="bg-[#0d241b] border border-[#F5C842]/15 p-4 rounded-3xl flex flex-col gap-2 brass-ring">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-black text-emerald-100 text-sm truncate">{ev.name || '（未命名）'}</p>
+                                        <p className="text-xs text-emerald-400/60 mt-0.5">{ev.dateDisplay} {ev.time}</p>
+                                        <p className="text-xs text-emerald-400/50">{ev.location}</p>
+                                        <p className="text-[10px] text-emerald-400/40 font-mono mt-1">ID: {ev.id}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            onClick={() => setCourseEvents(prev => prev.map(e => e.id === ev.id ? { ...e, enabled: !e.enabled } : e))}
+                                            className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-xl border transition-all ${ev.enabled ? 'bg-emerald-950/40 border-emerald-400/30 text-emerald-300' : 'bg-slate-800/40 border-slate-600/30 text-slate-400'}`}
+                                        >
+                                            {ev.enabled ? <><ToggleRight size={14} /> 開放</> : <><ToggleLeft size={14} /> 截止</>}
+                                        </button>
+                                        <button
+                                            onClick={() => { if (window.confirm(`確定刪除「${ev.name}」場次？`)) setCourseEvents(prev => prev.filter(e => e.id !== ev.id)); }}
+                                            className="p-1.5 rounded-xl text-[#E07A6E]/60 hover:text-[#E07A6E] hover:bg-[#E07A6E]/10 border border-transparent hover:border-[#E07A6E]/30 transition-all"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {courseEvents.length === 0 && (
+                            <p className="text-sm text-emerald-400/40 text-center py-6">尚無場次，請在下方新增</p>
+                        )}
+                    </div>
+
+                    {/* 新增場次表單 */}
+                    <div className="bg-[#0d241b] border border-teal-400/20 p-5 rounded-3xl space-y-3">
+                        <p className="text-[10px] font-black text-teal-400/60 uppercase tracking-[0.3em]">新增場次</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {([
+                                { key: 'id',          label: 'ID（英文唯一識別碼）', placeholder: 'class_d' },
+                                { key: 'name',        label: '場次名稱',             placeholder: '大師覺醒講座' },
+                                { key: 'date',        label: '日期 YYYY-MM-DD',      placeholder: '2026-06-23' },
+                                { key: 'dateDisplay', label: '顯示日期文字',          placeholder: '2026年6月23日（二）' },
+                                { key: 'time',        label: '時間',                 placeholder: '19:00–21:40' },
+                                { key: 'location',    label: '地點',                 placeholder: 'Ticc 國際會議中心' },
+                            ] as { key: keyof CourseEvent; label: string; placeholder: string }[]).map(({ key, label, placeholder }) => (
+                                <div key={key} className="space-y-1">
+                                    <label className="text-[10px] text-emerald-400/60 font-black uppercase tracking-wider">{label}</label>
+                                    <input
+                                        className="w-full bg-[#081812] border border-emerald-900/60 rounded-xl px-3 py-2 text-sm text-emerald-100 placeholder-emerald-900 focus:border-teal-500/50 focus:outline-none transition-colors"
+                                        placeholder={placeholder}
+                                        value={String(newEvent[key] ?? '')}
+                                        onChange={e => setNewEvent(prev => ({ ...prev, [key]: e.target.value }))}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => {
+                                if (!newEvent.id || !newEvent.name) return;
+                                if (courseEvents.some(e => e.id === newEvent.id)) {
+                                    alert('此 ID 已存在，請使用不同的唯一識別碼');
+                                    return;
+                                }
+                                setCourseEvents(prev => [...prev, { ...newEvent, enabled: true }]);
+                                setNewEvent(blankEvent());
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-teal-700/40 border border-teal-500/40 text-teal-300 rounded-2xl text-xs font-black hover:bg-teal-700/60 transition-all active:scale-95"
+                        >
+                            <Plus size={14} /> 新增場次
+                        </button>
+                    </div>
+
+                    {/* 儲存按鈕 */}
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => {
+                                updateGlobalSetting('CourseEvents', JSON.stringify(courseEvents));
+                                setCourseEventsSaved(true);
+                                setTimeout(() => setCourseEventsSaved(false), 2000);
+                            }}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-black transition-all active:scale-95 ${
+                                courseEventsSaved
+                                    ? 'bg-teal-600 text-white border border-teal-400'
+                                    : 'bg-[#0d241b] border border-teal-400/30 text-teal-300 hover:bg-teal-900/30'
+                            }`}
+                        >
+                            <Save size={15} /> {courseEventsSaved ? '已儲存！' : '儲存場次設定'}
+                        </button>
                     </div>
                 </div>
                 )}

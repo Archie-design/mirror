@@ -63,11 +63,22 @@ export interface TemporaryQuest extends Quest {
   created_at?: string;
 }
 
+export interface CourseEvent {
+  id: string;          // 唯一識別碼，用於 localStorage key 與 CourseRegistrations
+  name: string;
+  date: string;        // YYYY-MM-DD
+  dateDisplay: string; // 顯示用（含星期），e.g. '2026年6月23日（二）'
+  time: string;        // e.g. '19:00–21:40'
+  location: string;
+  enabled: boolean;    // false = 關閉報名（按鈕 disabled）
+}
+
 export interface SystemSettings {
   RegistrationMode?: 'open' | 'roster'; // 'open' = 自由註冊；'roster' = 名單驗證
   VolunteerPassword?: string;
   QuestRewardOverrides?: Record<string, number>;  // 定課分值動態調整：questId → reward
   DisabledQuests?: string[];                       // 停用的定課 ID 列表
+  CourseEvents?: CourseEvent[];                    // 慶典場次（後台可動態管理）
 }
 
 export interface BonusApplication {

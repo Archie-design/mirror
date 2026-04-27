@@ -4,7 +4,6 @@ import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
 
-import { type CourseKey } from '@/lib/courseConfig';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 
 const getSupabase = () => createClient(
@@ -35,7 +34,7 @@ async function verifyVolunteerPassword(input: string): Promise<boolean> {
 export async function registerForCourse(
     name: string,
     phone3: string,
-    courseKey: CourseKey
+    courseKey: string
 ): Promise<{ success: true; registrationId: string; userName: string } | { success: false; error: string }> {
     const trimmedName = name.trim();
     const trimmedPhone = phone3.trim();
@@ -97,7 +96,7 @@ export async function markAttendance(
     note: string = 'admin',
     volunteerPassword?: string,
 ): Promise<
-    | { success: true; userName: string; courseKey: CourseKey; alreadyCheckedIn: boolean }
+    | { success: true; userName: string; courseKey: string; alreadyCheckedIn: boolean }
     | { success: false; error: string }
 > {
     const isAdmin = await verifyAdminSession();
@@ -125,7 +124,7 @@ export async function markAttendance(
         .single();
 
     const userName = user?.Name ?? reg.user_id;
-    const courseKey = reg.course_key as CourseKey;
+    const courseKey = reg.course_key as string;
 
     // Check if already checked in
     const { data: existing } = await getSupabase()
@@ -157,7 +156,7 @@ export async function markAttendance(
  * 未授權時回傳空陣列，避免洩露學員報到資料。
  */
 export async function getCourseAttendanceList(
-    courseKey: CourseKey,
+    courseKey: string,
     volunteerPassword?: string,
 ): Promise<{ userId: string; userName: string; attendedAt: string }[]> {
     const isAdmin = await verifyAdminSession();

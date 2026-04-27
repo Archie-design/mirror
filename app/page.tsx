@@ -333,7 +333,7 @@ export default function App() {
     try {
       const res = await processCheckInTransaction(userData.UserID, quest.id, quest.title, quest.reward);
 
-      if (res.success && res.user) {
+      if (res.success) {
         // 樂觀更新：立即把新 log 加入 state，chip 即時顯示完成
         const optimisticLog: DailyLog = {
           Timestamp: new Date().toISOString(),
@@ -342,7 +342,7 @@ export default function App() {
           QuestTitle: quest.title,
           RewardPoints: quest.reward,
         };
-        setUserData(res.user as CharacterStats);
+        if (res.user) setUserData(res.user as CharacterStats);
         setLogs(prev => [...prev, optimisticLog]);
         // 背景同步：只有 DB 回傳的筆數 > 現有 state 才更新，避免短暫空值覆蓋樂觀更新
         supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID).gte('Timestamp', logsDateCutoff())
@@ -515,11 +515,17 @@ export default function App() {
           if (sObj.DisabledQuests) parsedDisabledQuests = JSON.parse(sObj.DisabledQuests);
         } catch (_) {}
 
+        let parsedCourseEvents;
+        try {
+          if (sObj.CourseEvents) parsedCourseEvents = JSON.parse(sObj.CourseEvents);
+        } catch (_) {}
+
         setSystemSettings({
           RegistrationMode: (sObj.RegistrationMode as 'open' | 'roster') || 'open',
           VolunteerPassword: sObj.VolunteerPassword,
           QuestRewardOverrides: parsedQuestRewardOverrides,
           DisabledQuests: parsedDisabledQuests,
+          CourseEvents: parsedCourseEvents,
         });
       }
 
@@ -534,24 +540,29 @@ export default function App() {
 
   // 載入使用者資料並進入 app 視圖的共用邏輯
   const loadUserSession = useCallback(async (stats: CharacterStats) => {
-    const [logsRes, teamCountRes] = await Promise.all([
+    // 基本資料全部並行：DailyLogs + 小隊人數 + TeamSettings
+    const [logsRes, teamCountRes, tSettingsRes] = await Promise.all([
       supabase.from('DailyLogs').select('*').eq('UserID', stats.UserID).gte('Timestamp', logsDateCutoff()),
       stats.TeamName
         ? supabase.from('CharacterStats').select('*', { count: 'exact', head: true }).eq('TeamName', stats.TeamName)
         : Promise.resolve({ count: null }),
+      stats.TeamName
+        ? supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     setLogs((logsRes.data as DailyLog[]) || []);
     if (stats.TeamName) {
       setTeamMemberCount(teamCountRes.count || 1);
-      const { data: tSettings } = await supabase.from('TeamSettings').select('*').eq('team_name', stats.TeamName).single();
-      if (tSettings) setTeamSettings(tSettings as TeamSettings);
+      if (tSettingsRes.data) setTeamSettings(tSettingsRes.data as TeamSettings);
     }
-    await Promise.all([
+    // 立即顯示 app，不等 bonus apps
+    setUserData(stats);
+    // BonusApplications 在背景非同步載入（不阻塞進入主畫面）
+    Promise.all([
       refreshBonusApps(stats),
       getBonusApplications({ userId: stats.UserID, questIdPrefix: 'o' })
         .then(r => { if (r.success) setMyBonusApps(r.applications); }),
-    ]);
-    setUserData(stats);
+    ]).catch(() => {});
   }, [refreshBonusApps]);
 
   // LINE OAuth callback 處理：?line_auth=1
@@ -866,7 +877,7 @@ export default function App() {
           />
         )}
         {activeTab === 'course' && userData && (
-          <CourseTab userData={userData} volunteerPassword={systemSettings.VolunteerPassword ?? ''} />
+          <CourseTab userData={userData} volunteerPassword={systemSettings.VolunteerPassword ?? ''} courseEvents={systemSettings.CourseEvents} />
         )}
       </main>
 
