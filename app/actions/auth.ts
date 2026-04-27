@@ -83,7 +83,13 @@ export async function registerAccount(input: {
 
     const { error: insertErr } = await supabase.from('CharacterStats').insert([newChar]);
     if (insertErr) {
-        return { success: false, error: '註冊失敗。可能該手機號碼已經建立過帳號。' };
+        const isDuplicate = insertErr.code === '23505'; // unique_violation
+        return {
+            success: false,
+            error: isDuplicate
+                ? '此手機號碼已經建立過帳號，請直接登入。'
+                : `註冊失敗：${insertErr.message}`,
+        };
     }
 
     // 先設定 session cookie，後續 initMemberGrid 的 requireSelf 才能通過

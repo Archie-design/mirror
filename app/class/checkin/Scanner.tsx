@@ -13,9 +13,10 @@ interface ScanResult {
 interface ScannerProps {
     courseKey: CourseKey;
     onCheckedIn: () => void; // trigger parent to refresh attendance list
+    volunteerPassword?: string;
 }
 
-export default function Scanner({ courseKey, onCheckedIn }: ScannerProps) {
+export default function Scanner({ courseKey, onCheckedIn, volunteerPassword }: ScannerProps) {
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const [scanResult, setScanResult] = useState<ScanResult | null>(null);
     const [scanning, setScanning] = useState(false);
@@ -35,7 +36,7 @@ export default function Scanner({ courseKey, onCheckedIn }: ScannerProps) {
                 if (cooldownRef.current) return;
                 cooldownRef.current = true;
 
-                const res = await markAttendance(decodedText, `checkin-${courseKey}`);
+                const res = await markAttendance(decodedText, `checkin-${courseKey}`, volunteerPassword);
 
                 if (res.success) {
                     if (res.alreadyCheckedIn) {

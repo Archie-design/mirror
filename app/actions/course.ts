@@ -2,13 +2,30 @@
 
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
+import { timingSafeEqual } from 'node:crypto';
 
 import { type CourseKey } from '@/lib/courseConfig';
+import { verifyAdminSession } from '@/app/actions/admin-auth';
 
 const getSupabase = () => createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+async function verifyVolunteerPassword(input: string): Promise<boolean> {
+    if (!input) return false;
+    const { data } = await getSupabase()
+        .from('SystemSettings')
+        .select('SettingValue')
+        .eq('SettingName', 'VolunteerPassword')
+        .maybeSingle();
+    const stored = (data?.SettingValue ?? '').toString();
+    if (!stored) return false;
+    const a = Buffer.from(input, 'utf8');
+    const b = Buffer.from(stored, 'utf8');
+    if (a.length !== b.length) return false;
+    try { return timingSafeEqual(a, b); } catch { return false; }
+}
 
 /**
  * Register a user for a course by matching name + last 3 digits of phone.
@@ -37,6 +54,10 @@ export async function registerForCourse(
     if (fetchErr) return { success: false, error: '查詢失敗，請稍後再試' };
     if (!users || users.length === 0) {
         return { success: false, error: '找不到符合的學員資料，請確認姓名與手機末三碼是否正確' };
+    }
+    // 多人撞名 + 手機末 3 碼相同：無法唯一識別，拒絕自動配對以防冒用
+    if (users.length > 1) {
+        return { success: false, error: '姓名與末三碼撞名，無法自動識別，請聯繫工作人員以完整手機號驗證' };
     }
 
     const user = users[0];
@@ -69,15 +90,22 @@ export async function registerForCourse(
 
 /**
  * Mark attendance by scanning registration QR code (UUID).
- * Uses upsert — safe to call multiple times (alreadyCheckedIn flag indicates repeat scan).
+ * 需管理員 session 或正確的志工密碼。
  */
 export async function markAttendance(
     registrationId: string,
-    note: string = 'admin'
+    note: string = 'admin',
+    volunteerPassword?: string,
 ): Promise<
     | { success: true; userName: string; courseKey: CourseKey; alreadyCheckedIn: boolean }
     | { success: false; error: string }
 > {
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const ok = volunteerPassword ? await verifyVolunteerPassword(volunteerPassword) : false;
+        if (!ok) return { success: false, error: '無權限：需管理員身份或正確的志工密碼' };
+    }
+
     // Look up the registration
     const { data: reg, error: regErr } = await getSupabase()
         .from('CourseRegistrations')
@@ -124,11 +152,20 @@ export async function markAttendance(
 }
 
 /**
- * Get full attendance list for a course (admin use).
+ * Get full attendance list for a course.
+ * 需管理員 session 或傳入正確的志工密碼。
+ * 未授權時回傳空陣列，避免洩露學員報到資料。
  */
 export async function getCourseAttendanceList(
-    courseKey: CourseKey
+    courseKey: CourseKey,
+    volunteerPassword?: string,
 ): Promise<{ userId: string; userName: string; attendedAt: string }[]> {
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const ok = volunteerPassword ? await verifyVolunteerPassword(volunteerPassword) : false;
+        if (!ok) return [];
+    }
+
     const { data, error } = await getSupabase()
         .from('CourseAttendance')
         .select('user_id, attended_at')

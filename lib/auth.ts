@@ -96,3 +96,56 @@ export function authErrorResponse(err: unknown): { success: false; error: string
     }
     return null;
 }
+
+// ── 通用 HMAC 簽章工具（例如 OAuth state）────────────────────────────────
+// 簽章 payload 會附 expireTs，驗簽時會同步檢查是否過期。
+// 使用 base64url 編碼以安全放入 URL query string。
+
+function b64urlEncode(buf: Buffer): string {
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(s: string): Buffer {
+    const pad = (4 - (s.length % 4)) % 4;
+    return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(pad), 'base64');
+}
+
+// 簽 payload（JSON 可序列化物件）並加上過期時間
+// 回傳 `<b64url(payload)>.<b64url(hmac)>`
+export function signPayload<T extends object>(payload: T, ttlSeconds: number): string {
+    const expireTs = Math.floor(Date.now() / 1000) + ttlSeconds;
+    const body = { ...payload, expireTs };
+    const json = JSON.stringify(body);
+    const payloadEncoded = b64urlEncode(Buffer.from(json, 'utf8'));
+    const mac = createHmac('sha256', getSecret()).update(payloadEncoded).digest();
+    return `${payloadEncoded}.${b64urlEncode(mac)}`;
+}
+
+// 驗簽 + 過期檢查；失敗回 null
+export function verifyPayload<T extends object = Record<string, unknown>>(token: string | undefined | null): T | null {
+    if (!token) return null;
+    const dot = token.indexOf('.');
+    if (dot < 1) return null;
+    const payloadEncoded = token.slice(0, dot);
+    const macEncoded = token.slice(dot + 1);
+    if (!payloadEncoded || !macEncoded) return null;
+
+    let expected: Buffer;
+    try {
+        expected = createHmac('sha256', getSecret()).update(payloadEncoded).digest();
+    } catch { return null; }
+
+    const received = b64urlDecode(macEncoded);
+    if (received.length !== expected.length) return null;
+    try {
+        if (!timingSafeEqual(received, expected)) return null;
+    } catch { return null; }
+
+    let payload: T & { expireTs?: number };
+    try {
+        payload = JSON.parse(b64urlDecode(payloadEncoded).toString('utf8'));
+    } catch { return null; }
+
+    if (typeof payload.expireTs !== 'number' || payload.expireTs < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+}

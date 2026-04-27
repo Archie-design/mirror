@@ -14,6 +14,7 @@ import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusA
 import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
 import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
 
+import dynamic from 'next/dynamic';
 import { Header } from '@/components/Layout/Header';
 import { LoginForm } from '@/components/Login/LoginForm';
 import { RegisterForm } from '@/components/Login/RegisterForm';
@@ -21,17 +22,18 @@ import { DailyQuestsTab } from '@/components/Tabs/DailyQuestsTab';
 import { WeeklyTopicTab } from '@/components/Tabs/WeeklyTopicTab';
 import { StatsTab } from '@/components/Tabs/StatsTab';
 import { RankTab } from '@/components/Tabs/RankTab';
-import { CaptainTab } from '@/components/Tabs/CaptainTab';
-import { CommandantTab } from '@/components/Tabs/CommandantTab';
+// 重型 Tab（只對特定角色載入）採用 dynamic import 降低首屏 bundle
+const CaptainTab = dynamic(() => import('@/components/Tabs/CaptainTab').then(m => ({ default: m.CaptainTab })), { ssr: false });
+const CommandantTab = dynamic(() => import('@/components/Tabs/CommandantTab').then(m => ({ default: m.CommandantTab })), { ssr: false });
 import CourseTab from '@/components/Tabs/CourseTab';
-import { AdminDashboard } from '@/components/Admin/AdminDashboard';
+const AdminDashboard = dynamic(() => import('@/components/Admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })), { ssr: false });
 import { processCheckInTransaction, clearTodayLogs, undoCheckIn } from '@/app/actions/quest';
-import { importRostersData, autoAssignSquadsForTesting, logAdminAction } from '@/app/actions/admin';
+import { importRostersData, autoAssignSquadsForTesting, updateSystemSetting, addTempQuest, toggleTempQuest, deleteTempQuest } from '@/app/actions/admin';
 import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
 import { NineGridTab } from '@/components/Tabs/NineGridTab';
-import { getMemberGrid, initMemberGrid } from '@/app/actions/nine-grid';
+import { getMemberGrid, initMemberGrid, updateUserFortunes } from '@/app/actions/nine-grid';
 import { loginWithPhone, registerAccount, logoutUser } from '@/app/actions/auth';
 import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
 import { UserNineGrid } from '@/types';
@@ -246,15 +248,12 @@ export default function App() {
   const updateGlobalSetting = async (key: string, value: string) => {
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('SystemSettings').upsert({ SettingName: key, Value: value }, { onConflict: 'SettingName' });
-      if (error) throw error;
+      const res = await updateSystemSetting(key, value);
+      if (!res.success) throw new Error(res.error);
       setSystemSettings(prev => ({ ...prev, [key]: value }));
-
-
-
       setModalMessage({ text: "設定已同步，所有成員將即時看到更新。", type: 'success' });
-    } catch (err) {
-      setModalMessage({ text: "同步失敗，法陣連線異常。", type: 'error' });
+    } catch (err: any) {
+      setModalMessage({ text: "同步失敗：" + (err?.message ?? '法陣連線異常'), type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -263,16 +262,13 @@ export default function App() {
   const handleAddTempQuest = async (title: string, sub: string, desc: string, reward: number) => {
     setIsSyncing(true);
     try {
-      const id = `temp_${Date.now()}`;
-      const dbRow = { id, title, sub, desc, reward, limit_count: 1, active: true };
-      const { error } = await supabase.from('temporaryquests').insert([dbRow]);
-      if (error) throw error;
-      const newQuest: TemporaryQuest = { id, title, sub, desc, reward, limit: 1, active: true };
+      const res = await addTempQuest(title, sub, desc, reward);
+      if (!res.success || !res.id) throw new Error(res.error);
+      const newQuest: TemporaryQuest = { id: res.id, title, sub, desc, reward, limit: 1, active: true };
       setTemporaryQuests(prev => [newQuest, ...prev]);
-      await logAdminAction('temp_quest_add', 'admin', id, title, { reward });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setModalMessage({ text: "新增臨時任務失敗。", type: 'error' });
+      setModalMessage({ text: "新增臨時任務失敗：" + (err?.message ?? ''), type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -281,12 +277,11 @@ export default function App() {
   const handleToggleTempQuest = async (id: string, active: boolean) => {
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('temporaryquests').update({ active }).eq('id', id);
-      if (error) throw error;
+      const res = await toggleTempQuest(id, active);
+      if (!res.success) throw new Error(res.error);
       setTemporaryQuests(prev => prev.map(q => q.id === id ? { ...q, active } : q));
-      await logAdminAction('temp_quest_toggle', 'admin', id, undefined, { active });
-    } catch (err) {
-      setModalMessage({ text: "更新臨時任務狀態失敗。", type: 'error' });
+    } catch (err: any) {
+      setModalMessage({ text: "更新臨時任務狀態失敗：" + (err?.message ?? ''), type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -296,12 +291,11 @@ export default function App() {
     if (!confirm("確定要刪除此臨時任務嗎？刪除後無法恢復。")) return;
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('temporaryquests').delete().eq('id', id);
-      if (error) throw error;
+      const res = await deleteTempQuest(id);
+      if (!res.success) throw new Error(res.error);
       setTemporaryQuests(prev => prev.filter(q => q.id !== id));
-      await logAdminAction('temp_quest_delete', 'admin', id);
-    } catch (err) {
-      setModalMessage({ text: "刪除臨時任務失敗。", type: 'error' });
+    } catch (err: any) {
+      setModalMessage({ text: "刪除臨時任務失敗：" + (err?.message ?? ''), type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -361,7 +355,7 @@ export default function App() {
         );
       } else {
         // Sync logs so client state reflects server state (e.g. quest already done)
-        const { data: syncedLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID);
+        const { data: syncedLogs } = await supabase.from('DailyLogs').select('*').eq('UserID', userData.UserID).gte('Timestamp', logsDateCutoff());
         if (syncedLogs) setLogs(syncedLogs as DailyLog[]);
         setModalMessage({ text: res.error || "記錄失敗，請稍後再試。", type: 'error' });
       }
@@ -633,15 +627,17 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
+  // 排行榜：5 分鐘快取（舊值仍可顯示，避免高峰期頻繁重拉）；活動規模 200 人，加 limit 防萬一
   useEffect(() => {
     const shouldFetch = activeTab === 'rank' || view === 'admin';
     if (!shouldFetch) return;
-    if (Date.now() - rankFetchedAt.current < 60_000) return;
+    if (Date.now() - rankFetchedAt.current < 5 * 60_000) return;
     rankFetchedAt.current = Date.now();
     supabase
       .from('CharacterStats')
       .select('UserID, Name, Score, Streak, SquadName, TeamName, IsCaptain, IsCommandant, IsGM, LineUserId')
       .order('Score', { ascending: false })
+      .limit(500)
       .then(({ data }) => { if (data) setLeaderboard(data as CharacterStats[]); });
   }, [activeTab, view]);
 
@@ -807,7 +803,11 @@ export default function App() {
             onFortuneSave={async (fortunes) => {
               const updates: Record<string, number> = {};
               for (const f of FORTUNE_COMPANIONS) updates[f.dbCol] = fortunes[f.key] ?? 0;
-              await supabase.from('CharacterStats').update(updates).eq('UserID', userData.UserID);
+              const res = await updateUserFortunes(userData.UserID, updates);
+              if (!res.success) {
+                setModalMessage({ text: '五運更新失敗：' + (res.error ?? ''), type: 'error' });
+                return;
+              }
               const lowestFortune = getLowestFortune(fortunes);
               await initMemberGrid(userData.UserID, lowestFortune.companion);
               const gridRes = await getMemberGrid(userData.UserID);

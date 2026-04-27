@@ -69,10 +69,20 @@ export function RankTab({ leaderboard, currentUserId }: RankTabProps) {
             if (p.Score > (entry.topMember.Score ?? 0)) entry.topMember = p;
         }
 
+        // 建立「大隊 → 底下小隊列表」索引，避免對每位大隊長都重新 filter 全部小隊（原 O(N*M)）
+        const squadsByBattalion = new Map<string, SquadRankEntry[]>();
+        for (const entry of map.values()) {
+            if (!entry.teamName) continue;
+            const bucket = squadsByBattalion.get(entry.teamName);
+            if (bucket) bucket.push(entry);
+            else squadsByBattalion.set(entry.teamName, [entry]);
+        }
+
         // 大隊長納入所屬大隊的每個小隊，等同多一位隊員
         for (const cmd of commandants) {
             if (!cmd.SquadName) continue;
-            const battalionSquads = [...map.values()].filter(e => e.teamName === cmd.SquadName);
+            const battalionSquads = squadsByBattalion.get(cmd.SquadName);
+            if (!battalionSquads) continue;
             for (const squad of battalionSquads) {
                 squad.totalScore += cmd.Score;
                 squad.memberCount += 1;

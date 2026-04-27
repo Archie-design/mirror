@@ -324,3 +324,70 @@ export async function setMemberRole(
     await logAdminAction('set_member_role', actorName, targetUserId, member.Name, { role });
     return { success: true };
 }
+
+// ── SystemSettings 更新（僅管理員）──────────────────────────────
+// 原本 page.tsx 直接以 anon key upsert，配合收緊 RLS 後改走此 server action
+export async function updateSystemSetting(key: string, value: string, actorName: string = 'admin') {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (!key || typeof key !== 'string') return { success: false, error: '設定名稱無效' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { error } = await supabase
+        .from('SystemSettings')
+        .upsert({ SettingName: key, Value: value }, { onConflict: 'SettingName' });
+    if (error) return { success: false, error: error.message };
+
+    await logAdminAction('system_setting_update', actorName, key, undefined, {
+        valuePreview: value.length > 80 ? value.slice(0, 80) + '…' : value,
+    });
+    return { success: true };
+}
+
+// ── 臨時加碼任務 CRUD（僅管理員）────────────────────────────────
+export async function addTempQuest(
+    title: string,
+    sub: string,
+    desc: string,
+    reward: number,
+    actorName: string = 'admin',
+) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    const trimmedTitle = (title || '').trim();
+    if (!trimmedTitle) return { success: false, error: '標題不可為空' };
+    if (!Number.isFinite(reward)) return { success: false, error: '分數無效' };
+
+    const id = `temp_${Date.now()}`;
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { error } = await supabase.from('temporaryquests').insert([{
+        id, title: trimmedTitle, sub: sub?.trim() || '', desc: desc?.trim() || '',
+        reward, limit_count: 1, active: true,
+    }]);
+    if (error) return { success: false, error: error.message };
+
+    await logAdminAction('temp_quest_add', actorName, id, trimmedTitle, { reward });
+    return { success: true, id };
+}
+
+export async function toggleTempQuest(id: string, active: boolean, actorName: string = 'admin') {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (!id) return { success: false, error: '任務 ID 無效' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { error } = await supabase.from('temporaryquests').update({ active }).eq('id', id);
+    if (error) return { success: false, error: error.message };
+
+    await logAdminAction('temp_quest_toggle', actorName, id, undefined, { active });
+    return { success: true };
+}
+
+export async function deleteTempQuest(id: string, actorName: string = 'admin') {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (!id) return { success: false, error: '任務 ID 無效' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { error } = await supabase.from('temporaryquests').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+
+    await logAdminAction('temp_quest_delete', actorName, id);
+    return { success: true };
+}

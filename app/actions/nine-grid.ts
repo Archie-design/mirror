@@ -124,64 +124,27 @@ export async function completeCell(userId: string, _userName: string, cellIndex:
     };
 }
 
-// ── 小隊長：替學員修改格子文字 ───────────────────────────────────────────────
-export async function updateMemberCellText(
-    captainId: string,
-    captainName: string,
-    memberId: string,
-    memberName: string,
-    cellIndex: number,
-    label: string,
-    description: string
-) {
-    try { await requireSelf(captainId); } catch (e) { return authErrorResponse(e)!; }
-    if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
+// ── 使用者：更新自己的五運分數 ──────────────────────────────────
+// 僅允許更新五運的 5 個欄位，不允許觸及 Score / Streak / 角色旗標
+const FORTUNE_COLS: readonly string[] = [
+    'Score_事業運', 'Score_財富運', 'Score_情感運', 'Score_家庭運', 'Score_體能運',
+];
+
+export async function updateUserFortunes(userId: string, fortunes: Record<string, number>) {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
+    const updates: Record<string, number> = {};
+    for (const col of FORTUNE_COLS) {
+        const v = fortunes[col];
+        if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100) {
+            updates[col] = Math.round(v);
+        }
+    }
+    if (Object.keys(updates).length === 0) return { success: false, error: '無可更新的五運欄位' };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // 驗證操作者為小隊長
-    const { data: captain } = await supabase
-        .from('CharacterStats')
-        .select('IsCaptain, TeamName')
-        .eq('UserID', captainId)
-        .single();
-
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長修改組員格子文字' };
-
-    // 驗證被修改者為同小隊
-    const { data: member } = await supabase
-        .from('CharacterStats')
-        .select('TeamName')
-        .eq('UserID', memberId)
-        .single();
-
-    if (!member || member.TeamName !== captain.TeamName) {
-        return { success: false, error: '只能修改本小隊組員的九宮格' };
-    }
-
-    const { data: gridRow } = await supabase
-        .from('UserNineGrid')
-        .select('cells')
-        .eq('member_id', memberId)
-        .single();
-
-    if (!gridRow) return { success: false, error: '該組員尚未初始化九宮格' };
-
-    const cells: UserNineGridCell[] = gridRow.cells;
-    cells[cellIndex] = { ...cells[cellIndex], label: label.trim(), description: description.trim() };
-
-    const { error } = await supabase
-        .from('UserNineGrid')
-        .update({ cells })
-        .eq('member_id', memberId);
-
-    if (error) return { success: false, error: '更新失敗：' + error.message };
-
-    await logAdminAction('captain_edit_nine_grid_cell', captainName, memberId, memberName, {
-        cellIndex,
-        label: label.trim(),
-    });
-
+    const { error } = await supabase.from('CharacterStats').update(updates).eq('UserID', userId);
+    if (error) return { success: false, error: error.message };
     return { success: true };
 }
 

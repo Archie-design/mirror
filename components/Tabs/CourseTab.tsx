@@ -90,9 +90,9 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
     };
 
     const loadAttendance = useCallback(async (key: CourseKey) => {
-        const list = await getCourseAttendanceList(key);
+        const list = await getCourseAttendanceList(key, volPassword);
         setAttendanceList(list);
-    }, []);
+    }, [volPassword]);
 
     const handleVolCourseChange = (key: CourseKey) => {
         setVolCourseKey(key);
@@ -138,7 +138,7 @@ export default function CourseTab({ volunteerPassword }: CourseTabProps) {
                     <p>{info.location}</p>
                 </div>
 
-                <Scanner courseKey={volCourseKey} onCheckedIn={() => loadAttendance(volCourseKey)} />
+                <Scanner courseKey={volCourseKey} onCheckedIn={() => loadAttendance(volCourseKey)} volunteerPassword={volPassword} />
 
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-[#1A6B4A] font-black text-xs uppercase tracking-widest">

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { signUserId, SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth';
+import { signUserId, verifyPayload, SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth';
+
+type LineState = { action: 'login' | 'bind'; uid?: string; nonce: string };
 
 // Handles LINE Login OAuth callback
 // GET /api/auth/line/callback?code=XXX&state=YYY
@@ -60,10 +62,14 @@ export async function GET(request: NextRequest) {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // Step 3: Handle state
-        if (state.startsWith('bind:')) {
-            // Binding flow: link LINE account to existing game account
-            const uid = state.slice(5); // strip "bind:"
+        // Step 3: Handle state — 驗證 HMAC 簽章，避免他人偽造綁定目標 uid
+        const parsed = verifyPayload<LineState>(state);
+        if (!parsed) {
+            return NextResponse.redirect(`${appUrl}/?line_error=invalid_state`);
+        }
+
+        if (parsed.action === 'bind') {
+            const uid = parsed.uid ?? '';
             if (!uid) {
                 return NextResponse.redirect(`${appUrl}/?line_error=invalid_state`);
             }

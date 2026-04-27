@@ -169,10 +169,13 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
     if (error || !members) return { success: false, error: error?.message };
 
     const userIds = members.map((m: any) => m.UserID);
+    // 僅查最近 30 天範圍即可取得「最後打卡日期」，避免小隊日誌全表掃描
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: logs } = await supabase
         .from('DailyLogs')
         .select('UserID, Timestamp')
         .in('UserID', userIds)
+        .gte('Timestamp', cutoff)
         .order('Timestamp', { ascending: false });
 
     const latestCheckIn: Record<string, string> = {};
@@ -222,10 +225,13 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
     if (error || !members) return { success: false, error: error?.message };
 
     const userIds = (members as any[]).map(m => m.UserID);
+    // 大隊成員可能 50+ 人，限制最近 30 天避免全表掃描
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: logs } = await supabase
         .from('DailyLogs')
         .select('UserID, Timestamp')
         .in('UserID', userIds)
+        .gte('Timestamp', cutoff)
         .order('Timestamp', { ascending: false });
 
     const latestCheckIn: Record<string, string> = {};

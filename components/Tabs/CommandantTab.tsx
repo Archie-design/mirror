@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, XCircle, RefreshCw, Sword, Users, ChevronDown, ChevronUp, ScrollText, CalendarPlus, Calendar as CalendarIcon, Loader2, Crown, Trash2 } from 'lucide-react';
 import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
-import { reviewBonusByAdmin } from '@/app/actions/bonus';
+import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
 import {
     scheduleSquadGathering,
     cancelSquadGathering,
@@ -299,9 +299,21 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [notes, setNotes] = useState<Record<string, string>>({});
     const [expandedSquads, setExpandedSquads] = useState<Record<string, boolean>>({});
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [batching, setBatching] = useState(false);
 
     const toggleSquad = (name: string) => setExpandedSquads(prev => ({ ...prev, [name]: !prev[name] }));
     const squadEntries = Object.entries(battalionMembers);
+
+    const toggleSelect = (appId: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(appId)) next.delete(appId); else next.add(appId);
+            return next;
+        });
+    };
+    const selectAll = () => setSelectedIds(new Set(apps.map(a => a.id)));
+    const clearSelection = () => setSelectedIds(new Set());
 
     const handleReview = async (appId: string, action: 'approve' | 'reject') => {
         setReviewingId(appId);
@@ -309,7 +321,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
             const res = await reviewBonusByAdmin(appId, action, notes[appId] || '', userData.Name);
             if (res.success) {
                 onShowMessage(
-                    action === 'approve' ? '✅ 已核准入帳，積分已發放！' : '已駁回此申請。',
+                    action === 'approve' ? '✅ 已核准入帳，積分已發放!' : '已駁回此申請。',
                     action === 'approve' ? 'success' : 'info'
                 );
                 onRefresh();
@@ -321,6 +333,35 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
             onShowMessage('系統異常：' + e.message, 'error');
         } finally {
             setReviewingId(null);
+        }
+    };
+
+    const handleBulkReview = async (action: 'approve' | 'reject') => {
+        if (selectedIds.size === 0) return;
+        const confirmed = window.confirm(`確定要一次${action === 'approve' ? '核准' : '駁回'} ${selectedIds.size} 筆申請嗎？`);
+        if (!confirmed) return;
+        setBatching(true);
+        try {
+            const ids = Array.from(selectedIds);
+            const res = await bulkReviewBonusByAdmin(ids, action, '', userData.Name);
+            if (!res.success) {
+                onShowMessage(res.error || '批量操作失敗', 'error');
+                return;
+            }
+            const results = res.results || [];
+            const okCount = results.filter(r => r.ok).length;
+            const warnCount = results.filter(r => r.ok && r.warning).length;
+            const failCount = results.filter(r => !r.ok).length;
+            let msg = `已${action === 'approve' ? '核准' : '駁回'} ${okCount} 筆`;
+            if (warnCount > 0) msg += `（${warnCount} 筆入帳需補件）`;
+            if (failCount > 0) msg += `；失敗 ${failCount} 筆`;
+            onShowMessage(msg, failCount > 0 ? 'info' : 'success');
+            setSelectedIds(new Set());
+            onRefresh();
+        } catch (e: any) {
+            onShowMessage('系統異常：' + e.message, 'error');
+        } finally {
+            setBatching(false);
         }
     };
 
@@ -412,10 +453,45 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                 </div>
             ) : (
                 <div className="flex flex-col gap-4">
+                    {/* 批量操作列 */}
+                    <div className="bg-white border-2 border-rose-100 rounded-2xl p-3 flex flex-wrap items-center gap-2 shadow-sm">
+                        <button
+                            onClick={selectedIds.size === apps.length ? clearSelection : selectAll}
+                            className="text-sm font-black text-rose-500 px-3 py-1.5 rounded-lg hover:bg-rose-50"
+                        >
+                            {selectedIds.size === apps.length ? '取消全選' : '全選'}
+                        </button>
+                        <span className="text-sm text-gray-500">
+                            已選 <span className="font-black text-gray-900">{selectedIds.size}</span> / {apps.length} 筆
+                        </span>
+                        <div className="flex-1" />
+                        <button
+                            disabled={batching || selectedIds.size === 0}
+                            onClick={() => handleBulkReview('reject')}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-black text-red-500 bg-red-50 border border-red-200 active:scale-95 disabled:opacity-40"
+                        >
+                            <XCircle size={12} /> 批量駁回
+                        </button>
+                        <button
+                            disabled={batching || selectedIds.size === 0}
+                            onClick={() => handleBulkReview('approve')}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-black text-white bg-emerald-600 active:scale-95 disabled:opacity-40"
+                        >
+                            <CheckCircle2 size={12} /> {batching ? '處理中…' : '批量核准'}
+                        </button>
+                    </div>
+
                     {apps.map(app => (
-                        <div key={app.id} className="bg-white border-2 border-rose-100 rounded-3xl p-5 space-y-4 shadow-md">
+                        <div key={app.id} className={`bg-white border-2 rounded-3xl p-5 space-y-4 shadow-md transition-colors ${selectedIds.has(app.id) ? 'border-emerald-400 bg-emerald-50/30' : 'border-rose-100'}`}>
                             {/* App info */}
                             <div className="flex items-start justify-between gap-3">
+                                <label className="flex items-start gap-2 min-w-0 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(app.id)}
+                                        onChange={() => toggleSelect(app.id)}
+                                        className="mt-1 accent-emerald-500"
+                                    />
                                 <div className="min-w-0">
                                     <p className="font-black text-gray-900 text-base">{app.user_name}</p>
                                     {ONE_TIME_QUEST_LABELS[app.quest_id] ? (
@@ -439,6 +515,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                                         <p className="text-sm text-gray-500 italic mt-1.5">「{app.description}」</p>
                                     )}
                                 </div>
+                                </label>
                                 <span className="shrink-0 text-sm font-black text-blue-500 bg-blue-50 px-2 py-1 rounded-lg">待終審</span>
                             </div>
 

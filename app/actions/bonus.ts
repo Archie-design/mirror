@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { BonusApplication } from '@/types';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
-import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -193,6 +193,90 @@ export async function reviewBonusByAdmin(
     return { success: true, newStatus };
 }
 
+// ── 大隊長：批量終審（單次 request 核准/退回多筆，減少 round-trip）────────
+// 回傳每筆的結果供前端顯示細項狀態
+export async function bulkReviewBonusByAdmin(
+    appIds: string[],
+    action: 'approve' | 'reject',
+    notes: string = '',
+    reviewerName: string = 'admin'
+): Promise<{
+    success: boolean;
+    error?: string;
+    results?: { appId: string; ok: boolean; warning?: string; error?: string }[];
+}> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (!Array.isArray(appIds) || appIds.length === 0) {
+        return { success: false, error: '未指定待審項目' };
+    }
+    if (appIds.length > 200) {
+        return { success: false, error: '單次最多處理 200 筆，請分批送審' };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: apps } = await supabase
+        .from('BonusApplications')
+        .select('*')
+        .in('id', appIds);
+
+    const appMap = new Map((apps ?? []).map(a => [a.id, a]));
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    const nowIso = new Date().toISOString();
+
+    // 先統一更新狀態：僅影響 status = squad_approved 的紀錄（樂觀鎖避免重覆處理）
+    const eligibleIds = Array.from(appMap.values()).filter(a => a.status === 'squad_approved').map(a => a.id);
+    if (eligibleIds.length > 0) {
+        await supabase
+            .from('BonusApplications')
+            .update({
+                status: newStatus,
+                final_review_by: reviewerName,
+                final_review_at: nowIso,
+                final_review_notes: notes,
+            })
+            .in('id', eligibleIds)
+            .eq('status', 'squad_approved');
+    }
+
+    // 逐筆處理入帳（approve 時）與日誌
+    const results: { appId: string; ok: boolean; warning?: string; error?: string }[] = [];
+    for (const appId of appIds) {
+        const app = appMap.get(appId);
+        if (!app) { results.push({ appId, ok: false, error: '找不到申請記錄' }); continue; }
+        if (app.status !== 'squad_approved') {
+            results.push({ appId, ok: false, error: '此申請尚未通過小隊長初審或已被處理' });
+            continue;
+        }
+
+        if (action === 'approve') {
+            const bonusInfo = BONUS_QUEST_CONFIG[app.quest_id];
+            const reward = bonusInfo ? bonusInfo.reward : 1000;
+            const rewardTitle = bonusInfo ? bonusInfo.title : '一次性任務獎勵';
+            const checkInRes = await processCheckInCore(app.user_id, app.quest_id, rewardTitle, reward);
+            if (!checkInRes.success) {
+                await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
+                    questId: app.quest_id,
+                    checkInError: checkInRes.error,
+                }, 'error');
+                results.push({ appId, ok: true, warning: '核准成功但入帳失敗：' + checkInRes.error });
+                continue;
+            }
+            await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
+                questId: app.quest_id,
+                reward,
+                batch: true,
+            });
+            results.push({ appId, ok: true });
+        } else {
+            await logAdminAction('bonus_final_reject', reviewerName, appId, app.user_name, { notes, batch: true });
+            results.push({ appId, ok: true });
+        }
+    }
+
+    return { success: true, results };
+}
+
 // ── 學員：提交一次性任務申請 ──────────────────────────────────────────────────
 const MULTI_SUBMIT_QUEST_IDS = new Set(['o5', 'o6', 'o7']);
 
@@ -208,10 +292,12 @@ export async function submitBonusApplication(
 ): Promise<{ success: boolean; error?: string }> {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
 
+    // 截止日：o7 為 2026-07-11 結束，其餘為 2026-07-01 結束
+    // 使用 >= 比對截止瞬間（Taipei 隔日 00:00）以避免 1ms 邊界窗口
     const deadline = questId === 'o7'
         ? new Date('2026-07-12T00:00:00+08:00')
         : new Date('2026-07-02T00:00:00+08:00');
-    if (new Date() > deadline) {
+    if (new Date() >= deadline) {
         const label = questId === 'o7' ? '2026-07-11' : '2026-07-01';
         return { success: false, error: `一次性任務已截止（${label}）` };
     }
@@ -257,17 +343,80 @@ export async function submitBonusApplication(
 }
 
 // ── 查詢申請列表 ─────────────────────────────────────────────────────────────
+// 權限規則：
+//   - 管理員：任意查詢
+//   - 大隊長：限本大隊（CharacterStats.SquadName 對應 BonusApplications.battalion_name）
+//   - 小隊長：限本小隊（CharacterStats.TeamName 對應 BonusApplications.squad_name）
+//   - 學員：限本人
+// 註：命名混淆—— CharacterStats.SquadName 其實是「大隊」，TeamName 是「小隊」
 export async function getBonusApplications(filter: {
     userId?: string;
     squadName?: string;
     status?: string;
-    questIdPrefix?: string; // e.g. 'o' to filter o-series only
+    questIdPrefix?: string;
 } = {}) {
+    const isAdmin = await verifyAdminSession();
     const supabase = createClient(supabaseUrl, supabaseKey);
+    let scope: { battalion?: string; squad?: string; userId?: string } | null = null;
+
+    if (!isAdmin) {
+        let sessionUid: string;
+        try { sessionUid = await requireUser(); } catch (e) {
+            const r = authErrorResponse(e);
+            return { success: false, error: r?.error ?? '請先登入', applications: [] };
+        }
+
+        const { data: viewer } = await supabase
+            .from('CharacterStats')
+            .select('IsCaptain, IsCommandant, TeamName, SquadName')
+            .eq('UserID', sessionUid)
+            .single();
+
+        if (!viewer) return { success: false, error: '找不到使用者資料', applications: [] };
+
+        if (viewer.IsCommandant) {
+            // 大隊長：限本大隊（SquadName 對 battalion_name）
+            scope = { battalion: viewer.SquadName };
+            if (filter.squadName) {
+                // 若指定 squadName（小隊），需驗證該小隊隸屬本大隊
+                const { data: anySquadMember } = await supabase
+                    .from('CharacterStats')
+                    .select('UserID')
+                    .eq('TeamName', filter.squadName)
+                    .eq('SquadName', viewer.SquadName)
+                    .limit(1)
+                    .maybeSingle();
+                if (!anySquadMember) return { success: false, error: '無權限查詢該小隊', applications: [] };
+            }
+        } else if (viewer.IsCaptain) {
+            // 小隊長：限本小隊
+            scope = { squad: viewer.TeamName };
+            if (filter.squadName && filter.squadName !== viewer.TeamName) {
+                return { success: false, error: '無權限查詢該小隊', applications: [] };
+            }
+        } else {
+            // 學員：強制限本人
+            scope = { userId: sessionUid };
+        }
+    }
+
     let query = supabase.from('BonusApplications').select('*').order('created_at', { ascending: false });
 
-    if (filter.userId) query = query.eq('user_id', filter.userId);
-    if (filter.squadName) query = query.eq('squad_name', filter.squadName);
+    // 權限 scope 優先於 filter.userId（避免學員偽造他人 userId）
+    if (scope?.userId) {
+        query = query.eq('user_id', scope.userId);
+    } else if (filter.userId) {
+        query = query.eq('user_id', filter.userId);
+    }
+
+    if (filter.squadName) {
+        query = query.eq('squad_name', filter.squadName);
+    } else if (scope?.squad) {
+        query = query.eq('squad_name', scope.squad);
+    } else if (scope?.battalion) {
+        query = query.eq('battalion_name', scope.battalion);
+    }
+
     if (filter.status) query = query.eq('status', filter.status);
     if (filter.questIdPrefix) query = query.like('quest_id', `${filter.questIdPrefix}%`);
 
@@ -276,8 +425,10 @@ export async function getBonusApplications(filter: {
     return { success: true, applications: (data || []) as BonusApplication[] };
 }
 
-// ── 查詢管理操作日誌 ─────────────────────────────────────────────────────────
+// ── 查詢管理操作日誌（僅管理員）──────────────────────────────────────────────
 export async function getAdminActivityLog(limit = 50) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作', logs: [] };
+
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase
         .from('AdminActivityLog')
