@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, Loader2, Grid3x3, Users, Check, Crown, Calendar as CalendarIcon, Send, Star } from 'lucide-react';
+import { ShieldAlert, Loader2, Grid3x3, Users, Check, Crown, Calendar as CalendarIcon, Send, Star, RotateCcw } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { SQUAD_ROLES } from '@/lib/constants';
 import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
-import { getSquadGrids } from '@/app/actions/nine-grid';
+import { getSquadGrids, uncompleteCellByCapt } from '@/app/actions/nine-grid';
 import {
     getTeamGatheringContext,
     submitGatheringForReview,
@@ -92,12 +92,34 @@ function SquadNineGridSection({ captainId }: { captainId: string }) {
     type GridRow = UserNineGrid & { user_name: string };
     const [grids, setGrids] = useState<GridRow[]>([]);
     const [loading, setLoading] = useState(true);
-    useEffect(() => {
+    const [reverting, setReverting] = useState<string | null>(null); // `${memberId}:${cellIndex}`
+    const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+    const reload = useCallback(() => {
         getSquadGrids(captainId).then(res => {
             if (res.success) setGrids(res.grids ?? []);
             setLoading(false);
         });
     }, [captainId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleRevert = async (memberId: string, memberName: string, cellIndex: number, cellLabel: string) => {
+        if (!window.confirm(`確定幫「${memberName}」回溯「${cellLabel}」？\n此操作將清除該格打卡紀錄，並扣回連線加分（如有）。`)) return;
+        const key = `${memberId}:${cellIndex}`;
+        setReverting(key);
+        setMsg(null);
+        const res = await uncompleteCellByCapt(captainId, memberId, cellIndex);
+        setReverting(null);
+        if (res.success) {
+            const bonus = res.scoreReversed > 0 ? `（已扣回 ${res.scoreReversed} 分連線獎勵）` : '';
+            setMsg({ text: `已回溯「${memberName}」的「${cellLabel}」${bonus}`, ok: true });
+            reload();
+        } else {
+            setMsg({ text: res.error, ok: false });
+        }
+        setTimeout(() => setMsg(null), 4000);
+    };
 
     if (loading) return (
         <section className="bg-white border-2 border-teal-100 p-6 rounded-4xl">
@@ -113,6 +135,11 @@ function SquadNineGridSection({ captainId }: { captainId: string }) {
             <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
                 <Grid3x3 size={18} className="text-teal-500" /> 小隊九宮格總覽
             </h3>
+            {msg && (
+                <p className={`text-xs font-bold px-3 py-2 rounded-xl border ${msg.ok ? 'text-teal-700 bg-teal-50 border-teal-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
+                    {msg.text}
+                </p>
+            )}
             {grids.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">小隊成員尚未選擇旅伴或初始化九宮格</p>
             ) : (
@@ -129,23 +156,37 @@ function SquadNineGridSection({ captainId }: { captainId: string }) {
                                     <span className="text-sm text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">尚未初始化</span>
                                 )}
                             </div>
-                            {!grid.companion_type ? null : <div className="grid grid-cols-3 gap-1.5">
-                                {grid.cells.map((cell, i) => (
-                                    <div
-                                        key={i}
-                                        className={`rounded-xl p-2 space-y-1 border ${cell.completed
-                                            ? 'bg-teal-50 border-teal-200'
-                                            : 'bg-gray-50 border-gray-200'}`}
-                                    >
-                                        <span className={`text-sm font-black leading-tight ${cell.completed ? 'text-teal-700' : 'text-gray-600'}`}>
-                                            {cell.label || `格子 ${i + 1}`}
-                                        </span>
-                                        {cell.completed && (
-                                            <span className="text-sm text-teal-600 font-bold">✓ 已完成</span>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>}
+                            {!grid.companion_type ? null : (
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {grid.cells.map((cell, i) => {
+                                        const revertKey = `${grid.member_id}:${i}`;
+                                        const isReverting = reverting === revertKey;
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`rounded-xl p-2 space-y-1 border ${cell.completed ? 'bg-teal-50 border-teal-200' : 'bg-gray-50 border-gray-200'}`}
+                                            >
+                                                <span className={`text-sm font-black leading-tight ${cell.completed ? 'text-teal-700' : 'text-gray-600'}`}>
+                                                    {cell.label || `格子 ${i + 1}`}
+                                                </span>
+                                                {cell.completed && (
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <span className="text-xs text-teal-600 font-bold">✓ 已完成</span>
+                                                        <button
+                                                            disabled={isReverting || reverting !== null}
+                                                            onClick={() => handleRevert(grid.member_id, grid.user_name, i, cell.label || `格子 ${i + 1}`)}
+                                                            className="p-1 rounded-lg text-gray-400 hover:text-orange-500 hover:bg-orange-50 border border-transparent hover:border-orange-200 transition-all disabled:opacity-30"
+                                                            title="回溯此格"
+                                                        >
+                                                            {isReverting ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
