@@ -127,7 +127,24 @@ export function DailyQuestsTab({
     const p1Done = todayLogs.some(l => l.QuestID === 'p1');
     const dawnDone = todayLogs.some(l => l.QuestID === 'p1_dawn');
     const dawnLog = todayLogs.find(l => l.QuestID === 'p1_dawn');
-    const showDawnQuest = p1Done || dawnDone;
+    // 跨午邊界補償：p1 在前一邏輯日完成後，上午仍可記錄破曉加成。
+    const prevLogicalDateStr = new Date(
+        new Date(logicalTodayStr + 'T12:00:00+08:00').getTime() - 86400000
+    ).toISOString().slice(0, 10);
+    const p1DoneRecently = p1Done || logs.some(l =>
+        l.QuestID === 'p1' && getLogicalDateStr(l.Timestamp) === prevLogicalDateStr
+    );
+    // 破曉打拳僅限中午 12:00 前記錄
+    const twHour = parseInt(
+        new Intl.DateTimeFormat('en', {
+            timeZone: 'Asia/Taipei',
+            hour: 'numeric',
+            hour12: false,
+        }).format(new Date()),
+        10,
+    );
+    const isBeforeNoon = twHour < 12;
+    const showDawnQuest = (p1DoneRecently && isBeforeNoon) || dawnDone;
 
     // ── 飲控 diet ──
     const dietQuests = DIET_QUEST_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
@@ -267,7 +284,7 @@ export function DailyQuestsTab({
                     <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">破曉加成</h2>
                     <button
                         onClick={() => dawnDone ? onUndo(dawnQuest) : onCheckIn(dawnQuest)}
-                        disabled={!p1Done && !dawnDone}
+                        disabled={!p1DoneRecently && !dawnDone}
                         className={`w-full rounded-3xl border p-4 flex items-center gap-4 transition-all active:scale-95 text-left
                             ${dawnDone
                                 ? 'bg-[#C0392B]/10 border-[#C0392B]/40'
