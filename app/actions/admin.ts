@@ -122,10 +122,11 @@ export async function autoAssignSquadsForTesting(
                 members: s.members.map((m, i) => `${m.Name}${i === 0 ? '（隊長）' : ''}`)
             })),
         };
-    } catch (error: any) {
+    } catch (error) {
         await client.query('ROLLBACK');
-        await logAdminAction('auto_assign_squads', 'admin', undefined, undefined, { error: error.message }, 'error');
-        return { success: false, error: error.message };
+        const msg = error instanceof Error ? error.message : String(error);
+        await logAdminAction('auto_assign_squads', 'admin', undefined, undefined, { error: msg }, 'error');
+        return { success: false, error: msg };
     } finally {
         await client.end();
     }
@@ -193,10 +194,11 @@ export async function importRostersData(csvContent: string) {
         await client.query('COMMIT');
         await logAdminAction('roster_import', 'admin', undefined, undefined, { count: emails.length });
         return { success: true, count: emails.length };
-    } catch (error: any) {
+    } catch (error) {
         await client.query('ROLLBACK');
-        await logAdminAction('roster_import', 'admin', undefined, undefined, { error: error.message }, 'error');
-        return { success: false, error: error.message };
+        const msg = error instanceof Error ? error.message : String(error);
+        await logAdminAction('roster_import', 'admin', undefined, undefined, { error: msg }, 'error');
+        return { success: false, error: msg };
     } finally {
         await client.end();
     }
@@ -291,10 +293,11 @@ export async function deleteMember(
             email: before.Email,
         });
         return { success: true };
-    } catch (error: any) {
+    } catch (error) {
         await client.query('ROLLBACK');
-        await logAdminAction('member_delete', actorName, targetUserId, before.Name, { error: error.message }, 'error');
-        return { success: false, error: error.message };
+        const msg = error instanceof Error ? error.message : String(error);
+        await logAdminAction('member_delete', actorName, targetUserId, before.Name, { error: msg }, 'error');
+        return { success: false, error: msg };
     } finally {
         await client.end();
     }

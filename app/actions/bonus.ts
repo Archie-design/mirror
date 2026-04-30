@@ -239,39 +239,60 @@ export async function bulkReviewBonusByAdmin(
             .eq('status', 'squad_approved');
     }
 
-    // 逐筆處理入帳（approve 時）與日誌
+    // 分批平行處理入帳（approve）與日誌；每批 10 筆避免 connection pool 飽和
+    // 日誌策略：成功項目不個別寫 log，最後寫一筆彙總 log；失敗項目仍個別記錄以便除錯
+    const CHUNK_SIZE = 10;
     const results: { appId: string; ok: boolean; warning?: string; error?: string }[] = [];
-    for (const appId of appIds) {
-        const app = appMap.get(appId);
-        if (!app) { results.push({ appId, ok: false, error: '找不到申請記錄' }); continue; }
-        if (app.status !== 'squad_approved') {
-            results.push({ appId, ok: false, error: '此申請尚未通過小隊長初審或已被處理' });
-            continue;
-        }
 
-        if (action === 'approve') {
-            const bonusInfo = BONUS_QUEST_CONFIG[app.quest_id];
-            const reward = bonusInfo ? bonusInfo.reward : 1000;
-            const rewardTitle = bonusInfo ? bonusInfo.title : '一次性任務獎勵';
-            const checkInRes = await processCheckInCore(app.user_id, app.quest_id, rewardTitle, reward);
-            if (!checkInRes.success) {
-                await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
-                    questId: app.quest_id,
-                    checkInError: checkInRes.error,
-                }, 'error');
-                results.push({ appId, ok: true, warning: '核准成功但入帳失敗：' + checkInRes.error });
-                continue;
+    for (let i = 0; i < appIds.length; i += CHUNK_SIZE) {
+        const chunk = appIds.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(chunk.map(async (appId): Promise<{ appId: string; ok: boolean; warning?: string; error?: string }> => {
+            const app = appMap.get(appId);
+            if (!app) return { appId, ok: false, error: '找不到申請記錄' };
+            if (app.status !== 'squad_approved') {
+                return { appId, ok: false, error: '此申請尚未通過小隊長初審或已被處理' };
             }
-            await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
-                questId: app.quest_id,
-                reward,
-                batch: true,
-            });
-            results.push({ appId, ok: true });
-        } else {
-            await logAdminAction('bonus_final_reject', reviewerName, appId, app.user_name, { notes, batch: true });
-            results.push({ appId, ok: true });
-        }
+
+            if (action === 'approve') {
+                const bonusInfo = BONUS_QUEST_CONFIG[app.quest_id];
+                const reward = bonusInfo ? bonusInfo.reward : 1000;
+                const rewardTitle = bonusInfo ? bonusInfo.title : '一次性任務獎勵';
+                const checkInRes = await processCheckInCore(app.user_id, app.quest_id, rewardTitle, reward);
+                if (!checkInRes.success) {
+                    await logAdminAction('bonus_final_approve', reviewerName, appId, app.user_name, {
+                        questId: app.quest_id,
+                        checkInError: checkInRes.error,
+                        batch: true,
+                    }, 'error');
+                    return { appId, ok: true, warning: '核准成功但入帳失敗：' + checkInRes.error };
+                }
+                return { appId, ok: true };
+            } else {
+                return { appId, ok: true };
+            }
+        }));
+        results.push(...chunkResults);
+    }
+
+    // 彙總 log：取代逐筆成功 log，避免 100 筆批准產生 100 筆 AdminLogs
+    const successCount = results.filter(r => r.ok && !r.warning).length;
+    const warningCount = results.filter(r => r.ok && r.warning).length;
+    const failureCount = results.filter(r => !r.ok).length;
+    const sampleSuccessIds = results.filter(r => r.ok && !r.warning).map(r => r.appId).slice(0, 50);
+
+    if (action === 'approve' && successCount + warningCount > 0) {
+        await logAdminAction('bonus_final_approve_batch', reviewerName, undefined, undefined, {
+            successCount, warningCount, failureCount,
+            totalRequested: appIds.length,
+            sampleAppIds: sampleSuccessIds,
+        });
+    } else if (action === 'reject' && successCount > 0) {
+        await logAdminAction('bonus_final_reject_batch', reviewerName, undefined, undefined, {
+            rejectedCount: successCount, failureCount,
+            totalRequested: appIds.length,
+            sampleAppIds: sampleSuccessIds,
+            notes,
+        });
     }
 
     return { success: true, results };
@@ -376,6 +397,8 @@ export async function getBonusApplications(filter: {
 
         if (viewer.IsCommandant) {
             // 大隊長：限本大隊（SquadName 對 battalion_name）
+            // Invariant：scope.battalion 必在後續查詢套用；下方 filter.squadName 驗證僅為提早回傳更明確錯誤訊息，
+            //           即使略過此驗證，scope 過濾仍能阻擋跨大隊資料。修改此區時請保留 scope 套用。
             scope = { battalion: viewer.SquadName };
             if (filter.squadName) {
                 // 若指定 squadName（小隊），需驗證該小隊隸屬本大隊

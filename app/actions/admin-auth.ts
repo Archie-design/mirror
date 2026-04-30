@@ -21,6 +21,9 @@ function getAdminPassword(): string {
 }
 
 function adminToken(): string {
+    if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_SESSION_SECRET) {
+        throw new Error('ADMIN_SESSION_SECRET env var is required in production');
+    }
     const secret = process.env.ADMIN_SESSION_SECRET || getAdminPassword();
     return createHmac('sha256', secret).update(TOKEN_LABEL).digest('hex');
 }

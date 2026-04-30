@@ -89,8 +89,12 @@ export async function autoDrawAllSquads() {
         supabase.from('TeamSettings').select('team_name'),
     ]);
     if (squadsInStats) {
-        const distinctNames = [...new Set(squadsInStats.map((r: any) => r.TeamName).filter(Boolean))] as string[];
-        const existingSet = new Set((existingSettings || []).map((r: any) => r.team_name));
+        type StatsTeamNameRow = { TeamName: string | null };
+        type SettingsTeamNameRow = { team_name: string };
+        const distinctNames = [...new Set(
+            (squadsInStats as StatsTeamNameRow[]).map(r => r.TeamName).filter((n): n is string => Boolean(n))
+        )];
+        const existingSet = new Set(((existingSettings as SettingsTeamNameRow[]) || []).map(r => r.team_name));
         const missing = distinctNames.filter(n => !existingSet.has(n));
         if (missing.length > 0) {
             await supabase.from('TeamSettings').insert(missing.map(name => ({ team_name: name, team_coins: 0 })));
@@ -168,7 +172,11 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
 
     if (error || !members) return { success: false, error: error?.message };
 
-    const userIds = members.map((m: any) => m.UserID);
+    type MemberRow = { UserID: string; Name: string; Score: number | null; Streak: number | null; TeamName: string | null; IsCaptain: boolean | null };
+    type LogRow = { UserID: string; Timestamp: string };
+
+    const memberRows = members as MemberRow[];
+    const userIds = memberRows.map(m => m.UserID);
     // 僅查最近 30 天範圍即可取得「最後打卡日期」，避免小隊日誌全表掃描
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: logs } = await supabase
@@ -179,20 +187,18 @@ export async function getSquadMembersStats(captainUserId: string): Promise<{ suc
         .order('Timestamp', { ascending: false });
 
     const latestCheckIn: Record<string, string> = {};
-    if (logs) {
-        for (const log of logs as any[]) {
-            if (!latestCheckIn[log.UserID]) {
-                latestCheckIn[log.UserID] = (log.Timestamp as string).slice(0, 10);
-            }
+    for (const log of (logs as LogRow[] | null) ?? []) {
+        if (!latestCheckIn[log.UserID]) {
+            latestCheckIn[log.UserID] = log.Timestamp.slice(0, 10);
         }
     }
 
-    const result: SquadMemberStats[] = (members as any[]).map(m => ({
+    const result: SquadMemberStats[] = memberRows.map(m => ({
         UserID: m.UserID,
         Name: m.Name,
         Score: m.Score || 0,
         Streak: m.Streak || 0,
-        TeamName: m.TeamName,
+        TeamName: m.TeamName ?? undefined,
         IsCaptain: m.IsCaptain || false,
         lastCheckIn: latestCheckIn[m.UserID],
     }));
@@ -224,7 +230,11 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
 
     if (error || !members) return { success: false, error: error?.message };
 
-    const userIds = (members as any[]).map(m => m.UserID);
+    type BattalionMemberRow = { UserID: string; Name: string; Score: number | null; Streak: number | null; TeamName: string | null; SquadName: string | null; IsCaptain: boolean | null };
+    type LogRow = { UserID: string; Timestamp: string };
+
+    const memberRows = members as BattalionMemberRow[];
+    const userIds = memberRows.map(m => m.UserID);
     // 大隊成員可能 50+ 人，限制最近 30 天避免全表掃描
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: logs } = await supabase
@@ -235,16 +245,14 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
         .order('Timestamp', { ascending: false });
 
     const latestCheckIn: Record<string, string> = {};
-    if (logs) {
-        for (const log of logs as any[]) {
-            if (!latestCheckIn[log.UserID]) {
-                latestCheckIn[log.UserID] = (log.Timestamp as string).slice(0, 10);
-            }
+    for (const log of (logs as LogRow[] | null) ?? []) {
+        if (!latestCheckIn[log.UserID]) {
+            latestCheckIn[log.UserID] = log.Timestamp.slice(0, 10);
         }
     }
 
     const grouped: Record<string, SquadMemberStats[]> = {};
-    for (const m of members as any[]) {
+    for (const m of memberRows) {
         const teamName = m.TeamName || '未編組';
         if (!grouped[teamName]) grouped[teamName] = [];
         grouped[teamName].push({
@@ -252,7 +260,7 @@ export async function getBattalionMembersStats(commandantUserId: string): Promis
             Name: m.Name,
             Score: m.Score || 0,
             Streak: m.Streak || 0,
-            TeamName: m.TeamName,
+            TeamName: m.TeamName ?? undefined,
             IsCaptain: m.IsCaptain || false,
             lastCheckIn: latestCheckIn[m.UserID],
         });

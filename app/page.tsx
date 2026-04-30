@@ -11,7 +11,7 @@ import {
 import { StarWandIcon, RubySlipperIcon, EmeraldCastleIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
 
 import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, TeamSettings } from '@/types';
-import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
+import { useLogicalDate } from '@/lib/hooks/useLogicalDate';
 import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
 
 import dynamic from 'next/dynamic';
@@ -128,14 +128,8 @@ export default function App() {
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
-  // 每分鐘觸發一次 tick，讓依賴「今天 / 本週一」的計算跨午夜時自動刷新
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
-  const logicalTodayStr = useMemo(() => getLogicalDateStr(), [nowTick]);
-  const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), [nowTick]);
+  // 每分鐘自動刷新「今天 / 本週一」的邏輯日期（跨午夜不需手動 reload）
+  const { logicalTodayStr, currentWeeklyMonday } = useLogicalDate();
 
 
   const isTopicDone = useMemo(() =>
@@ -504,28 +498,25 @@ export default function App() {
     const loadStaticData = async () => {
       const { data: settingsData } = await supabase.from('SystemSettings').select('*');
       if (settingsData) {
-        const sObj = settingsData.reduce((acc: any, curr: any) => ({ ...acc, [curr.SettingName]: curr.Value }), {});
-        let parsedQuestRewardOverrides;
-        try {
-          if (sObj.QuestRewardOverrides) parsedQuestRewardOverrides = JSON.parse(sObj.QuestRewardOverrides);
-        } catch (_) {}
+        type SettingRow = { SettingName: string; Value: string };
+        const sObj = (settingsData as SettingRow[]).reduce<Record<string, string>>(
+          (acc, curr) => ({ ...acc, [curr.SettingName]: curr.Value }),
+          {}
+        );
 
-        let parsedDisabledQuests;
-        try {
-          if (sObj.DisabledQuests) parsedDisabledQuests = JSON.parse(sObj.DisabledQuests);
-        } catch (_) {}
+        const tryParseJson = <T,>(raw: string | undefined): T | undefined => {
+          if (!raw) return undefined;
+          try { return JSON.parse(raw) as T; } catch { return undefined; }
+        };
 
-        let parsedCourseEvents;
-        try {
-          if (sObj.CourseEvents) parsedCourseEvents = JSON.parse(sObj.CourseEvents);
-        } catch (_) {}
-
+        // 字串欄位以 spread 自動帶入（將來新增字串型 setting 無需修這裡）；
+        // JSON 欄位顯式 parse；型別受限的 enum 欄位顯式 cast。
         setSystemSettings({
+          ...(sObj as Partial<SystemSettings>),
           RegistrationMode: (sObj.RegistrationMode as 'open' | 'roster') || 'open',
-          VolunteerPassword: sObj.VolunteerPassword,
-          QuestRewardOverrides: parsedQuestRewardOverrides,
-          DisabledQuests: parsedDisabledQuests,
-          CourseEvents: parsedCourseEvents,
+          QuestRewardOverrides: tryParseJson<SystemSettings['QuestRewardOverrides']>(sObj.QuestRewardOverrides),
+          DisabledQuests: tryParseJson<SystemSettings['DisabledQuests']>(sObj.DisabledQuests),
+          CourseEvents: tryParseJson<SystemSettings['CourseEvents']>(sObj.CourseEvents),
         });
       }
 

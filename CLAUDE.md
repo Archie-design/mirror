@@ -52,12 +52,13 @@ The codebase uses **both** database clients for different purposes:
 **Logical Date**: `getLogicalDateStr()` in `lib/utils/time.ts` — before 12:00 noon is counted as the previous calendar day. All daily quest duplicate-check queries must use this.
 
 **QuestID Naming**:
-- `q1`–`q7`: Daily quests (max 3 per logical day)
-- `q1_dawn`: Special variant of q1 (破曉打拳). Mutually exclusive with `q1` on the same day.
-- `w1`–`w4`: Weekly quests. QuestID format: `w1|YYYY-MM-DD`
-- `t1`: Bi-weekly topic quest
-- `t`-prefixed: System activity quests
-- `temp_TIMESTAMP|YYYY-MM-DD`: Temporary quests from admin
+- `d1`–`d8`: Basic daily quests (20 pts each, max 3 per logical day)
+- `p1`–`p5`: Weighted daily quests (50 pts each, max 3 per logical day)
+- `p1_dawn`: Bonus variant of p1 (破曉打拳, +50 pts). Requires p1 on the same logical day (or previous logical day to handle cross-noon edge case). Only recordable **before 12:00 noon Taiwan time** (enforced both in UI and `process_checkin` RPC).
+- `diet_veg` / `diet_seafood`: Diet quests (one per logical day, mutually exclusive)
+- `wk1|YYYY-MM-DD` ... `wk4_large|YYYY-MM-DD`: Weekly quests (various per-week limits)
+- `nine_grid_cell|{index}` / `nine_grid_line|cell{index}`: NineGrid completion logs
+- `temp_TIMESTAMP|YYYY-MM-DD`: Admin-created temporary quests (one entry per quest id, lifetime)
 
 ### Server Actions (`app/actions/`)
 

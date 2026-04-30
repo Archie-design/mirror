@@ -274,16 +274,17 @@ export async function getTeamGatheringContext(
         };
     }
 
-    const { data: attendeeRows } = await supabase
-        .from('SquadGatheringAttendances')
-        .select('user_id, user_name, is_commandant, scanned_at')
-        .eq('session_id', sessionRow.id)
-        .order('scanned_at', { ascending: true });
-
-    const { count: teamCount } = await supabase
-        .from('CharacterStats')
-        .select('UserID', { count: 'exact', head: true })
-        .eq('TeamName', user.TeamName);
+    const [{ data: attendeeRows }, { count: teamCount }] = await Promise.all([
+        supabase
+            .from('SquadGatheringAttendances')
+            .select('user_id, user_name, is_commandant, scanned_at')
+            .eq('session_id', sessionRow.id)
+            .order('scanned_at', { ascending: true }),
+        supabase
+            .from('CharacterStats')
+            .select('UserID', { count: 'exact', head: true })
+            .eq('TeamName', user.TeamName),
+    ]);
 
     const attendees = (attendeeRows ?? []).map(mapAttendee);
 
@@ -447,30 +448,55 @@ export async function listPendingGatherings(): Promise<{
 
     if (error) return { success: false, error: error.message };
 
-    const items: PendingGatheringReview[] = [];
-    for (const r of rows ?? []) {
-        const session = mapSession(r);
-        const { data: attRows } = await supabase
+    const sessions = (rows ?? []).map(mapSession);
+    if (sessions.length === 0) return { success: true, items: [] };
+
+    const sessionIds = sessions.map(s => s.id);
+    const teamNames = [...new Set(sessions.map(s => s.teamName))];
+
+    // 一次抓所有 attendances + 所有相關隊員（避免逐筆 N+1）
+    const [{ data: allAttRows }, { data: allMembers }] = await Promise.all([
+        supabase
             .from('SquadGatheringAttendances')
-            .select('user_id, user_name, is_commandant, scanned_at')
-            .eq('session_id', session.id)
-            .order('scanned_at', { ascending: true });
-        const { count: teamCount } = await supabase
+            .select('session_id, user_id, user_name, is_commandant, scanned_at')
+            .in('session_id', sessionIds)
+            .order('scanned_at', { ascending: true }),
+        supabase
             .from('CharacterStats')
-            .select('UserID', { count: 'exact', head: true })
-            .eq('TeamName', session.teamName);
-        const attendees = (attRows ?? []).map(mapAttendee);
+            .select('UserID, TeamName')
+            .in('TeamName', teamNames),
+    ]);
+
+    const attendeesBySession = new Map<string, SquadGatheringAttendee[]>();
+    for (const row of allAttRows ?? []) {
+        const sid = (row as { session_id: string }).session_id;
+        const list = attendeesBySession.get(sid) ?? [];
+        list.push(mapAttendee(row));
+        attendeesBySession.set(sid, list);
+    }
+
+    const countByTeam = new Map<string, number>();
+    for (const m of allMembers ?? []) {
+        const tn = (m as { TeamName: string | null }).TeamName;
+        if (!tn) continue;
+        countByTeam.set(tn, (countByTeam.get(tn) ?? 0) + 1);
+    }
+
+    const items: PendingGatheringReview[] = sessions.map(session => {
+        const attendees = attendeesBySession.get(session.id) ?? [];
+        const teamCount = countByTeam.get(session.teamName) ?? 0;
         const hasCommandant = attendees.some(a => a.isCommandant);
         let reward = 300;
         if (teamCount && attendees.length >= teamCount) reward += 100;
         if (hasCommandant) reward += 100;
-        items.push({
+        return {
             session,
             attendees,
-            teamMemberCount: teamCount ?? 0,
+            teamMemberCount: teamCount,
             projectedReward: reward,
-        });
-    }
+        };
+    });
+
     return { success: true, items };
 }
 
