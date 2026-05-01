@@ -93,21 +93,12 @@ Primary gameplay currency:
 
 | Route | Purpose |
 |-------|---------|
-| `POST /api/webhook/line` | LINE Bot webhook — verifies signature, routes keyword commands, parses/saves testimonies, uploads cards to Google Drive |
 | `GET /api/auth/line` | Initiates LINE Login OAuth (`?action=login` or `?action=bind&uid=USER_ID`) |
 | `GET /api/auth/line/callback` | OAuth callback — creates/binds account, sets session cookie |
-| `GET /api/cron/auto-draw` | Vercel Cron (Mon 04:00 UTC = 12:00 TW) — auto-draws mandatory quest for all squads; requires `CRON_SECRET` bearer token |
-| `POST /api/admin/setup-richmenu` | Sets up LINE Rich Menu via Messaging API |
+| `GET /api/cron/weekly-snapshot` | Vercel Cron (Sun 16:30 UTC = Mon 00:30 TW) — writes previous-week leaderboard snapshot; requires `CRON_SECRET` bearer token |
+| `GET /api/cron/monthly-snapshot` | Vercel Cron (1st 16:30 UTC = 1st 00:30 TW) — writes previous-month leaderboard snapshot; requires `CRON_SECRET` bearer token |
 
-Additional LINE-related env vars: `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_DRIVE_FOLDER_ID`
-
-### LINE Bot Integration (`lib/line/`)
-
-- `client.ts`: LINE Messaging API client factory
-- `keywords.ts`: Keyword → tutorial response map (slash-prefixed, e.g. `/打卡`)
-- `parser.ts`: Parses free-text messages into structured testimony data
-- `testimony-card.tsx`: Renders testimony cards as React → image
-- `google-drive.ts`: Uploads generated card images to Google Drive
+LINE-related env vars (Login only): `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`
 
 ### SystemSettings — Adding New Global Keys
 
@@ -125,7 +116,7 @@ Additional LINE-related env vars: `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TO
 
 ### Database Schema Reference
 
-Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `temporaryquests`, `MandatoryQuestHistory`, `CourseRegistrations`, `CourseAttendance`, `SystemSettings`, `Testimonies`, `TopicHistory`, `BonusApplications`, `AdminLogs`, `FinePayments`
+Main tables: `CharacterStats`, `DailyLogs`, `TeamSettings`, `temporaryquests`, `CourseRegistrations`, `CourseAttendance`, `SystemSettings`, `TopicHistory`, `BonusApplications`, `AdminLogs`, `FinePayments`, `WeeklyRankSnapshot`, `MonthlyRankSnapshot`
 
 Supabase RPC functions defined in `supabase/migrations/`: `transfer_dice`, `transfer_golden_dice`, `checkin_rpc`
 

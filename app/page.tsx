@@ -199,7 +199,10 @@ export default function App() {
   };
 
   const handleOpenCaptainTab = () => {
+    // 已在 captain tab 且資料已載入 → 只切換不重抓，避免重複點擊重發 server action
+    const alreadyLoaded = activeTab === 'captain' && squadMembersLoaded;
     setActiveTab('captain');
+    if (alreadyLoaded) return;
     if ((userData?.IsCaptain || userData?.IsGM) && userData?.UserID) {
       setSquadMembersLoaded(false);
       getSquadMembersStats(userData.UserID).then(res => {
@@ -214,7 +217,10 @@ export default function App() {
   };
 
   const handleOpenCommandantTab = () => {
+    // 同 captain：避免重複點擊
+    const alreadyLoaded = activeTab === 'commandant' && Object.keys(battalionMembers).length > 0;
     setActiveTab('commandant');
+    if (alreadyLoaded) return;
     if ((userData?.IsCommandant || userData?.IsGM) && userData?.UserID) {
       getBattalionMembersStats(userData.UserID).then(res => {
         if (res.success && res.members) setBattalionMembers(res.members);
@@ -692,7 +698,7 @@ export default function App() {
   const HomeView = () => (
     <div className="min-h-screen bg-[#FFFEF5] text-[#1A2A1A] pb-40 text-center animate-in fade-in">
       <Header userData={userData} onLogout={handleLogout} companionType={userGrid?.companion_type} />
-      <GmToolbar />
+      {GmToolbar()}
 
       {/* LINE 綁定提示 Banner */}
       {userData && !userData.LineUserId && !lineBannerDismissed && (
@@ -832,7 +838,7 @@ export default function App() {
             disabledQuests={systemSettings?.DisabledQuests}
           />
         )}
-        {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} />}
+        {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} currentUser={userData ?? undefined} />}
         {activeTab === 'stats' && userData && (
           <StatsTab
             userData={userData}
@@ -933,7 +939,7 @@ export default function App() {
         />
       )}
 
-      {view === 'app' && <HomeView />}
+      {view === 'app' && HomeView()}
 
       {undoTarget && (
         <div className="fixed inset-0 z-[1200] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-xl animate-in fade-in duration-200 text-center mx-auto">

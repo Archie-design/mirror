@@ -149,7 +149,8 @@ export async function updateUserFortunes(userId: string, fortunes: Record<string
 }
 
 // ── 小隊長：回溯隊員某格打卡 ──────────────────────────────────────────────────
-// 重置格子 + 刪除對應 DailyLogs + 扣回連線加分（若有）
+// 委派給 DB RPC uncomplete_cell_by_captain：以 SELECT FOR UPDATE 鎖定 UserNineGrid，
+// 在同一 transaction 完成 cells 重置、DailyLogs 刪除、分數扣回，避免 partial failure。
 export async function uncompleteCellByCapt(
     captainId: string,
     targetUserId: string,
@@ -159,80 +160,17 @@ export async function uncompleteCellByCapt(
     if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase.rpc('uncomplete_cell_by_captain', {
+        p_captain_id: captainId,
+        p_target_user_id: targetUserId,
+        p_cell_index: cellIndex,
+    });
 
-    // 驗證小隊長身份
-    const { data: captain } = await supabase
-        .from('CharacterStats')
-        .select('IsCaptain, TeamName')
-        .eq('UserID', captainId)
-        .single();
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長操作' };
-
-    // 驗證目標隊員在同一小隊
-    const { data: target } = await supabase
-        .from('CharacterStats')
-        .select('TeamName')
-        .eq('UserID', targetUserId)
-        .single();
-    if (!target || target.TeamName !== captain.TeamName) {
-        return { success: false, error: '目標隊員不在你的小隊' };
+    if (error) return { success: false, error: 'RPC 錯誤：' + error.message };
+    if (!data || data.success === false) {
+        return { success: false, error: (data && data.error) || '回溯失敗' };
     }
-
-    // 確認該格已完成
-    const { data: grid } = await supabase
-        .from('UserNineGrid')
-        .select('cells')
-        .eq('member_id', targetUserId)
-        .single();
-    if (!grid) return { success: false, error: '找不到九宮格資料' };
-
-    const cells = grid.cells as UserNineGridCell[];
-    if (!cells[cellIndex]?.completed) return { success: false, error: '此格尚未完成，無需回溯' };
-
-    // 讀取連線加分 log（至多一筆，QuestID = nine_grid_line|cell{idx}）
-    const { data: lineLog } = await supabase
-        .from('DailyLogs')
-        .select('id, RewardPoints')
-        .eq('UserID', targetUserId)
-        .eq('QuestID', `nine_grid_line|cell${cellIndex}`)
-        .maybeSingle();
-
-    const scoreToReverse = (lineLog?.RewardPoints as number) ?? 0;
-
-    // 重置格子（completed → false，completed_at → null）
-    const newCells = cells.map((c, i) =>
-        i === cellIndex ? { ...c, completed: false, completed_at: null } : c
-    );
-    const { error: gridErr } = await supabase
-        .from('UserNineGrid')
-        .update({ cells: newCells, updated_at: new Date().toISOString() })
-        .eq('member_id', targetUserId);
-    if (gridErr) return { success: false, error: '格子重置失敗：' + gridErr.message };
-
-    // 刪除格子打卡紀錄
-    await supabase.from('DailyLogs').delete()
-        .eq('UserID', targetUserId)
-        .eq('QuestID', `nine_grid_cell|${cellIndex}`);
-
-    // 刪除連線加分紀錄並扣回分數
-    if (scoreToReverse > 0) {
-        await supabase.from('DailyLogs').delete()
-            .eq('UserID', targetUserId)
-            .eq('QuestID', `nine_grid_line|cell${cellIndex}`);
-
-        const { data: stats } = await supabase
-            .from('CharacterStats')
-            .select('Score')
-            .eq('UserID', targetUserId)
-            .single();
-        const current = (stats?.Score as number) ?? 0;
-        await supabase
-            .from('CharacterStats')
-            .update({ Score: Math.max(0, current - scoreToReverse) })
-            .eq('UserID', targetUserId);
-    }
-
-    return { success: true, scoreReversed: scoreToReverse };
+    return { success: true, scoreReversed: data.scoreReversed ?? 0 };
 }
 
 // ── 小隊長：查看小隊所有成員的九宮格 ─────────────────────────────────────────

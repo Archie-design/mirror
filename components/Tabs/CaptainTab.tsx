@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ShieldAlert, Loader2, Grid3x3, Users, Check, Crown, Calendar as CalendarIcon, Send, Star, RotateCcw } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import QRCode from 'react-qr-code';
+
+const SquadGrowthChart = dynamic(
+    () => import('@/components/Charts/SquadGrowthChart').then(m => ({ default: m.SquadGrowthChart })),
+    { ssr: false, loading: () => <div className="h-72 flex items-center justify-center"><Loader2 className="animate-spin text-teal-500" /></div> }
+);
 import { SQUAD_ROLES } from '@/lib/constants';
 import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
 import { getSquadGrids, uncompleteCellByCapt } from '@/app/actions/nine-grid';
@@ -210,11 +216,33 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
 
     useEffect(() => { reload(); }, [reload]);
 
-    // 當處於排定中時每 15 秒刷新一次出席進度
+    // 當處於排定中時每 15 秒刷新一次出席進度；分頁不可見時暫停以節省請求
     useEffect(() => {
         if (!ctx?.session || ctx.session.status !== 'scheduled') return;
-        const id = setInterval(reload, 15000);
-        return () => clearInterval(id);
+        let id: ReturnType<typeof setInterval> | null = null;
+
+        const start = () => {
+            if (id !== null) return;
+            id = setInterval(reload, 15000);
+        };
+        const stop = () => {
+            if (id !== null) { clearInterval(id); id = null; }
+        };
+        const onVisChange = () => {
+            if (document.visibilityState === 'visible') {
+                reload();  // 回到前景時立即補抓一次
+                start();
+            } else {
+                stop();
+            }
+        };
+
+        if (document.visibilityState === 'visible') start();
+        document.addEventListener('visibilitychange', onVisChange);
+        return () => {
+            stop();
+            document.removeEventListener('visibilitychange', onVisChange);
+        };
     }, [ctx?.session, reload]);
 
     const handleSubmit = async () => {
@@ -488,6 +516,11 @@ export function CaptainTab({
                         ))}
                     </div>
                 )}
+            </section>
+
+            {/* ── 📈 小隊成長曲線 ── */}
+            <section className="bg-white border-2 border-emerald-100 p-4 rounded-4xl shadow-md">
+                <SquadGrowthChart weeks={8} />
             </section>
 
             {/* ── 📅 本週實體凝聚 ── */}

@@ -2,6 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, XCircle, RefreshCw, Sword, Users, ChevronDown, ChevronUp, ScrollText, CalendarPlus, Calendar as CalendarIcon, Loader2, Crown, Trash2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const SquadGrowthChart = dynamic(
+    () => import('@/components/Charts/SquadGrowthChart').then(m => ({ default: m.SquadGrowthChart })),
+    { ssr: false, loading: () => <div className="h-72 flex items-center justify-center"><Loader2 className="animate-spin text-rose-500" /></div> }
+);
 import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
 import {
@@ -348,7 +354,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                 onShowMessage(res.error || '批量操作失敗', 'error');
                 return;
             }
-            const results = res.results || [];
+            const results = res.results ?? [];
             const okCount = results.filter(r => r.ok).length;
             const warnCount = results.filter(r => r.ok && r.warning).length;
             const failCount = results.filter(r => !r.ok).length;
@@ -438,6 +444,11 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                     </div>
                 </div>
             )}
+
+            {/* 大隊成長曲線（含本大隊全部小隊） */}
+            <section className="bg-white border-2 border-rose-100 p-4 rounded-4xl shadow-md">
+                <SquadGrowthChart weeks={8} />
+            </section>
 
             {/* 實體凝聚排期 */}
             <GatheringScheduler battalionMembers={battalionMembers} onShowMessage={onShowMessage} />

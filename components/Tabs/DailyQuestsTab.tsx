@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish } from 'lucide-react';
 import { Quest, DailyLog } from '@/types';
 import {
@@ -134,15 +134,16 @@ export function DailyQuestsTab({
     const p1DoneRecently = p1Done || logs.some(l =>
         l.QuestID === 'p1' && getLogicalDateStr(l.Timestamp) === prevLogicalDateStr
     );
-    // 破曉打拳僅限中午 12:00 前記錄
-    const twHour = parseInt(
-        new Intl.DateTimeFormat('en', {
-            timeZone: 'Asia/Taipei',
-            hour: 'numeric',
-            hour12: false,
-        }).format(new Date()),
+    // 破曉打拳僅限中午 12:00 前記錄；每分鐘更新一次，確保跨越正午邊界時 UI 自動隱藏
+    const getTaipeiHour = () => parseInt(
+        new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', hour: 'numeric', hour12: false }).format(new Date()),
         10,
     );
+    const [twHour, setTwHour] = useState(getTaipeiHour);
+    useEffect(() => {
+        const id = setInterval(() => setTwHour(getTaipeiHour()), 60_000);
+        return () => clearInterval(id);
+    }, []);
     const isBeforeNoon = twHour < 12;
     const showDawnQuest = (p1DoneRecently && isBeforeNoon) || dawnDone;
 

@@ -34,9 +34,6 @@ export interface Roster {
 export interface TeamSettings {
   team_name: string;
   team_coins: number;
-  mandatory_quest_id?: string;      // 本週推薦定課 QuestID（小隊長抽籤）
-  mandatory_quest_week?: string;    // 本次抽籤週一日期（YYYY-MM-DD）
-  quest_draw_history?: string[];    // 已抽過的 QuestID 陣列
 }
 
 export interface DailyLog {
@@ -110,19 +107,6 @@ export interface AdminLog {
   target_name?: string;
   details?: Record<string, any>;
   result?: string;
-  created_at: string;
-}
-
-export interface Testimony {
-  id: string;
-  line_group_id: string | null;
-  line_user_id: string;
-  display_name: string | null;
-  parsed_name: string | null;
-  parsed_date: string | null;
-  parsed_category: string | null;
-  content: string;
-  raw_message: string;
   created_at: string;
 }
 
