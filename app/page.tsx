@@ -259,6 +259,41 @@ export default function App() {
     }
   };
 
+  const handleAddAnnouncement = async (text: string) => {
+    const newItem = {
+      id: `ann_${Date.now()}`,
+      text: text.trim(),
+      created_at: new Date().toISOString(),
+    };
+    const newList = [newItem, ...(systemSettings.Announcements ?? [])];
+    setIsSyncing(true);
+    try {
+      const res = await updateSystemSetting('Announcements', JSON.stringify(newList));
+      if (!res.success) throw new Error(res.error);
+      setSystemSettings(prev => ({ ...prev, Announcements: newList }));
+      setModalMessage({ text: '公告已發布。', type: 'success' });
+    } catch (err: any) {
+      setModalMessage({ text: '同步失敗：' + (err?.message ?? '法陣連線異常'), type: 'error' });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    const newList = (systemSettings.Announcements ?? []).filter(a => a.id !== id);
+    setIsSyncing(true);
+    try {
+      const res = await updateSystemSetting('Announcements', JSON.stringify(newList));
+      if (!res.success) throw new Error(res.error);
+      setSystemSettings(prev => ({ ...prev, Announcements: newList }));
+      setModalMessage({ text: '公告已刪除。', type: 'success' });
+    } catch (err: any) {
+      setModalMessage({ text: '同步失敗：' + (err?.message ?? '法陣連線異常'), type: 'error' });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleAddTempQuest = async (title: string, sub: string, desc: string, reward: number) => {
     setIsSyncing(true);
     try {
@@ -523,6 +558,7 @@ export default function App() {
           QuestRewardOverrides: tryParseJson<SystemSettings['QuestRewardOverrides']>(sObj.QuestRewardOverrides),
           DisabledQuests: tryParseJson<SystemSettings['DisabledQuests']>(sObj.DisabledQuests),
           CourseEvents: tryParseJson<SystemSettings['CourseEvents']>(sObj.CourseEvents),
+          Announcements: tryParseJson<SystemSettings['Announcements']>(sObj.Announcements),
         });
       }
 
@@ -777,6 +813,19 @@ export default function App() {
       </nav>
 
       <main className="max-w-md mx-auto p-6 space-y-8">
+        {systemSettings?.Announcements && systemSettings.Announcements.length > 0 && (
+          <div className="space-y-2">
+            {systemSettings.Announcements.map(item => (
+              <div
+                key={item.id}
+                className="flex items-start gap-2 bg-amber-400/20 border border-amber-500/50 rounded-2xl px-4 py-3 text-sm text-amber-900"
+              >
+                <span className="shrink-0 mt-0.5">📢</span>
+                <span className="leading-relaxed">{item.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {activeTab === 'daily' && (
           <DailyQuestsTab
             userId={userData?.UserID || ''}
@@ -935,6 +984,8 @@ export default function App() {
           onDeleteTempQuest={handleDeleteTempQuest}
           onImportRoster={handleImportRoster}
           onFinalReviewBonus={handleFinalReviewBonus}
+          onAddAnnouncement={handleAddAnnouncement}
+          onDeleteAnnouncement={handleDeleteAnnouncement}
           onClose={handleAdminClose}
         />
       )}

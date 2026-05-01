@@ -394,3 +394,258 @@ export async function deleteTempQuest(id: string, actorName: string = 'admin') {
     await logAdminAction('temp_quest_delete', actorName, id);
     return { success: true };
 }
+
+// ── F1 手動積分調整 ──────────────────────────────────────────────────────────
+export async function adjustMemberScore(
+    targetUserId: string,
+    targetName: string,
+    delta: number,
+    reason: string,
+    actorName: string = 'admin'
+): Promise<{ success: boolean; newScore?: number; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (delta === 0 || !Number.isFinite(delta)) return { success: false, error: '調整分數不可為 0' };
+    if (Math.abs(delta) > 2000) return { success: false, error: '單次調整上限 2000 分' };
+    if (!reason.trim()) return { success: false, error: '請填寫調整原因' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    const { data: cur, error: fetchErr } = await supabase
+        .from('CharacterStats')
+        .select('Score')
+        .eq('UserID', targetUserId)
+        .single();
+    if (fetchErr || !cur) return { success: false, error: fetchErr?.message ?? '找不到成員' };
+
+    const newScore = Math.max(0, ((cur as { Score: number }).Score ?? 0) + delta);
+    const { error: upErr } = await supabase
+        .from('CharacterStats')
+        .update({ Score: newScore })
+        .eq('UserID', targetUserId);
+    if (upErr) return { success: false, error: upErr.message };
+
+    await supabase.from('DailyLogs').insert({
+        Timestamp: new Date().toISOString(),
+        UserID: targetUserId,
+        QuestID: 'admin_adjust',
+        QuestTitle: reason.trim(),
+        RewardPoints: delta,
+    });
+
+    await logAdminAction('score_adjust', actorName, targetUserId, targetName, { delta, reason: reason.trim() });
+    return { success: true, newScore };
+}
+
+// ── F2 打卡紀錄查詢 ──────────────────────────────────────────────────────────
+export async function getMemberCheckInHistory(
+    targetUserId: string,
+    limit: number = 30
+): Promise<{ success: boolean; logs?: { id: string; Timestamp: string; QuestID: string; QuestTitle: string; RewardPoints: number }[]; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data, error } = await supabase
+        .from('DailyLogs')
+        .select('id, Timestamp, QuestID, QuestTitle, RewardPoints')
+        .eq('UserID', targetUserId)
+        .order('Timestamp', { ascending: false })
+        .limit(limit);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, logs: (data ?? []) as { id: string; Timestamp: string; QuestID: string; QuestTitle: string; RewardPoints: number }[] };
+}
+
+// ── F2 打卡紀錄刪除 ──────────────────────────────────────────────────────────
+export async function deleteCheckInRecord(
+    logId: string,
+    targetUserId: string,
+    actorName: string = 'admin'
+): Promise<{ success: boolean; reversedPoints?: number; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    const { data: log, error: fetchErr } = await supabase
+        .from('DailyLogs')
+        .select('id, QuestID, QuestTitle, RewardPoints, UserID')
+        .eq('id', logId)
+        .eq('UserID', targetUserId)
+        .single();
+
+    if (fetchErr || !log) return { success: false, error: '找不到指定紀錄' };
+
+    type LogRow = { id: string; QuestID: string; QuestTitle: string; RewardPoints: number; UserID: string };
+    const row = log as LogRow;
+
+    if (row.QuestID.startsWith('nine_grid_cell|')) {
+        return { success: false, error: '九宮格格子請透過「隊長回溯」功能處理' };
+    }
+
+    const { error: delErr } = await supabase.from('DailyLogs').delete().eq('id', logId);
+    if (delErr) return { success: false, error: delErr.message };
+
+    if (row.RewardPoints !== 0) {
+        const { data: cur } = await supabase
+            .from('CharacterStats')
+            .select('Score')
+            .eq('UserID', targetUserId)
+            .single();
+        const newScore = Math.max(0, ((cur as { Score: number } | null)?.Score ?? 0) - row.RewardPoints);
+        await supabase.from('CharacterStats').update({ Score: newScore }).eq('UserID', targetUserId);
+    }
+
+    await logAdminAction('delete_checkin', actorName, targetUserId, row.QuestTitle, { questId: row.QuestID, points: row.RewardPoints });
+    return { success: true, reversedPoints: row.RewardPoints };
+}
+
+// ── F3 成員活躍度統計 ────────────────────────────────────────────────────────
+export async function getMemberActivityStats(): Promise<{
+    success: boolean;
+    noCheckinThisWeek: { userId: string; userName: string; teamName: string | null; squadName: string | null; lastCheckIn: string | null }[];
+    totalActive: number;
+    totalMembers: number;
+    error?: string;
+}> {
+    if (!(await verifyAdminSession())) return { success: false, noCheckinThisWeek: [], totalActive: 0, totalMembers: 0, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    // 本週週一 12:00 TW
+    const now = new Date();
+    const twDateStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now);
+    const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
+    const today = new Date(Date.UTC(y, m - 1, d));
+    const weekday = today.getUTCDay() || 7;
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
+    const weekStart = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}T12:00:00+08:00`;
+
+    const { data: members, error: mErr } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name, TeamName, SquadName, LastCheckIn')
+        .or('IsGM.is.null,IsGM.eq.false');
+    if (mErr) return { success: false, noCheckinThisWeek: [], totalActive: 0, totalMembers: 0, error: mErr.message };
+
+    const { data: activeLogs, error: lErr } = await supabase
+        .from('DailyLogs')
+        .select('UserID')
+        .gte('Timestamp', weekStart);
+    if (lErr) return { success: false, noCheckinThisWeek: [], totalActive: 0, totalMembers: 0, error: lErr.message };
+
+    type MemberRow = { UserID: string; Name: string; TeamName: string | null; SquadName: string | null; LastCheckIn: string | null };
+    const allMembers = (members ?? []) as MemberRow[];
+    const activeSet = new Set(((activeLogs ?? []) as { UserID: string }[]).map(l => l.UserID));
+
+    const noCheckinThisWeek = allMembers
+        .filter(m => !activeSet.has(m.UserID))
+        .map(m => ({ userId: m.UserID, userName: m.Name, teamName: m.TeamName, squadName: m.SquadName, lastCheckIn: m.LastCheckIn }));
+
+    return {
+        success: true,
+        noCheckinThisWeek,
+        totalActive: activeSet.size,
+        totalMembers: allMembers.length,
+    };
+}
+
+// ── F4 聚會管理 GM 總覽 ──────────────────────────────────────────────────────
+export async function listAllGatheringsForAdmin(): Promise<{
+    success: boolean;
+    offline: Record<string, unknown>[];
+    online: Record<string, unknown>[];
+    error?: string;
+}> {
+    if (!(await verifyAdminSession())) return { success: false, offline: [], online: [], error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    // 本週週一
+    const now = new Date();
+    const twDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
+    const today = new Date(Date.UTC(y, m - 1, d));
+    const weekday = today.getUTCDay() || 7;
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
+    const weekMondayStr = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+
+    const [offlineRes, onlineRes] = await Promise.all([
+        supabase
+            .from('SquadGatheringSessions')
+            .select('id, team_name, gathering_date, status, scheduled_by, captain_submitted_at, approved_reward_per_person, approved_member_count, approved_attendee_count, approved_has_commandant, notes, created_at')
+            .order('gathering_date', { ascending: false })
+            .limit(60),
+        supabase
+            .from('OnlineGatheringApplications')
+            .select('id, user_id, user_name, team_name, week_monday, status, notes, squad_review_by, squad_review_at, squad_review_notes, created_at')
+            .gte('week_monday', weekMondayStr)
+            .order('created_at', { ascending: false }),
+    ]);
+
+    if (offlineRes.error) return { success: false, offline: [], online: [], error: offlineRes.error.message };
+    if (onlineRes.error) return { success: false, offline: [], online: [], error: onlineRes.error.message };
+
+    return {
+        success: true,
+        offline: (offlineRes.data ?? []) as Record<string, unknown>[],
+        online: (onlineRes.data ?? []) as Record<string, unknown>[],
+    };
+}
+
+// ── F5 一次性任務申請統計 ────────────────────────────────────────────────────
+export async function getBonusApplicationStats(): Promise<{
+    success: boolean;
+    stats?: { quest_id: string; pending: number; squad_approved: number; approved: number; rejected: number; total: number }[];
+    error?: string;
+}> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data, error } = await supabase
+        .from('BonusApplications')
+        .select('quest_id, status');
+    if (error) return { success: false, error: error.message };
+
+    const map = new Map<string, { pending: number; squad_approved: number; approved: number; rejected: number }>();
+    for (const row of (data ?? []) as { quest_id: string; status: string }[]) {
+        if (!map.has(row.quest_id)) map.set(row.quest_id, { pending: 0, squad_approved: 0, approved: 0, rejected: 0 });
+        const entry = map.get(row.quest_id)!;
+        if (row.status === 'pending') entry.pending++;
+        else if (row.status === 'squad_approved') entry.squad_approved++;
+        else if (row.status === 'approved') entry.approved++;
+        else if (row.status === 'rejected') entry.rejected++;
+    }
+
+    const QUEST_ORDER = ['o1', 'o2_1', 'o2_2', 'o2_3', 'o2_4', 'o3', 'o4', 'o5', 'o6', 'o7'];
+    const stats = QUEST_ORDER
+        .filter(q => map.has(q))
+        .map(q => {
+            const e = map.get(q)!;
+            return { quest_id: q, ...e, total: e.pending + e.squad_approved + e.approved + e.rejected };
+        });
+
+    return { success: true, stats };
+}
+
+// ── F6 匯出成員積分 CSV ──────────────────────────────────────────────────────
+export async function exportMemberScoresCsv(): Promise<{ success: boolean; csv?: string; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data, error } = await supabase
+        .from('CharacterStats')
+        .select('Name, SquadName, TeamName, Score, Streak, LastCheckIn')
+        .order('Score', { ascending: false });
+    if (error) return { success: false, error: error.message };
+
+    const rows = (data ?? []) as { Name: string; SquadName: string | null; TeamName: string | null; Score: number; Streak: number; LastCheckIn: string | null }[];
+    const header = '姓名,大隊,小隊,累積積分,連勤天數,最後打卡日';
+    const lines = rows.map(r =>
+        [r.Name, r.SquadName ?? '', r.TeamName ?? '', r.Score, r.Streak, r.LastCheckIn ? r.LastCheckIn.slice(0, 10) : ''].join(',')
+    );
+    const csv = '﻿' + [header, ...lines].join('\n'); // UTF-8 BOM for Excel
+
+    return { success: true, csv };
+}

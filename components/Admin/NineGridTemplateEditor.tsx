@@ -13,7 +13,6 @@ export function NineGridTemplateEditor({ adminName }: { adminName: string }) {
     const [cells, setCells] = React.useState<{ label: string; description: string }[]>(
         Array.from({ length: 9 }, () => ({ label: '', description: '' }))
     );
-    const [cellScore, setCellScore] = React.useState(100);
     const [saving, setSaving] = React.useState(false);
     const [msg, setMsg] = React.useState('');
 
@@ -34,10 +33,8 @@ export function NineGridTemplateEditor({ adminName }: { adminName: string }) {
                 tpl.cells[i] ?? { label: '', description: '' }
             );
             setCells(filled);
-            setCellScore(tpl.cell_score);
         } else {
             setCells(Array.from({ length: 9 }, () => ({ label: '', description: '' })));
-            setCellScore(100);
         }
     }, [selectedType, templates]);
 
@@ -48,7 +45,7 @@ export function NineGridTemplateEditor({ adminName }: { adminName: string }) {
     const handleSave = async () => {
         setSaving(true);
         setMsg('');
-        const res = await updateTemplate(selectedType, cells, cellScore, adminName);
+        const res = await updateTemplate(selectedType, cells, 100, adminName);
         if (res.success) {
             setMsg('已儲存');
             await load();
@@ -79,19 +76,6 @@ export function NineGridTemplateEditor({ adminName }: { adminName: string }) {
                         {type}
                     </button>
                 ))}
-            </div>
-
-            {/* Cell score input */}
-            <div className="flex items-center gap-3">
-                <label className="text-xs font-black text-slate-400 whitespace-nowrap">每格得分</label>
-                <input
-                    type="number"
-                    min={0}
-                    value={cellScore}
-                    onChange={e => setCellScore(Number(e.target.value))}
-                    className="w-24 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm font-bold text-center outline-none focus:border-amber-500"
-                />
-                <span className="text-xs text-slate-500">（套用至此旅伴所有格子）</span>
             </div>
 
             {/* 3×3 grid */}

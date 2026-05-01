@@ -70,12 +70,20 @@ export interface CourseEvent {
   enabled: boolean;    // false = 關閉報名（按鈕 disabled）
 }
 
+export interface AnnouncementItem {
+  id: string;           // 'ann_' + Date.now()
+  text: string;
+  created_at: string;   // ISO-8601
+}
+
 export interface SystemSettings {
   RegistrationMode?: 'open' | 'roster'; // 'open' = 自由註冊；'roster' = 名單驗證
   VolunteerPassword?: string;
   QuestRewardOverrides?: Record<string, number>;  // 定課分值動態調整：questId → reward
   DisabledQuests?: string[];                       // 停用的定課 ID 列表
   CourseEvents?: CourseEvent[];                    // 慶典場次（後台可動態管理）
+  Announcement?: string;                           // 舊版單一公告（保留供向下相容讀取）
+  Announcements?: AnnouncementItem[];              // 新版公告陣列（newest first）
 }
 
 export interface BonusApplication {

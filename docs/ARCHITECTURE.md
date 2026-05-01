@@ -4,7 +4,8 @@
 >
 > 文件目的：(1) 讓新加入的工程師能在一小時內掌握系統全貌；(2) 在 2026-05-10 開營前盤點 200 人並行使用的結構性風險；(3) 提供可立即執行的修補優先序。
 >
-> 撰寫基準日：2026-04-18。涵蓋 commit `f2ed6d9` 之前的所有程式碼。
+> 撰寫基準日：2026-04-18。涵蓋 commit `f2ed6d9` 之前的所有程式碼。  
+> 最後更新：2026-05-01。新增 §5.1 admin.ts v1.2 server actions（F1–F7）；SystemSettings 新增 Announcement 欄位。
 
 ---
 
@@ -329,7 +330,7 @@ erDiagram
     }
     SystemSettings {
         text SettingName PK
-        text Value "JSON 字串"
+        text Value "JSON 字串（含 Announcement v1.2 新增）"
     }
     Rosters {
         text email PK
@@ -372,7 +373,7 @@ erDiagram
 | 九宮格 | `UserNineGrid` / `NineGridTemplates` | 五大運勢九宮格進度與管理員模板 |
 | 罰款 | `FinePayments` / `SquadFineSubmissions` | 違規罰款追蹤 + 隊長彙總繳交 |
 | LINE | `Testimonies` / `LineGroups` | 親證投稿與群組快取 |
-| 設定 | `SystemSettings` | KV 全域設定（含 RegistrationMode、VolunteerPassword、AngelCallPairings、FineSettings） |
+| 設定 | `SystemSettings` | KV 全域設定（含 RegistrationMode、VolunteerPassword、AngelCallPairings、FineSettings、Announcement） |
 | 預先 | `Rosters` | 學員白名單（email 主鍵），註冊時比對 |
 | 稽核 | `AdminActivityLog` | 所有管理員動作的稽核日誌 |
 
@@ -711,6 +712,13 @@ sequenceDiagram
 | `admin.ts:checkWeeklyW3Compliance` | CharacterStats, AdminActivityLog | DailyLogs | AdminDashboard |
 | `admin.ts:autoAssignSquadsForTesting` | CharacterStats, TeamSettings, AdminActivityLog | CharacterStats | AdminDashboard（測試用） |
 | `admin.ts:importRostersData` | Rosters, CharacterStats, AdminActivityLog | — | AdminDashboard |
+| `admin.ts:adjustMemberScore` | CharacterStats, DailyLogs, AdminActivityLog | CharacterStats | AdminDashboard Tab I（手動積分管理） |
+| `admin.ts:getMemberCheckInHistory` | — | DailyLogs | AdminDashboard Tab I（打卡紀錄查詢） |
+| `admin.ts:deleteCheckInRecord` | DailyLogs (DELETE), CharacterStats, AdminActivityLog | DailyLogs | AdminDashboard Tab I（打卡紀錄刪除） |
+| `admin.ts:getMemberActivityStats` | — | CharacterStats, DailyLogs | AdminDashboard Tab I（本週活躍度統計） |
+| `admin.ts:listAllGatheringsForAdmin` | — | SquadGatheringSessions, OnlineGatheringApplications | AdminDashboard Tab III（凝聚會 GM 總覽） |
+| `admin.ts:getBonusApplicationStats` | — | BonusApplications | AdminDashboard Tab III（一次性任務申請統計） |
+| `admin.ts:exportMemberScoresCsv` | — | CharacterStats | AdminDashboard Tab I（匯出 CSV） |
 | `admin.ts:logAdminAction` | AdminActivityLog | — | 所有管理員動作 |
 
 `dice.ts` 與 `items.ts` 為 stub（功能已下線），保留為空檔案；不應有任何 caller。

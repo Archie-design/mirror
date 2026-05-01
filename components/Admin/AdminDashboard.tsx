@@ -1,10 +1,10 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw } from 'lucide-react';
-import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw, Download, Activity, ChevronDown, ChevronUp, AlertCircle, Coins } from 'lucide-react';
+import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -61,6 +61,53 @@ function MemberManagementSection() {
     const [saving, setSaving] = React.useState(false);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
     const [msg, setMsg] = React.useState('');
+
+    // F1 score adjust
+    const [adjustingId, setAdjustingId] = React.useState<string | null>(null);
+    const [adjustDelta, setAdjustDelta] = React.useState('');
+    const [adjustReason, setAdjustReason] = React.useState('');
+    const [adjusting, setAdjusting] = React.useState(false);
+
+    // F2 check-in history
+    const [expandedLogsId, setExpandedLogsId] = React.useState<string | null>(null);
+    type LogEntry = { id: string; Timestamp: string; QuestID: string; QuestTitle: string; RewardPoints: number };
+    const [logsData, setLogsData] = React.useState<Record<string, LogEntry[]>>({});
+    const [logsLoading, setLogsLoading] = React.useState(false);
+    const [deletingLogId, setDeletingLogId] = React.useState<string | null>(null);
+
+    const loadLogs = async (userId: string) => {
+        if (logsData[userId]) return;
+        setLogsLoading(true);
+        const res = await getMemberCheckInHistory(userId);
+        if (res.success && res.logs) setLogsData(prev => ({ ...prev, [userId]: res.logs as LogEntry[] }));
+        setLogsLoading(false);
+    };
+
+    const handleDeleteLog = async (userId: string, logId: string) => {
+        if (!window.confirm('確認刪除此打卡紀錄？積分將自動扣回。')) return;
+        setDeletingLogId(logId);
+        const res = await deleteCheckInRecord(logId, userId);
+        setDeletingLogId(null);
+        if (!res.success) { setMsg(res.error || '刪除失敗'); return; }
+        setMsg(`已刪除（扣回 ${res.reversedPoints} 分）`);
+        setLogsData(prev => ({ ...prev, [userId]: (prev[userId] ?? []).filter(l => l.id !== logId) }));
+        await load();
+    };
+
+    const handleAdjustScore = async (m: MemberRow) => {
+        const delta = parseInt(adjustDelta);
+        if (isNaN(delta) || delta === 0) { setMsg('請輸入有效分數'); return; }
+        if (!adjustReason.trim()) { setMsg('請填寫調整原因'); return; }
+        setAdjusting(true);
+        const res = await adjustMemberScore(m.UserID, m.Name, delta, adjustReason);
+        setAdjusting(false);
+        if (!res.success) { setMsg(res.error || '調整失敗'); return; }
+        setMsg(`已調整 ${delta > 0 ? '+' : ''}${delta} 分，新積分：${res.newScore}`);
+        setAdjustingId(null);
+        setAdjustDelta('');
+        setAdjustReason('');
+        await load();
+    };
 
     const load = async () => {
         setLoading(true);
@@ -152,6 +199,8 @@ function MemberManagementSection() {
                 {filtered.length === 0 && <p className="text-xs text-emerald-200/40 text-center py-8">無符合成員</p>}
                 {filtered.map(m => {
                     const isEditing = editingId === m.UserID;
+                    const isAdjusting = adjustingId === m.UserID;
+                    const isLogsExpanded = expandedLogsId === m.UserID;
                     return (
                         <div key={m.UserID} className={`rounded-xl p-3 text-xs transition-colors ${isEditing ? 'bg-[#F5C842]/5 border border-[#F5C842]/30' : 'bg-[#061410]/60 border border-transparent hover:border-emerald-400/15'}`}>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -161,8 +210,20 @@ function MemberManagementSection() {
                                 {m.IsCommandant && <span className="text-[10px] text-[#E07A6E] bg-[#E07A6E]/10 border border-[#E07A6E]/20 px-1.5 py-0.5 rounded-full">大隊長</span>}
                                 <span className="text-[#F5C842]/60 text-[10px] font-display font-black">{(m.Score ?? 0).toLocaleString()} 分</span>
                                 {!isEditing && (
-                                    <div className="flex gap-1.5 shrink-0">
+                                    <div className="flex gap-1 shrink-0 flex-wrap">
                                         <button onClick={() => startEdit(m)} className="text-emerald-300 hover:text-emerald-200 text-[11px] font-bold px-2 py-1 rounded-lg hover:bg-emerald-400/10 transition-colors">編輯</button>
+                                        <button
+                                            onClick={() => { setAdjustingId(isAdjusting ? null : m.UserID); setAdjustDelta(''); setAdjustReason(''); }}
+                                            className="text-amber-400 hover:text-amber-300 text-[11px] font-bold px-2 py-1 rounded-lg hover:bg-amber-400/10 transition-colors"
+                                        >積分±</button>
+                                        <button
+                                            onClick={() => {
+                                                const next = isLogsExpanded ? null : m.UserID;
+                                                setExpandedLogsId(next);
+                                                if (next) loadLogs(next);
+                                            }}
+                                            className="text-sky-400 hover:text-sky-300 text-[11px] font-bold px-2 py-1 rounded-lg hover:bg-sky-400/10 transition-colors"
+                                        >紀錄</button>
                                         <button
                                             onClick={() => handleDelete(m)}
                                             disabled={deletingId === m.UserID}
@@ -173,6 +234,59 @@ function MemberManagementSection() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* F1 積分調整 inline form */}
+                            {isAdjusting && !isEditing && (
+                                <div className="mt-2 flex flex-wrap gap-2 items-end border-t border-amber-400/20 pt-2">
+                                    <div>
+                                        <label className="text-[10px] text-amber-400/60 block mb-1">調整分數（正＝加，負＝扣）</label>
+                                        <input type="number" value={adjustDelta} onChange={e => setAdjustDelta(e.target.value)}
+                                            placeholder="+100 / -50"
+                                            className="w-28 bg-[#061410] border border-amber-400/30 rounded-lg px-2 py-1.5 text-amber-200 text-xs outline-none focus:border-amber-400/60" />
+                                    </div>
+                                    <div className="flex-1 min-w-[120px]">
+                                        <label className="text-[10px] text-amber-400/60 block mb-1">原因 *</label>
+                                        <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)}
+                                            placeholder="填寫調整原因"
+                                            className="w-full bg-[#061410] border border-amber-400/30 rounded-lg px-2 py-1.5 text-amber-200 text-xs outline-none focus:border-amber-400/60" />
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        <button disabled={adjusting} onClick={() => handleAdjustScore(m)}
+                                            className="py-1.5 px-3 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black hover:bg-amber-500/30 disabled:opacity-50 transition-all">
+                                            {adjusting ? '…' : '確認'}
+                                        </button>
+                                        <button onClick={() => setAdjustingId(null)}
+                                            className="py-1.5 px-2 bg-[#061410] text-emerald-200/50 border border-emerald-900/60 rounded-lg text-[11px] transition-colors">取消</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* F2 打卡紀錄展開 */}
+                            {isLogsExpanded && !isEditing && (
+                                <div className="mt-2 border-t border-sky-400/20 pt-2 space-y-1 max-h-48 overflow-y-auto">
+                                    {logsLoading && !logsData[m.UserID] ? (
+                                        <p className="text-[10px] text-slate-500 text-center py-2">載入中…</p>
+                                    ) : (logsData[m.UserID] ?? []).length === 0 ? (
+                                        <p className="text-[10px] text-slate-500 text-center py-2">無打卡紀錄</p>
+                                    ) : (
+                                        (logsData[m.UserID] ?? []).map(log => (
+                                            <div key={log.id} className="flex items-center gap-2 text-[10px]">
+                                                <span className="text-slate-500 shrink-0">{new Date(log.Timestamp).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span className="text-slate-300 flex-1 truncate">{log.QuestTitle}</span>
+                                                <span className={`shrink-0 font-bold ${log.RewardPoints > 0 ? 'text-emerald-400' : log.RewardPoints < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                                    {log.RewardPoints > 0 ? '+' : ''}{log.RewardPoints}
+                                                </span>
+                                                <button
+                                                    disabled={deletingLogId === log.id}
+                                                    onClick={() => handleDeleteLog(m.UserID, log.id)}
+                                                    className="shrink-0 text-red-500/60 hover:text-red-400 text-[10px] px-1 py-0.5 rounded disabled:opacity-40 transition-colors"
+                                                >✕</button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
                             {isEditing && (
                                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
                                     <div>
@@ -230,6 +344,8 @@ const ACTION_LABELS: Record<string, string> = {
     member_transfer: '成員轉隊',
     set_member_role: '更新成員角色',
     member_delete: '移除成員',
+    score_adjust: '手動積分調整',
+    delete_checkin: '刪除打卡紀錄',
 };
 
 interface AdminDashboardProps {
@@ -246,6 +362,8 @@ interface AdminDashboardProps {
     onDeleteTempQuest: (id: string) => void;
     onImportRoster: (csvData: string) => Promise<void>;
     onFinalReviewBonus: (appId: string, approve: boolean, notes: string) => Promise<void>;
+    onAddAnnouncement: (text: string) => Promise<void>;
+    onDeleteAnnouncement: (id: string) => Promise<void>;
     onClose: () => void;
 }
 
@@ -254,7 +372,7 @@ export function AdminDashboard({
     leaderboard, temporaryQuests,
     pendingFinalReviewApps, adminLogs,
     onAddTempQuest, onToggleTempQuest, onDeleteTempQuest,
-    onImportRoster, onFinalReviewBonus, onClose
+    onImportRoster, onFinalReviewBonus, onAddAnnouncement, onDeleteAnnouncement, onClose
 }: AdminDashboardProps) {
     const [csvInput, setCsvInput] = React.useState("");
     const [isImporting, setIsImporting] = React.useState(false);
@@ -263,6 +381,27 @@ export function AdminDashboard({
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
     const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course'>('members');
+
+    // Announcement state
+    const [newAnnouncementText, setNewAnnouncementText] = React.useState('');
+    const [announcementPublishing, setAnnouncementPublishing] = React.useState(false);
+
+    // F3 Activity stats
+    const [activityStats, setActivityStats] = React.useState<{ noCheckinThisWeek: { userId: string; userName: string; teamName: string | null; squadName: string | null; lastCheckIn: string | null }[]; totalActive: number; totalMembers: number } | null>(null);
+    const [activityExpanded, setActivityExpanded] = React.useState(false);
+    const [activityLoading, setActivityLoading] = React.useState(false);
+
+    // F5 Bonus application stats
+    const [bonusStats, setBonusStats] = React.useState<{ quest_id: string; pending: number; squad_approved: number; approved: number; rejected: number; total: number }[] | null>(null);
+
+    // F4 Gathering overview
+    type GatheringSession = { id: string; team_name: string; gathering_date: string; status: string; approved_reward_per_person: number | null; approved_attendee_count: number | null; approved_has_commandant: boolean | null };
+    type OnlineApp = { id: string; user_name: string; team_name: string; week_monday: string; status: string; squad_review_notes: string | null };
+    const [gatheringData, setGatheringData] = React.useState<{ offline: GatheringSession[]; online: OnlineApp[] } | null>(null);
+    const [gatheringTab, setGatheringTab] = React.useState<'online' | 'offline'>('online');
+
+    // F6 CSV export
+    const [csvExporting, setCsvExporting] = React.useState(false);
 
     // Snapshot management state
     const [snapshotStatus, setSnapshotStatus] = React.useState<SnapshotStatus | null>(null);
@@ -273,6 +412,15 @@ export function AdminDashboard({
     React.useEffect(() => {
         getSnapshotStatus().then(r => { if (r.success && r.data) setSnapshotStatus(r.data); });
     }, []);
+
+    React.useEffect(() => {
+        if (activeAdminTab === 'review') {
+            getBonusApplicationStats().then(r => { if (r.success && r.stats) setBonusStats(r.stats); });
+            listAllGatheringsForAdmin().then(r => {
+                if (r.success) setGatheringData({ offline: r.offline as GatheringSession[], online: r.online as OnlineApp[] });
+            });
+        }
+    }, [activeAdminTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSnapshotTrigger = async (type: 'weekly' | 'monthly') => {
         setTriggerMsg(null);
@@ -468,6 +616,82 @@ export function AdminDashboard({
                             </form>
                         </div>
                     </section>
+                    {/* F3 活躍度統計 + F6 CSV 匯出 */}
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 text-emerald-400 font-black text-sm uppercase tracking-widest">
+                                <Activity size={14} /> 本週活躍度
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={async () => {
+                                        setActivityLoading(true);
+                                        const res = await getMemberActivityStats();
+                                        if (res.success) setActivityStats({ noCheckinThisWeek: res.noCheckinThisWeek, totalActive: res.totalActive, totalMembers: res.totalMembers });
+                                        setActivityLoading(false);
+                                    }}
+                                    disabled={activityLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-black hover:bg-emerald-600/30 disabled:opacity-50 transition-all"
+                                >
+                                    <RefreshCw size={11} className={activityLoading ? 'animate-spin' : ''} />
+                                    {activityLoading ? '查詢中…' : '查詢'}
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setCsvExporting(true);
+                                        const res = await exportMemberScoresCsv();
+                                        setCsvExporting(false);
+                                        if (!res.success || !res.csv) return;
+                                        const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `members_score_${new Date().toISOString().slice(0, 10)}.csv`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    disabled={csvExporting}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600/20 border border-sky-500/30 text-sky-300 rounded-xl text-xs font-black hover:bg-sky-600/30 disabled:opacity-50 transition-all"
+                                >
+                                    <Download size={11} /> {csvExporting ? '匯出中…' : '匯出 CSV'}
+                                </button>
+                            </div>
+                        </div>
+                        {activityStats && (
+                            <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-4 space-y-3 shadow-xl">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-black text-slate-200">本週已打卡 {activityStats.totalActive} / {activityStats.totalMembers} 人</span>
+                                    {activityStats.noCheckinThisWeek.length > 0 && (
+                                        <button
+                                            onClick={() => setActivityExpanded(e => !e)}
+                                            className="flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 font-bold"
+                                        >
+                                            {activityStats.noCheckinThisWeek.length} 人未打卡
+                                            {activityExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all"
+                                        style={{ width: `${activityStats.totalMembers > 0 ? Math.round(activityStats.totalActive / activityStats.totalMembers * 100) : 0}%` }}
+                                    />
+                                </div>
+                                {activityExpanded && activityStats.noCheckinThisWeek.length > 0 && (
+                                    <div className="space-y-1 max-h-40 overflow-y-auto border-t border-slate-800 pt-2">
+                                        {activityStats.noCheckinThisWeek.map(m => (
+                                            <div key={m.userId} className="flex items-center gap-2 text-xs">
+                                                <span className="font-bold text-slate-300 w-16 truncate">{m.userName}</span>
+                                                <span className="text-slate-500 flex-1 truncate">{m.squadName || '—'} / {m.teamName || '—'}</span>
+                                                <span className="text-slate-600 shrink-0">{m.lastCheckIn ? m.lastCheckIn.slice(0, 10) : '從未打卡'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </section>
+
                     <section className="space-y-5">
                         <SectionHeading numeral="I.ii" title="成員管理" subtitle="Member Registry" accent="emerald" icon={<UserCog size={16} />} />
                         <MemberManagementSection />
@@ -603,6 +827,44 @@ export function AdminDashboard({
                 {/* ── Tab: 審核 ── */}
                 {activeAdminTab === 'review' && (
                 <div className="space-y-8">
+                    {/* F5 一次性任務申請統計 */}
+                    <section className="space-y-4">
+                        <div className="flex items-center gap-2 text-violet-400 font-black text-sm uppercase tracking-widest"><BarChart3 size={14} /> 一次性任務申請統計</div>
+                        {bonusStats && bonusStats.length > 0 ? (
+                            <div className="bg-slate-900 border-2 border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-slate-800">
+                                            <th className="text-left px-4 py-2.5 text-slate-400 font-black">任務</th>
+                                            <th className="px-3 py-2.5 text-yellow-400 font-black">待審</th>
+                                            <th className="px-3 py-2.5 text-blue-400 font-black">初審</th>
+                                            <th className="px-3 py-2.5 text-emerald-400 font-black">核准</th>
+                                            <th className="px-3 py-2.5 text-red-400 font-black">駁回</th>
+                                            <th className="px-3 py-2.5 text-slate-400 font-black">合計</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800">
+                                        {bonusStats.map(s => {
+                                            const LABELS: Record<string, string> = { o1: '超越巔峰', o2_1: '戲劇-數字', o2_2: '戲劇-蛻變', o2_3: '戲劇-複訓', o2_4: '戲劇-告別', o3: '聯誼1年', o4: '聯誼2年', o5: '報高階訂', o6: '報高階款', o7: '傳愛' };
+                                            return (
+                                                <tr key={s.quest_id} className="hover:bg-white/5">
+                                                    <td className="px-4 py-2 text-slate-200 font-bold">{LABELS[s.quest_id] ?? s.quest_id}</td>
+                                                    <td className="px-3 py-2 text-center text-yellow-300">{s.pending || '—'}</td>
+                                                    <td className="px-3 py-2 text-center text-blue-300">{s.squad_approved || '—'}</td>
+                                                    <td className="px-3 py-2 text-center text-emerald-300">{s.approved || '—'}</td>
+                                                    <td className="px-3 py-2 text-center text-red-300">{s.rejected || '—'}</td>
+                                                    <td className="px-3 py-2 text-center text-slate-300 font-black">{s.total}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-500 text-center py-4">{bonusStats === null ? '載入中…' : '尚無申請紀錄'}</p>
+                        )}
+                    </section>
+
                     <section className="space-y-6">
                         <div className="flex items-center gap-2 text-pink-500 font-black text-sm uppercase tracking-widest">❤️ 待終審申請（傳愛 & 加分任務）</div>
                         <div className="bg-slate-900 border-2 border-pink-500/20 p-8 rounded-4xl shadow-xl space-y-4">
@@ -697,6 +959,71 @@ export function AdminDashboard({
                             {volPwdSaved && <p className="text-xs text-teal-400 font-bold text-center">✅ 志工密碼已儲存</p>}
                         </div>
                     </section>
+
+                    {/* F4 凝聚會 GM 總覽 */}
+                    <section className="space-y-4">
+                        <div className="flex items-center gap-2 text-cyan-400 font-black text-sm uppercase tracking-widest"><Users size={14} /> 凝聚會總覽（GM）</div>
+                        <div className="flex gap-2">
+                            {(['online', 'offline'] as const).map(t => (
+                                <button key={t} onClick={() => setGatheringTab(t)}
+                                    className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all ${gatheringTab === t ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}>
+                                    {t === 'online' ? '線上凝聚' : '實體凝聚'}
+                                </button>
+                            ))}
+                        </div>
+                        {!gatheringData ? (
+                            <p className="text-xs text-slate-500 text-center py-4">載入中…</p>
+                        ) : gatheringTab === 'online' ? (
+                            gatheringData.online.length === 0 ? (
+                                <p className="text-xs text-slate-500 text-center py-4">本週無線上凝聚申請</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {gatheringData.online.map(app => (
+                                        <div key={app.id} className="bg-slate-800/60 rounded-2xl px-4 py-3 flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-bold text-white">{app.user_name}</p>
+                                                <p className="text-[10px] text-slate-400">{app.team_name} · {app.week_monday}</p>
+                                                {app.squad_review_notes && <p className="text-[10px] text-indigo-400 mt-0.5">備註：{app.squad_review_notes}</p>}
+                                            </div>
+                                            <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 rounded-lg ${app.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400' : app.status === 'rejected' ? 'bg-red-500/10 text-red-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                                {app.status === 'approved' ? '已核准' : app.status === 'rejected' ? '已駁回' : '待審核'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        ) : (
+                            gatheringData.offline.length === 0 ? (
+                                <p className="text-xs text-slate-500 text-center py-4">無實體凝聚紀錄</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {gatheringData.offline.map(s => {
+                                        const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+                                            scheduled: { label: '已排定', cls: 'bg-slate-500/10 text-slate-400' },
+                                            pending_review: { label: '待終審', cls: 'bg-yellow-500/10 text-yellow-400' },
+                                            approved: { label: '已核准', cls: 'bg-emerald-500/10 text-emerald-400' },
+                                            rejected: { label: '已駁回', cls: 'bg-red-500/10 text-red-400' },
+                                            cancelled: { label: '已取消', cls: 'bg-slate-700/30 text-slate-600' },
+                                        };
+                                        const st = STATUS_LABEL[s.status] ?? { label: s.status, cls: 'bg-slate-500/10 text-slate-400' };
+                                        return (
+                                            <div key={s.id} className="bg-slate-800/60 rounded-2xl px-4 py-3 flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-bold text-white">{s.team_name}</p>
+                                                    <p className="text-[10px] text-slate-400">{s.gathering_date}
+                                                        {s.approved_attendee_count != null && ` · ${s.approved_attendee_count} 人到場`}
+                                                        {s.approved_reward_per_person != null && ` · +${s.approved_reward_per_person}/人`}
+                                                        {s.approved_has_commandant && ' · 含大隊長'}
+                                                    </p>
+                                                </div>
+                                                <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 rounded-lg ${st.cls}`}>{st.label}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )
+                        )}
+                    </section>
                 </div>
                 )}
 
@@ -749,6 +1076,73 @@ export function AdminDashboard({
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </section>
+
+                    {/* 全站公告 */}
+                    <section className="space-y-4 md:col-span-2">
+                        <div className="flex items-center gap-2 text-yellow-400 font-black text-sm uppercase tracking-widest">
+                            📢 全站公告
+                        </div>
+                        <div className="bg-slate-900 border-2 border-yellow-400/20 rounded-3xl p-5 space-y-4 shadow-xl">
+                            {/* 新增公告 */}
+                            <div className="space-y-2">
+                                <p className="text-xs text-slate-400">發布後即時顯示於學員首頁；可個別刪除歷史公告。</p>
+                                <textarea
+                                    value={newAnnouncementText}
+                                    onChange={e => setNewAnnouncementText(e.target.value)}
+                                    rows={3}
+                                    maxLength={300}
+                                    placeholder="輸入公告內容（最多 300 字）"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-400 resize-none"
+                                />
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-slate-500">{newAnnouncementText.length} / 300</span>
+                                    <button
+                                        onClick={async () => {
+                                            if (!newAnnouncementText.trim()) return;
+                                            setAnnouncementPublishing(true);
+                                            await onAddAnnouncement(newAnnouncementText.trim());
+                                            setNewAnnouncementText('');
+                                            setAnnouncementPublishing(false);
+                                        }}
+                                        disabled={!newAnnouncementText.trim() || announcementPublishing}
+                                        className="flex items-center gap-2 px-5 py-2 bg-yellow-400/20 border border-yellow-400/40 text-yellow-300 rounded-xl text-xs font-black hover:bg-yellow-400/30 active:scale-95 transition-all disabled:opacity-40"
+                                    >
+                                        <Plus size={12} /> {announcementPublishing ? '發布中…' : '發布公告'}
+                                    </button>
+                                </div>
+                            </div>
+                            {/* 歷史公告列表 */}
+                            <div className="space-y-2">
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">歷史公告</p>
+                                {(!systemSettings.Announcements || systemSettings.Announcements.length === 0) ? (
+                                    <p className="text-xs text-slate-600 italic">目前無公告</p>
+                                ) : (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {systemSettings.Announcements.map((item: AnnouncementItem) => (
+                                            <div key={item.id} className="flex items-start gap-3 bg-slate-800 rounded-xl px-3 py-2.5">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] text-slate-500 mb-0.5">
+                                                        {new Date(item.created_at).toLocaleString('zh-TW', {
+                                                            month: '2-digit', day: '2-digit',
+                                                            hour: '2-digit', minute: '2-digit',
+                                                        })}
+                                                    </p>
+                                                    <p className="text-sm text-slate-200 leading-relaxed break-words">{item.text}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => onDeleteAnnouncement(item.id)}
+                                                    className="shrink-0 text-slate-600 hover:text-red-400 transition-colors p-1 mt-0.5"
+                                                    title="刪除此公告"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </section>
 
