@@ -31,7 +31,7 @@ Requires `.env.local` with:
 
 ## Architecture
 
-**real-take（大方圓開運親證班：這不是電影）** is a gamified check-in system for a real-life cultivation class (2026 大方圓開運親證班). Members complete daily/weekly quests and track personal growth goals. Game design spec is in `docs/GAME_DESIGN.md` — always treat this as the authoritative source of truth.
+**覺醒體系開運親證班：你的黃磚路** is a gamified check-in system for a real-life cultivation class (2026 覺醒開運親證班). Members complete daily/weekly quests and track personal growth goals. Game design spec is in `docs/GAME_DESIGN.md` — always treat this as the authoritative source of truth.
 
 ### App Structure
 

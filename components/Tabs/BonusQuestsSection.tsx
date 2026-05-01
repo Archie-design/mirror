@@ -82,6 +82,8 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
 
     async function handleSubmit(questId: string) {
         const form = getForm(questId);
+        if (!form.target.trim()) { setError('請填寫必填欄位'); return; }
+        if (!form.date) { setError('請選擇完成日期'); return; }
         setError(null);
         setSubmitting(true);
         const res = await submitBonusApplication(
