@@ -13,6 +13,7 @@ import { getSquadGrids, uncompleteCellByCapt } from '@/app/actions/nine-grid';
 import {
     getTeamGatheringContext,
     submitGatheringForReview,
+    scanGatheringQR,
     type TeamGatheringContext,
 } from '@/app/actions/squad-gathering';
 import {
@@ -206,6 +207,7 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
     const [ctx, setCtx] = useState<TeamGatheringContext | null>(null);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [selfCheckingIn, setSelfCheckingIn] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
     const reload = useCallback(async () => {
@@ -255,6 +257,16 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
         setSubmitting(false);
     };
 
+    const handleSelfCheckin = async () => {
+        if (!ctx?.session) return;
+        setSelfCheckingIn(true);
+        setErr(null);
+        const res = await scanGatheringQR(captainId, ctx.session.id);
+        if (!res.success) setErr(res.error ?? '報到失敗');
+        await reload();
+        setSelfCheckingIn(false);
+    };
+
     if (loading) return (
         <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl">
             <div className="flex items-center gap-2 text-rose-600 text-sm font-black">
@@ -268,6 +280,7 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
     const attendees = ctx?.attendees ?? [];
     const teamMemberCount = ctx?.teamMemberCount ?? 0;
     const hasCommandant = attendees.some(a => a.isCommandant);
+    const captainAlreadyIn = attendees.some(a => a.userId === captainId);
     const isToday = session?.gatheringDate === getLogicalDateStr();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
@@ -300,6 +313,15 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
                         </div>
                         <p className="text-xs text-gray-400 break-all text-center">{qrUrl}</p>
                     </div>
+
+                    <button
+                        disabled={selfCheckingIn || captainAlreadyIn}
+                        onClick={handleSelfCheckin}
+                        className="w-full py-3 bg-emerald-500 text-white font-black rounded-2xl shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {selfCheckingIn ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        {captainAlreadyIn ? '我已完成報到' : '我也到場了（小隊長自己簽到）'}
+                    </button>
 
                     <div className="bg-gray-50 rounded-2xl p-4 space-y-2 border border-gray-200">
                         <div className="flex items-center gap-2 text-sm font-black text-gray-700">

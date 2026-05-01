@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { CheckCircle, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle, ChevronDown, ChevronUp, Clock, XCircle, Image as ImageIcon } from 'lucide-react';
 import { CharacterStats, BonusApplication } from '@/types';
 import { submitBonusApplication } from '@/app/actions/bonus';
+import { compressImage } from '@/lib/utils/compress-image';
 
 interface BonusQuestsSectionProps {
     userData: CharacterStats;
@@ -50,9 +51,19 @@ function StatusBadge({ status }: { status: BonusApplication['status'] }) {
 
 export function BonusQuestsSection({ userData, myApplications, onRefresh }: BonusQuestsSectionProps) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
-    const [formState, setFormState] = useState<Record<string, { target: string; date: string; desc: string }>>({});
+    const [formState, setFormState] = useState<Record<string, { target: string; date: string; desc: string; file?: File; previewUrl?: string }>>({});
     const [submitting, setSubmitting] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        return () => {
+            Object.values(formState).forEach(f => {
+                if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+            });
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     function getApps(questId: string) {
         return myApplications.filter(a => a.quest_id === questId);
@@ -80,12 +91,71 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
         }));
     }
 
+    async function handleFilePick(questId: string, e: React.ChangeEvent<HTMLInputElement>) {
+        const raw = e.target.files?.[0];
+        e.target.value = '';
+        if (!raw) return;
+        if (raw.size > 15 * 1024 * 1024) {
+            setError('原始檔案過大（>15MB），請先在手機相簿縮小');
+            return;
+        }
+        setError(null);
+        try {
+            const compressed = await compressImage(raw);
+            const compressedFile = new File([compressed], 'screenshot.jpg', { type: 'image/jpeg' });
+            const previewUrl = URL.createObjectURL(compressedFile);
+            setFormState(prev => {
+                const old = prev[questId]?.previewUrl;
+                if (old) URL.revokeObjectURL(old);
+                return {
+                    ...prev,
+                    [questId]: { ...getForm(questId), file: compressedFile, previewUrl },
+                };
+            });
+        } catch (err: any) {
+            setError('圖片處理失敗：' + (err?.message ?? ''));
+        }
+    }
+
+    function clearScreenshot(questId: string) {
+        setFormState(prev => {
+            const url = prev[questId]?.previewUrl;
+            if (url) URL.revokeObjectURL(url);
+            const next = { ...getForm(questId) };
+            delete next.file;
+            delete next.previewUrl;
+            return { ...prev, [questId]: next };
+        });
+    }
+
     async function handleSubmit(questId: string) {
         const form = getForm(questId);
         if (!form.target.trim()) { setError('請填寫必填欄位'); return; }
         if (!form.date) { setError('請選擇完成日期'); return; }
         setError(null);
         setSubmitting(true);
+
+        let screenshotUrl: string | undefined;
+        if (form.file) {
+            setUploading(true);
+            const fd = new FormData();
+            fd.append('file', form.file);
+            fd.append('userId', userData.UserID);
+            fd.append('folder', 'bonus');
+            try {
+                const r = await fetch('/api/upload/bonus-screenshot', { method: 'POST', body: fd });
+                const j = await r.json();
+                if (!j.success) throw new Error(j.error ?? '上傳失敗');
+                screenshotUrl = j.url;
+            } catch (err: any) {
+                setError('截圖上傳失敗：' + (err?.message ?? ''));
+                setUploading(false);
+                setSubmitting(false);
+                return;
+            }
+            setUploading(false);
+        }
+
         const res = await submitBonusApplication(
             userData.UserID,
             userData.Name,
@@ -94,13 +164,15 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
             questId,
             form.target,
             form.date,
-            form.desc || undefined
+            form.desc || undefined,
+            screenshotUrl,
         );
         setSubmitting(false);
         if (!res.success) {
             setError(res.error ?? '提交失敗');
             return;
         }
+        if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
         setExpandedId(null);
         setFormState(prev => ({ ...prev, [questId]: { target: '', date: '', desc: '' } }));
         onRefresh();
@@ -208,13 +280,41 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                                             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base text-[#1A2A1A] focus:outline-none focus:border-[#1A6B4A]"
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">截圖佐證（選填）</label>
+                                        {form.previewUrl ? (
+                                            <div className="relative inline-block">
+                                                <img src={form.previewUrl} alt="預覽" className="max-h-40 rounded-xl border border-gray-200" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => clearScreenshot(quest.id)}
+                                                    className="absolute -top-2 -right-2 bg-white border border-gray-300 rounded-full w-6 h-6 flex items-center justify-center shadow"
+                                                    aria-label="移除截圖"
+                                                >
+                                                    <XCircle size={16} className="text-red-500" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl px-3 py-3 cursor-pointer text-xs text-gray-500 hover:bg-gray-50 min-h-[44px]">
+                                                <ImageIcon size={14} />
+                                                <span>選擇圖片（拍照或從相簿）</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/jpeg,image/png,image/webp"
+                                                    capture="environment"
+                                                    onChange={e => handleFilePick(quest.id, e)}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => handleSubmit(quest.id)}
-                                            disabled={submitting}
+                                            disabled={submitting || uploading}
                                             className="flex-1 py-2.5 rounded-xl bg-[#1A6B4A] text-white font-bold text-sm active:scale-95 transition-all disabled:opacity-50 min-h-[44px]"
                                         >
-                                            {submitting ? '提交中…' : '確認提交'}
+                                            {uploading ? '上傳中…' : submitting ? '提交中…' : '確認提交'}
                                         </button>
                                         <button
                                             onClick={() => { setExpandedId(null); setError(null); }}

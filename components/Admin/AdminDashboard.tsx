@@ -895,6 +895,16 @@ export function AdminDashboard({
                                             <span className="text-[10px] font-black px-2 py-1 rounded-lg text-blue-400 bg-blue-400/10">待終審</span>
                                         </div>
                                         {app.description && <p className="text-xs text-slate-400 italic">{app.description}</p>}
+                                        {app.screenshot_url && (
+                                            <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                                                <img
+                                                    src={app.screenshot_url}
+                                                    alt="佐證截圖"
+                                                    loading="lazy"
+                                                    className="max-h-48 rounded-xl border border-slate-700 hover:opacity-90 transition-opacity"
+                                                />
+                                            </a>
+                                        )}
                                         <textarea
                                             placeholder="終審備註（選填）"
                                             value={w4Notes[app.id] || ''}

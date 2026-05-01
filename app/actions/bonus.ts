@@ -309,7 +309,8 @@ export async function submitBonusApplication(
     questId: string,
     interviewTarget: string,
     interviewDate: string,
-    description?: string
+    description?: string,
+    screenshotUrl?: string,
 ): Promise<{ success: boolean; error?: string }> {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
 
@@ -356,6 +357,7 @@ export async function submitBonusApplication(
         interview_target: interviewTarget.trim(),
         interview_date: interviewDate,
         description: description?.trim() || null,
+        screenshot_url: screenshotUrl?.trim() || null,
         status: 'pending',
     });
 
