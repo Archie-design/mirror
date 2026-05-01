@@ -455,6 +455,17 @@ export default function App() {
     }
   };
 
+  // 登入成功後若 URL 含 ?returnTo=... 則重導向，回傳 true 代表已重導向
+  const handleReturnTo = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+    if (returnTo && returnTo.startsWith('/')) {
+      window.location.href = returnTo;
+      return true;
+    }
+    return false;
+  };
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSyncing(true);
@@ -466,7 +477,7 @@ export default function App() {
       if (res.success && res.stats) {
         await loadUserSession(res.stats);
         saveSession(res.stats.UserID);
-        setView('app');
+        if (!handleReturnTo()) setView('app');
       } else {
         setModalMessage({ text: res.error || '查無此觀影者帳號。', type: 'error' });
       }
@@ -497,7 +508,7 @@ export default function App() {
       saveSession(res.userId);
       setUserData(res.stats);
       setModalMessage({ text: '帳號建立成功，開始你的黃磚路旅程！', type: 'success' });
-      setView('app');
+      if (!handleReturnTo()) setView('app');
     } catch (err) {
       setModalMessage({ text: '註冊失敗。可能該手機號碼已經建立過帳號。', type: 'error' });
     } finally {
@@ -613,7 +624,7 @@ export default function App() {
       await loadUserSession(stats as CharacterStats);
       saveSession(userId);
       lineLoginInProgress.current = false;
-      setView('app');
+      if (!handleReturnTo()) setView('app');
     } else {
       lineLoginInProgress.current = false;
       setView('login');
