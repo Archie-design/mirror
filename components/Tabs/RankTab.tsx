@@ -5,8 +5,10 @@ import { Crown, Users, User, Building2, Calendar, TrendingUp, Loader2 } from 'lu
 import { CharacterStats } from '@/types';
 import {
     getCurrentWeekLeaderboard,
+    getPreviousWeekLeaderboard,
     getPastWeekLeaderboard,
     getCurrentMonthLeaderboard,
+    getPreviousMonthLeaderboard,
     getPastMonthLeaderboard,
     listAvailableWeeks,
     listAvailableMonths,
@@ -65,6 +67,14 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                                 setDisplayedAnchor(r.weekMonday ?? null);
                             } else setPeriodError(r.error || '載入失敗');
                         }
+                    } else if (periodOffset === -1) {
+                        const r = await getPreviousWeekLeaderboard();
+                        if (!cancelled) {
+                            if (r.success && r.entries) {
+                                setPeriodEntries(r.entries);
+                                setDisplayedAnchor(r.weekMonday ?? null);
+                            } else setPeriodError(r.error || '載入失敗');
+                        }
                     } else {
                         const target = availableWeeks[periodOffset - 1];
                         if (!target) { if (!cancelled) { setPeriodEntries([]); setDisplayedAnchor(null); } return; }
@@ -79,6 +89,14 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                 } else if (period === 'month') {
                     if (periodOffset === 0) {
                         const r = await getCurrentMonthLeaderboard();
+                        if (!cancelled) {
+                            if (r.success && r.entries) {
+                                setPeriodEntries(r.entries);
+                                setDisplayedAnchor(r.monthStart ?? null);
+                            } else setPeriodError(r.error || '載入失敗');
+                        }
+                    } else if (periodOffset === -1) {
+                        const r = await getPreviousMonthLeaderboard();
                         if (!cancelled) {
                             if (r.success && r.entries) {
                                 setPeriodEntries(r.entries);
@@ -311,6 +329,7 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                     className="text-sm bg-white border border-[#B2DFC0] rounded-lg px-2 py-1 font-bold"
                 >
                     <option value={0}>本{label}</option>
+                    {list.length === 0 && <option value={-1}>上{label}</option>}
                     {list.map((d, i) => (
                         <option key={d} value={i + 1}>{d}（{i === 0 ? '上' + label : d}）</option>
                     ))}

@@ -1,11 +1,13 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw } from 'lucide-react';
 import { SystemSettings, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { listAllMembers, transferMember, setMemberRole, deleteMember } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
+import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
+import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
     UserID: string;
@@ -261,6 +263,29 @@ export function AdminDashboard({
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
     const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course'>('members');
+
+    // Snapshot management state
+    const [snapshotStatus, setSnapshotStatus] = React.useState<SnapshotStatus | null>(null);
+    const [weeklyTriggering, setWeeklyTriggering] = React.useState(false);
+    const [monthlyTriggering, setMonthlyTriggering] = React.useState(false);
+    const [triggerMsg, setTriggerMsg] = React.useState<{ type: 'weekly' | 'monthly'; ok: boolean; msg: string } | null>(null);
+
+    React.useEffect(() => {
+        getSnapshotStatus().then(r => { if (r.success && r.data) setSnapshotStatus(r.data); });
+    }, []);
+
+    const handleSnapshotTrigger = async (type: 'weekly' | 'monthly') => {
+        setTriggerMsg(null);
+        if (type === 'weekly') setWeeklyTriggering(true); else setMonthlyTriggering(true);
+        const r = type === 'weekly' ? await triggerWeeklySnapshot() : await triggerMonthlySnapshot();
+        const msg = r.success
+            ? (r.inserted != null ? `已入庫 ${r.inserted} 筆` : r.note || '完成（無新資料）')
+            : (r.error || '執行失敗');
+        setTriggerMsg({ type, ok: r.success, msg });
+        const s = await getSnapshotStatus();
+        if (s.success && s.data) setSnapshotStatus(s.data);
+        if (type === 'weekly') setWeeklyTriggering(false); else setMonthlyTriggering(false);
+    };
 
     // Quest Reward & Disable State
     const ALL_QUESTS = React.useMemo(() => [
@@ -724,6 +749,72 @@ export function AdminDashboard({
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </section>
+
+                    {/* 排程快照管理 */}
+                    <section className="space-y-5 md:col-span-2">
+                        <div className="flex items-center gap-2 text-sky-400 font-black text-sm uppercase tracking-widest">
+                            <Database size={16} /> 排程快照管理
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {(['weekly', 'monthly'] as const).map(type => {
+                                const info = snapshotStatus?.[type];
+                                const label = type === 'weekly' ? '週快照' : '月快照';
+                                const triggering = type === 'weekly' ? weeklyTriggering : monthlyTriggering;
+                                const msg = triggerMsg?.type === type ? triggerMsg : null;
+                                return (
+                                    <div key={type} className="bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{label}</span>
+                                            {!info ? (
+                                                <span className="text-[10px] text-slate-500">載入中…</span>
+                                            ) : info.isMissing ? (
+                                                <span className="text-[10px] font-black bg-red-500/20 text-red-400 px-2 py-0.5 rounded-lg">⚠️ 缺少快照</span>
+                                            ) : (
+                                                <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-lg">✅ 正常</span>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] text-slate-500">最近快照</p>
+                                            <p className="text-sm font-black text-slate-200">
+                                                {info?.latestDate
+                                                    ? `${info.latestDate}（${info.latestCount} 人）`
+                                                    : '—— 尚無資料'}
+                                            </p>
+                                            {info?.isMissing && (
+                                                <p className="text-[10px] text-red-400">預期應有：{info.expectedDate}</p>
+                                            )}
+                                        </div>
+                                        {info && info.history.length > 1 && (
+                                            <div className="space-y-1">
+                                                <p className="text-[11px] text-slate-500">歷史紀錄</p>
+                                                {info.history.map(h => (
+                                                    <div key={h.date} className="flex justify-between text-[11px] text-slate-400">
+                                                        <span>{h.date}</span>
+                                                        <span>{h.count} 人</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={() => handleSnapshotTrigger(type)}
+                                            disabled={triggering}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-600/20 border border-sky-500/40 text-sky-300 rounded-xl text-xs font-black hover:bg-sky-600/30 disabled:opacity-50 transition-colors"
+                                        >
+                                            {triggering
+                                                ? <><Loader2 size={12} className="animate-spin" /> 執行中…</>
+                                                : <><RefreshCw size={12} /> 手動觸發{label}</>
+                                            }
+                                        </button>
+                                        {msg && (
+                                            <p className={`text-[11px] font-bold text-center ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {msg.ok ? '✅' : '❌'} {msg.msg}
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </section>
                 </div>

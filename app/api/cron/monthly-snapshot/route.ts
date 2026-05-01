@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Cron 執行時間：每月 1 號 16:30 UTC = 台灣時間（Asia/Taipei, UTC+8）1 號 00:30
-// 1 號 00:30 時上個月的所有活動已完整結算，snapshot 資料正確。
-// vercel.json schedule: "30 16 1 * *"（UTC）= 每月 1 號 16:30 UTC
+// Cron 執行時間：每月 1 號 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）1 號 12:30
+// 為什麼選 1 號 12:30 TW：本系統邏輯日以中午 12:00 TW 為邊界，
+// 「上月最後一天的邏輯日」延伸至 1 號 12:00 TW，需在此之後才能確保資料完整。
+// vercel.json schedule: "30 4 1 * *"（UTC）= 每月 1 號 04:30 UTC = 台灣時間 1 號 12:30
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -32,8 +33,8 @@ function getLastMonthRange(): { monthStart: string; start: string; end: string }
     const fmt = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     return {
         monthStart: fmt(lastMonthStart),
-        start: `${fmt(lastMonthStart)}T00:00:00+08:00`,
-        end:   `${fmt(thisMonthStart)}T00:00:00+08:00`,
+        start: `${fmt(lastMonthStart)}T12:00:00+08:00`,
+        end:   `${fmt(thisMonthStart)}T12:00:00+08:00`,
     };
 }
 

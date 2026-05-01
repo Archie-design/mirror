@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Cron 執行時間：每週日 16:30 UTC = 台灣時間（Asia/Taipei, UTC+8）週一 00:30
-// 為什麼選週一 00:30：本系統邏輯日以中午 12:00 為邊界，
-// 週一 00:30 時上一個自然週的所有活動均已結算完畢，快照資料完整。
-// vercel.json schedule: "30 16 * * 0"（UTC）= 每週日 16:30 UTC
+// Cron 執行時間：每週一 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）週一 12:30
+// 為什麼選週一 12:30 TW：本系統邏輯日以中午 12:00 TW 為邊界，
+// 「上週日的邏輯日」延伸至週一 12:00 TW，需在此之後才能確保資料完整。
+// vercel.json schedule: "30 4 * * 1"（UTC）= 每週一 04:30 UTC = 台灣時間週一 12:30
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -40,8 +40,8 @@ function getLastWeekRange(): { weekMonday: string; start: string; end: string } 
     return {
         weekMonday: fmt(lastMonday),
         // TIMESTAMPTZ 邊界：以 +08:00 表示
-        start: `${fmt(lastMonday)}T00:00:00+08:00`,
-        end:   `${fmt(thisMonday)}T00:00:00+08:00`,
+        start: `${fmt(lastMonday)}T12:00:00+08:00`,
+        end:   `${fmt(thisMonday)}T12:00:00+08:00`,
     };
 }
 

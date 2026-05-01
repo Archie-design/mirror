@@ -105,12 +105,35 @@ export async function getCurrentWeekLeaderboard(): Promise<{ success: boolean; e
         const monday = getCurrentWeekMondayDate();
         const nextMonday = new Date(monday);
         nextMonday.setUTCDate(monday.getUTCDate() + 7);
-        const start = `${fmtDate(monday)}T00:00:00+08:00`;
-        const end = `${fmtDate(nextMonday)}T00:00:00+08:00`;
+        const start = `${fmtDate(monday)}T12:00:00+08:00`;
+        const end = `${fmtDate(nextMonday)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
         return {
             success: true,
             weekMonday: fmtDate(monday),
+            entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
+        };
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+// ── 個人排行：上週（live aggregate，快照尚未建立前使用）──────────────────────
+export async function getPreviousWeekLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; weekMonday?: string; error?: string }> {
+    let sessionUid: string | undefined;
+    try { sessionUid = await requireUser(); } catch (e) {
+        const r = authErrorResponse(e); if (r) return r; throw e;
+    }
+    try {
+        const monday = getCurrentWeekMondayDate();
+        const prevMonday = new Date(monday);
+        prevMonday.setUTCDate(monday.getUTCDate() - 7);
+        const start = `${fmtDate(prevMonday)}T12:00:00+08:00`;
+        const end   = `${fmtDate(monday)}T12:00:00+08:00`;
+        const entries = await aggregateRange(start, end);
+        return {
+            success: true,
+            weekMonday: fmtDate(prevMonday),
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
     } catch (error) {
@@ -145,6 +168,29 @@ export async function getPastWeekLeaderboard(weekMonday: string): Promise<{ succ
     return { success: true, entries };
 }
 
+// ── 個人排行：上月（live aggregate，快照尚未建立前使用）──────────────────────
+export async function getPreviousMonthLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; monthStart?: string; error?: string }> {
+    let sessionUid: string | undefined;
+    try { sessionUid = await requireUser(); } catch (e) {
+        const r = authErrorResponse(e); if (r) return r; throw e;
+    }
+    try {
+        const monthStart = getCurrentMonthStartDate();
+        const prevMonthStart = new Date(monthStart);
+        prevMonthStart.setUTCMonth(monthStart.getUTCMonth() - 1);
+        const start = `${fmtDate(prevMonthStart)}T12:00:00+08:00`;
+        const end   = `${fmtDate(monthStart)}T12:00:00+08:00`;
+        const entries = await aggregateRange(start, end);
+        return {
+            success: true,
+            monthStart: fmtDate(prevMonthStart),
+            entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
+        };
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
 // ── 個人排行：本月 ────────────────────────────────────────────────────────────
 export async function getCurrentMonthLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; monthStart?: string; error?: string }> {
     let sessionUid: string | undefined;
@@ -155,8 +201,8 @@ export async function getCurrentMonthLeaderboard(): Promise<{ success: boolean; 
         const monthStart = getCurrentMonthStartDate();
         const nextMonth = new Date(monthStart);
         nextMonth.setUTCMonth(monthStart.getUTCMonth() + 1);
-        const start = `${fmtDate(monthStart)}T00:00:00+08:00`;
-        const end = `${fmtDate(nextMonth)}T00:00:00+08:00`;
+        const start = `${fmtDate(monthStart)}T12:00:00+08:00`;
+        const end = `${fmtDate(nextMonth)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
         return {
             success: true,
