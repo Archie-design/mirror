@@ -49,7 +49,7 @@ function SquadGatheringContent({ sessionId }: { sessionId: string }) {
 
     useEffect(() => {
         (async () => {
-            const uid = typeof window !== 'undefined' ? window.localStorage.getItem('userId') : null;
+            const uid = typeof window !== 'undefined' ? window.localStorage.getItem('session_uid') : null;
             if (!uid) {
                 setState({ kind: 'need-login' });
                 return;

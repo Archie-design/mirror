@@ -640,7 +640,7 @@ export default function App() {
     if (stats && !error) {
       await loadUserSession(stats as CharacterStats);
       saveSession(storedUid);
-      setView('app');
+      if (!handleReturnTo()) setView('app');
       return true;
     }
     clearSession();
