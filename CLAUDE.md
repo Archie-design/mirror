@@ -28,6 +28,8 @@ Requires `.env.local` with:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `DATABASE_URL` (direct PostgreSQL connection string to Supabase)
+- `ADMIN_PASSWORD` (管理後台密碼；dev 省略時 fallback 為 `"123"`)
+- `AUTH_SESSION_SECRET` (**production 必填**，任意隨機字串 ≥32 字元，用於 HMAC 簽章；未設定時 admin 登入一律回傳 500)
 
 ## Architecture
 

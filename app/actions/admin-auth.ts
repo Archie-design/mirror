@@ -21,10 +21,10 @@ function getAdminPassword(): string {
 }
 
 function adminToken(): string {
-    if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_SESSION_SECRET) {
-        throw new Error('ADMIN_SESSION_SECRET env var is required in production');
+    if (process.env.NODE_ENV === 'production' && !process.env.AUTH_SESSION_SECRET) {
+        throw new Error('AUTH_SESSION_SECRET env var is required in production');
     }
-    const secret = process.env.ADMIN_SESSION_SECRET || getAdminPassword();
+    const secret = process.env.AUTH_SESSION_SECRET || getAdminPassword();
     return createHmac('sha256', secret).update(TOKEN_LABEL).digest('hex');
 }
 
