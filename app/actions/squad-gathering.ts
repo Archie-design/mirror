@@ -169,13 +169,24 @@ export async function scheduleSquadGathering(
     teamName: string,
     gatheringDateISO: string,  // YYYY-MM-DD
 ): Promise<{ success: boolean; error?: string; session?: SquadGatheringSession }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
     if (!teamName || !/^\d{4}-\d{2}-\d{2}$/.test(gatheringDateISO)) {
         return { success: false, error: '輸入格式錯誤' };
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const adminId = await requireUser();
+    let adminId: string;
+    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+
+    // 允許大隊長或管理員排定凝聚
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const { data: caller } = await supabase
+            .from('CharacterStats')
+            .select('IsCommandant')
+            .eq('UserID', adminId)
+            .maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '僅限大隊長或管理員操作' };
+    }
 
     const { data, error } = await supabase
         .from('SquadGatheringSessions')
@@ -205,10 +216,20 @@ export async function scheduleSquadGathering(
 export async function cancelSquadGathering(
     sessionId: string,
 ): Promise<{ success: boolean; error?: string }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
-
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const adminId = await requireUser();
+    let adminId: string;
+    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+
+    // 允許大隊長或管理員取消凝聚
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const { data: caller } = await supabase
+            .from('CharacterStats')
+            .select('IsCommandant')
+            .eq('UserID', adminId)
+            .maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '僅限大隊長或管理員操作' };
+    }
 
     const { data: session } = await supabase
         .from('SquadGatheringSessions')
