@@ -49,17 +49,29 @@ function SquadGatheringContent({ sessionId }: { sessionId: string }) {
 
     useEffect(() => {
         (async () => {
-            // 以 cookie session 為準：呼叫 server action（requireSelf 會驗證）
-            // 先用 localStorage 的 userId 快取抓 uid（App 登入後存入）
             const uid = typeof window !== 'undefined' ? window.localStorage.getItem('userId') : null;
             if (!uid) {
                 setState({ kind: 'need-login' });
                 return;
             }
+            const shouldAutoCheckin = typeof window !== 'undefined'
+                && new URLSearchParams(window.location.search).get('autoCheckin') === '1';
             const ctx = await loadContext(uid);
-            if (ctx) setState({ kind: 'ready', userId: uid, context: ctx });
+            if (!ctx) return;
+            if (shouldAutoCheckin) {
+                setState({ kind: 'scanning' });
+                const res = await scanGatheringQR(uid, sessionId);
+                if (!res.success) {
+                    setState({ kind: 'error', message: res.error ?? '報到失敗' });
+                    return;
+                }
+                const ctx2 = await loadContext(uid);
+                if (ctx2) setState({ kind: 'done', alreadyIn: !!res.alreadyCheckedIn, context: ctx2 });
+            } else {
+                setState({ kind: 'ready', userId: uid, context: ctx });
+            }
         })();
-    }, [loadContext]);
+    }, [loadContext, sessionId]);
 
     const handleScan = async () => {
         if (state.kind !== 'ready') return;
@@ -82,7 +94,7 @@ function SquadGatheringContent({ sessionId }: { sessionId: string }) {
     }
 
     if (state.kind === 'need-login') {
-        const returnTo = encodeURIComponent(`/squad-gathering/${sessionId}`);
+        const returnTo = encodeURIComponent(`/squad-gathering/${sessionId}?autoCheckin=1`);
         return (
             <div className="min-h-screen bg-[#16213E] flex items-center justify-center p-6">
                 <div className="w-full max-w-sm bg-[#1B2A4A] border border-[#253A5C] rounded-3xl p-6 text-center space-y-4">
