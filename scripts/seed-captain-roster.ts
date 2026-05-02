@@ -24,7 +24,6 @@ import { Client } from 'pg';
 
 interface RosterMember {
     userId: string;
-    email: string;
     name: string;
     squadName: string;
     teamName: string | null;
@@ -33,13 +32,12 @@ interface RosterMember {
 }
 
 // UserID 生成：非手機格式、結尾 123（避免與真實學員手機號碼衝突）
-// 依序 roster_01_123 ~ roster_39_123
+// 依序 roster_01_123 ~ roster_39_123；Roster.phone 沿用同一字串作為主鍵
 const makeUserId = (seq: number) => `roster_${String(seq).padStart(2, '0')}_123`;
 
 // 輔助：一行帶入一位大隊長
 const commandant = (seq: number, name: string, squadName: string): RosterMember => ({
     userId: makeUserId(seq),
-    email: `${makeUserId(seq)}@roster.temp`,
     name,
     squadName,
     teamName: null,
@@ -50,7 +48,6 @@ const commandant = (seq: number, name: string, squadName: string): RosterMember 
 // 輔助：一行帶入一位小隊長
 const captain = (seq: number, name: string, squadName: string, teamName: string): RosterMember => ({
     userId: makeUserId(seq),
-    email: `${makeUserId(seq)}@roster.temp`,
     name,
     squadName,
     teamName,
@@ -120,18 +117,16 @@ const members: RosterMember[] = [
 
 // 舊測試帳號清單（沿用 seed-test-accounts.ts 的 UserID 命名規則）
 const LEGACY_TEST_USER_IDS = Array.from({ length: 20 }, (_, i) => `test_u${String(i + 1).padStart(2, '0')}`);
-const LEGACY_TEST_EMAILS = Array.from({ length: 20 }, (_, i) => `test${String(i + 1).padStart(2, '0')}@mirror.dev`);
 
 async function cleanLegacyTests(client: Client) {
-    await client.query(`DELETE FROM "Rosters" WHERE email = ANY($1::text[])`, [LEGACY_TEST_EMAILS]);
+    await client.query(`DELETE FROM "Rosters" WHERE phone = ANY($1::text[])`, [LEGACY_TEST_USER_IDS]);
     await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = ANY($1::text[])`, [LEGACY_TEST_USER_IDS]);
     console.log(`✓ 已刪除舊測試帳號（test_u01 ~ test_u20）`);
 }
 
 async function cleanCurrentRoster(client: Client) {
     const userIds = members.map(m => m.userId);
-    const emails = members.map(m => m.email);
-    await client.query(`DELETE FROM "Rosters" WHERE email = ANY($1::text[])`, [emails]);
+    await client.query(`DELETE FROM "Rosters" WHERE phone = ANY($1::text[])`, [userIds]);
     await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = ANY($1::text[])`, [userIds]);
     console.log(`✓ 已清除名單中的 ${userIds.length} 位帳號`);
 }
@@ -139,26 +134,25 @@ async function cleanCurrentRoster(client: Client) {
 async function seed(client: Client) {
     const userIds = members.map(m => m.userId);
     const names = members.map(m => m.name);
-    const emails = members.map(m => m.email);
     const squadNames = members.map(m => m.squadName);
     const teamNames = members.map(m => m.teamName);
     const isCaptains = members.map(m => m.isCaptain);
     const isCommandants = members.map(m => m.isCommandant);
 
-    // 1. Rosters（若有 email 名冊驗證模式，保持同步；teamName 可為 null）
+    // 1. Rosters（phone 為 PK，沿用 userId 字串）
     await client.query(
         `
-        INSERT INTO "Rosters" (email, name, squad_name, team_name, is_captain, is_commandant)
+        INSERT INTO "Rosters" (phone, name, squad_name, team_name, is_captain, is_commandant)
         SELECT UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]),
                UNNEST($4::text[]), UNNEST($5::boolean[]), UNNEST($6::boolean[])
-        ON CONFLICT (email) DO UPDATE SET
+        ON CONFLICT (phone) DO UPDATE SET
             name          = EXCLUDED.name,
             squad_name    = EXCLUDED.squad_name,
             team_name     = EXCLUDED.team_name,
             is_captain    = EXCLUDED.is_captain,
             is_commandant = EXCLUDED.is_commandant
         `,
-        [emails, names, squadNames, teamNames, isCaptains, isCommandants]
+        [userIds, names, squadNames, teamNames, isCaptains, isCommandants]
     );
     console.log('✓ Rosters 寫入完成');
 
@@ -166,22 +160,21 @@ async function seed(client: Client) {
     await client.query(
         `
         INSERT INTO "CharacterStats"
-            ("UserID", "Name", "Email", "SquadName", "TeamName", "IsCaptain", "IsCommandant",
+            ("UserID", "Name", "SquadName", "TeamName", "IsCaptain", "IsCommandant",
              "Score", "Streak")
         SELECT
-            UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]),
-            UNNEST($4::text[]), UNNEST($5::text[]),
-            UNNEST($6::boolean[]), UNNEST($7::boolean[]),
+            UNNEST($1::text[]), UNNEST($2::text[]),
+            UNNEST($3::text[]), UNNEST($4::text[]),
+            UNNEST($5::boolean[]), UNNEST($6::boolean[]),
             0, 0
         ON CONFLICT ("UserID") DO UPDATE SET
             "Name"         = EXCLUDED."Name",
-            "Email"        = EXCLUDED."Email",
             "SquadName"    = EXCLUDED."SquadName",
             "TeamName"     = EXCLUDED."TeamName",
             "IsCaptain"    = EXCLUDED."IsCaptain",
             "IsCommandant" = EXCLUDED."IsCommandant"
         `,
-        [userIds, names, emails, squadNames, teamNames, isCaptains, isCommandants]
+        [userIds, names, squadNames, teamNames, isCaptains, isCommandants]
     );
     console.log('✓ CharacterStats 寫入完成');
 

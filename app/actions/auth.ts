@@ -67,18 +67,17 @@ export async function registerAccount(input: {
         }
     }
 
-    // 檢查 Rosters 名冊自動帶入小隊
-    if (email) {
-        const { data: rosterMatch } = await supabase
-            .from('Rosters')
-            .select('*')
-            .eq('email', email)
-            .single();
-        if (rosterMatch) {
-            newChar.SquadName = rosterMatch.squad_name;
-            newChar.TeamName = rosterMatch.team_name;
-            newChar.IsCaptain = rosterMatch.is_captain;
-        }
+    // 檢查 Rosters 名冊自動帶入小隊（phone = userId 為鍵）
+    const { data: rosterMatch } = await supabase
+        .from('Rosters')
+        .select('*')
+        .eq('phone', userId)
+        .maybeSingle();
+    if (rosterMatch) {
+        newChar.SquadName = rosterMatch.squad_name;
+        newChar.TeamName = rosterMatch.team_name;
+        newChar.IsCaptain = rosterMatch.is_captain;
+        if (rosterMatch.is_commandant) newChar.IsCommandant = true;
     }
 
     const { error: insertErr } = await supabase.from('CharacterStats').insert([newChar]);

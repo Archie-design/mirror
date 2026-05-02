@@ -12,10 +12,13 @@ const pool = new Pool({
 const sql = `
 -- 1. Create Rosters Table
 CREATE TABLE IF NOT EXISTS public."Rosters" (
-    email TEXT PRIMARY KEY,
+    phone TEXT PRIMARY KEY,
+    name TEXT,
+    birthday TEXT,
     squad_name TEXT,
     team_name TEXT,
     is_captain BOOLEAN DEFAULT false,
+    is_commandant BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

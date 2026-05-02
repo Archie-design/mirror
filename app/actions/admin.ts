@@ -4,6 +4,7 @@ import 'server-only';
 import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
+import { standardizePhone } from '@/lib/utils/phone';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -135,8 +136,7 @@ export async function autoAssignSquadsForTesting(
 export async function importRostersData(csvContent: string) {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
 
-    // Parse all rows first, then batch-insert with UNNEST (avoids N+1 per-row queries)
-    const emails: string[] = [];
+    const phones: string[] = [];
     const names: (string | null)[] = [];
     const birthdays: (string | null)[] = [];
     const squadNames: (string | null)[] = [];
@@ -146,10 +146,12 @@ export async function importRostersData(csvContent: string) {
 
     for (const row of csvContent.split('\n')) {
         const cols = row.split(',').map(c => c.trim());
-        // Expecting: email, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
-        const email = cols[0]?.toLowerCase();
-        if (!email || !email.includes('@')) continue;
-        emails.push(email);
+        // Expecting: phone, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
+        const phoneRaw = cols[0];
+        if (!phoneRaw) continue;
+        const phone = standardizePhone(phoneRaw);
+        if (phone.length !== 9) continue; // 略過表頭與不合法列
+        phones.push(phone);
         names.push(cols[1] || null);
         birthdays.push(cols[2] && /^\d{4}-\d{2}-\d{2}$/.test(cols[2]) ? cols[2] : null);
         squadNames.push(cols[3] || null);
@@ -158,27 +160,27 @@ export async function importRostersData(csvContent: string) {
         isCommandants.push(String(cols[6]).toLowerCase() === 'true');
     }
 
-    if (emails.length === 0) return { success: false, error: '未找到有效資料行' };
+    if (phones.length === 0) return { success: false, error: '未找到有效資料行' };
 
     const client = await connectDb();
     try {
         await client.query('BEGIN');
 
-        // Batch upsert Rosters（2 queries total, regardless of row count）
+        // Batch upsert Rosters
         await client.query(`
-            INSERT INTO "Rosters" (email, name, birthday, squad_name, team_name, is_captain, is_commandant)
+            INSERT INTO "Rosters" (phone, name, birthday, squad_name, team_name, is_captain, is_commandant)
             SELECT UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]),
                    UNNEST($4::text[]), UNNEST($5::text[]), UNNEST($6::boolean[]), UNNEST($7::boolean[])
-            ON CONFLICT (email) DO UPDATE SET
-                name         = EXCLUDED.name,
-                birthday     = EXCLUDED.birthday,
-                squad_name   = EXCLUDED.squad_name,
-                team_name    = EXCLUDED.team_name,
-                is_captain   = EXCLUDED.is_captain,
+            ON CONFLICT (phone) DO UPDATE SET
+                name          = EXCLUDED.name,
+                birthday      = EXCLUDED.birthday,
+                squad_name    = EXCLUDED.squad_name,
+                team_name     = EXCLUDED.team_name,
+                is_captain    = EXCLUDED.is_captain,
                 is_commandant = EXCLUDED.is_commandant
-        `, [emails, names, birthdays, squadNames, teamNames, isCaptains, isCommandants]);
+        `, [phones, names, birthdays, squadNames, teamNames, isCaptains, isCommandants]);
 
-        // Batch sync CharacterStats for already-registered members
+        // Batch sync CharacterStats（UserID 即標準化後 phone）
         await client.query(`
             UPDATE "CharacterStats" AS cs
             SET "SquadName"    = v.squad_name,
@@ -187,13 +189,13 @@ export async function importRostersData(csvContent: string) {
                 "IsCommandant" = v.is_commandant,
                 "Birthday"     = COALESCE(v.birthday, cs."Birthday")
             FROM UNNEST($1::text[], $2::text[], $3::text[], $4::boolean[], $5::boolean[], $6::text[])
-              AS v(email, squad_name, team_name, is_captain, is_commandant, birthday)
-            WHERE cs."Email" = v.email
-        `, [emails, squadNames, teamNames, isCaptains, isCommandants, birthdays]);
+              AS v(phone, squad_name, team_name, is_captain, is_commandant, birthday)
+            WHERE cs."UserID" = v.phone
+        `, [phones, squadNames, teamNames, isCaptains, isCommandants, birthdays]);
 
         await client.query('COMMIT');
-        await logAdminAction('roster_import', 'admin', undefined, undefined, { count: emails.length });
-        return { success: true, count: emails.length };
+        await logAdminAction('roster_import', 'admin', undefined, undefined, { count: phones.length });
+        return { success: true, count: phones.length };
     } catch (error) {
         await client.query('ROLLBACK');
         const msg = error instanceof Error ? error.message : String(error);
@@ -278,10 +280,8 @@ export async function deleteMember(
         // 主角色（DailyLogs 會 CASCADE）
         await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = $1`, [targetUserId]);
 
-        // 名冊（以 email 為主鍵；若無 email 則跳過）
-        if (before.Email) {
-            await client.query(`DELETE FROM "Rosters" WHERE email = $1`, [before.Email]);
-        }
+        // 名冊（phone 為主鍵 = UserID）
+        await client.query(`DELETE FROM "Rosters" WHERE phone = $1`, [targetUserId]);
 
         await client.query('COMMIT');
 

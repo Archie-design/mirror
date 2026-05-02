@@ -602,12 +602,13 @@ export function AdminDashboard({
                             <form onSubmit={handleImportSubmit} className="space-y-4">
                                 <p className="text-xs text-emerald-200/60 leading-relaxed">
                                     請貼上 CSV 格式資料（含表頭行將自動略過）<br />
-                                    格式：<span className="text-[#F5C842] font-mono text-[10px]">email, 姓名, 生日, 大隊, 小隊, is_captain, is_commandant</span>
+                                    格式：<span className="text-[#F5C842] font-mono text-[10px]">phone, 姓名, 生日, 大隊, 小隊, is_captain, is_commandant</span><br />
+                                    手機可填 09xxxxxxxx 或 9xxxxxxxx，系統自動標準化為 9 位。
                                 </p>
                                 <textarea
                                     value={csvInput}
                                     onChange={(e) => setCsvInput(e.target.value)}
-                                    placeholder={`user1@gmail.com,王小明,1960-03-15,第一大隊,第一小隊,true,false\nuser2@gmail.com,李大華,1985-07-22,第一大隊,第一小隊,false,false`}
+                                    placeholder={`0912345678,王小明,1960-03-15,第一大隊,第一大隊-第1小隊,true,false\n0922222222,李大華,1985-07-22,第一大隊,第一大隊-第1小隊,false,false`}
                                     className="w-full h-36 bg-[#061410] border border-[#F5C842]/15 rounded-2xl p-4 text-emerald-100 font-mono text-xs outline-none focus:border-[#F5C842]/50 resize-none placeholder:text-emerald-200/20"
                                 />
                                 <button disabled={isImporting || !csvInput} className="w-full p-4 rounded-2xl bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black tracking-widest shadow-[0_8px_24px_-8px_rgba(245,200,66,0.5)] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
