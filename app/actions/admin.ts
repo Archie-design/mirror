@@ -134,75 +134,80 @@ export async function autoAssignSquadsForTesting(
 }
 
 export async function importRostersData(csvContent: string) {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
-
-    const phones: string[] = [];
-    const names: (string | null)[] = [];
-    const birthdays: (string | null)[] = [];
-    const squadNames: (string | null)[] = [];
-    const teamNames: (string | null)[] = [];
-    const isCaptains: boolean[] = [];
-    const isCommandants: boolean[] = [];
-
-    for (const row of csvContent.split('\n')) {
-        const cols = row.split(',').map(c => c.trim());
-        // Expecting: phone, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
-        const phoneRaw = cols[0];
-        if (!phoneRaw) continue;
-        const phone = standardizePhone(phoneRaw);
-        if (phone.length !== 9) continue; // 略過表頭與不合法列
-        phones.push(phone);
-        names.push(cols[1] || null);
-        birthdays.push(cols[2] && /^\d{4}-\d{2}-\d{2}$/.test(cols[2]) ? cols[2] : null);
-        squadNames.push(cols[3] || null);
-        teamNames.push(cols[4] || null);
-        isCaptains.push(String(cols[5]).toLowerCase() === 'true');
-        isCommandants.push(String(cols[6]).toLowerCase() === 'true');
-    }
-
-    if (phones.length === 0) return { success: false, error: '未找到有效資料行' };
-
-    const client = await connectDb();
     try {
-        await client.query('BEGIN');
+        if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
 
-        // Batch upsert Rosters
-        await client.query(`
-            INSERT INTO "Rosters" (phone, name, birthday, squad_name, team_name, is_captain, is_commandant)
-            SELECT UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]),
-                   UNNEST($4::text[]), UNNEST($5::text[]), UNNEST($6::boolean[]), UNNEST($7::boolean[])
-            ON CONFLICT (phone) DO UPDATE SET
-                name          = EXCLUDED.name,
-                birthday      = EXCLUDED.birthday,
-                squad_name    = EXCLUDED.squad_name,
-                team_name     = EXCLUDED.team_name,
-                is_captain    = EXCLUDED.is_captain,
-                is_commandant = EXCLUDED.is_commandant
-        `, [phones, names, birthdays, squadNames, teamNames, isCaptains, isCommandants]);
+        const phones: string[] = [];
+        const names: (string | null)[] = [];
+        const birthdays: (string | null)[] = [];
+        const squadNames: (string | null)[] = [];
+        const teamNames: (string | null)[] = [];
+        const isCaptains: boolean[] = [];
+        const isCommandants: boolean[] = [];
 
-        // Batch sync CharacterStats（UserID 即標準化後 phone）
-        await client.query(`
-            UPDATE "CharacterStats" AS cs
-            SET "SquadName"    = v.squad_name,
-                "TeamName"     = v.team_name,
-                "IsCaptain"    = v.is_captain,
-                "IsCommandant" = v.is_commandant,
-                "Birthday"     = COALESCE(v.birthday, cs."Birthday")
-            FROM UNNEST($1::text[], $2::text[], $3::text[], $4::boolean[], $5::boolean[], $6::text[])
-              AS v(phone, squad_name, team_name, is_captain, is_commandant, birthday)
-            WHERE cs."UserID" = v.phone
-        `, [phones, squadNames, teamNames, isCaptains, isCommandants, birthdays]);
+        for (const row of csvContent.split('\n')) {
+            const cols = row.split(',').map(c => c.trim());
+            // Expecting: phone, name, birthday, squad_name(大隊), team_name(小隊), is_captain, is_commandant
+            const phoneRaw = cols[0];
+            if (!phoneRaw) continue;
+            const phone = standardizePhone(phoneRaw);
+            if (phone.length !== 9) continue; // 略過表頭與不合法列
+            phones.push(phone);
+            names.push(cols[1] || null);
+            birthdays.push(cols[2] && /^\d{4}-\d{2}-\d{2}$/.test(cols[2]) ? cols[2] : null);
+            squadNames.push(cols[3] || null);
+            teamNames.push(cols[4] || null);
+            isCaptains.push(String(cols[5]).toLowerCase() === 'true');
+            isCommandants.push(String(cols[6]).toLowerCase() === 'true');
+        }
 
-        await client.query('COMMIT');
-        await logAdminAction('roster_import', 'admin', undefined, undefined, { count: phones.length });
-        return { success: true, count: phones.length };
+        if (phones.length === 0) return { success: false, error: '未找到有效資料行' };
+
+        const client = await connectDb();
+        try {
+            await client.query('BEGIN');
+
+            // Batch upsert Rosters
+            await client.query(`
+                INSERT INTO "Rosters" (phone, name, birthday, squad_name, team_name, is_captain, is_commandant)
+                SELECT UNNEST($1::text[]), UNNEST($2::text[]), UNNEST($3::text[]),
+                       UNNEST($4::text[]), UNNEST($5::text[]), UNNEST($6::boolean[]), UNNEST($7::boolean[])
+                ON CONFLICT (phone) DO UPDATE SET
+                    name          = EXCLUDED.name,
+                    birthday      = EXCLUDED.birthday,
+                    squad_name    = EXCLUDED.squad_name,
+                    team_name     = EXCLUDED.team_name,
+                    is_captain    = EXCLUDED.is_captain,
+                    is_commandant = EXCLUDED.is_commandant
+            `, [phones, names, birthdays, squadNames, teamNames, isCaptains, isCommandants]);
+
+            // Batch sync CharacterStats（UserID 即標準化後 phone）
+            await client.query(`
+                UPDATE "CharacterStats" AS cs
+                SET "SquadName"    = v.squad_name,
+                    "TeamName"     = v.team_name,
+                    "IsCaptain"    = v.is_captain,
+                    "IsCommandant" = v.is_commandant,
+                    "Birthday"     = COALESCE(v.birthday, cs."Birthday")
+                FROM UNNEST($1::text[], $2::text[], $3::text[], $4::boolean[], $5::boolean[], $6::text[])
+                  AS v(phone, squad_name, team_name, is_captain, is_commandant, birthday)
+                WHERE cs."UserID" = v.phone
+            `, [phones, squadNames, teamNames, isCaptains, isCommandants, birthdays]);
+
+            await client.query('COMMIT');
+            await logAdminAction('roster_import', 'admin', undefined, undefined, { count: phones.length });
+            return { success: true, count: phones.length };
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            const msg = error instanceof Error ? error.message : String(error);
+            await logAdminAction('roster_import', 'admin', undefined, undefined, { error: msg }, 'error');
+            return { success: false, error: msg };
+        } finally {
+            await client.end().catch(() => {});
+        }
     } catch (error) {
-        await client.query('ROLLBACK');
         const msg = error instanceof Error ? error.message : String(error);
-        await logAdminAction('roster_import', 'admin', undefined, undefined, { error: msg }, 'error');
         return { success: false, error: msg };
-    } finally {
-        await client.end();
     }
 }
 
@@ -650,6 +655,7 @@ export async function listTestAccounts(): Promise<{ success: boolean; accounts?:
 }
 
 export async function purgeTestAccounts(): Promise<{ success: boolean; count?: number; error?: string }> {
+    try {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
 
     const listRes = await listTestAccounts();
@@ -685,6 +691,10 @@ export async function purgeTestAccounts(): Promise<{ success: boolean; count?: n
 
     await logAdminAction('purge_test_accounts', 'admin', undefined, undefined, { deletedIds, count: deletedIds.length });
     return { success: true, count: deletedIds.length };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return { success: false, error: msg };
+    }
 }
 
 // ── F6 匯出成員積分 CSV ──────────────────────────────────────────────────────
