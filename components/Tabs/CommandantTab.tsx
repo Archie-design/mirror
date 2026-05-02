@@ -9,6 +9,7 @@ const SquadGrowthChart = dynamic(
     { ssr: false, loading: () => <div className="h-72 flex items-center justify-center"><Loader2 className="animate-spin text-rose-500" /></div> }
 );
 import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
+import { exportMembersWithSummary } from '@/app/actions/admin';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
 import {
     scheduleSquadGathering,
@@ -307,6 +308,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
     const [expandedSquads, setExpandedSquads] = useState<Record<string, boolean>>({});
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [batching, setBatching] = useState(false);
+    const [memberExporting, setMemberExporting] = useState(false);
 
     const toggleSquad = (name: string) => setExpandedSquads(prev => ({ ...prev, [name]: !prev[name] }));
     const squadEntries = Object.entries(battalionMembers);
@@ -383,12 +385,33 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                         <h2 className="text-2xl font-black text-gray-900 italic">一次性任務終審</h2>
                         <p className="text-sm text-gray-500 mt-1">以下為已通過小隊長初審、待終審的一次性任務申請</p>
                     </div>
-                    <button
-                        onClick={onRefresh}
-                        className="p-3 rounded-2xl bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200 active:scale-95 transition-all border border-gray-200"
-                    >
-                        <RefreshCw size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={async () => {
+                                setMemberExporting(true);
+                                const res = await exportMembersWithSummary();
+                                setMemberExporting(false);
+                                if (!res.success || !res.csv) { onShowMessage(res.error || '匯出失敗', 'error'); return; }
+                                const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `members_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                            }}
+                            disabled={memberExporting}
+                            className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 active:scale-95 transition-all border border-rose-200 text-sm font-black min-h-[44px] disabled:opacity-50"
+                        >
+                            <Crown size={14} />{memberExporting ? '匯出中…' : '下載成員清單'}
+                        </button>
+                        <button
+                            onClick={onRefresh}
+                            className="p-3 rounded-2xl bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200 active:scale-95 transition-all border border-gray-200"
+                        >
+                            <RefreshCw size={16} />
+                        </button>
+                    </div>
                 </div>
             </div>
 

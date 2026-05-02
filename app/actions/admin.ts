@@ -5,6 +5,8 @@ import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { standardizePhone } from '@/lib/utils/phone';
+import { requireUser } from '@/lib/auth';
+import { formatCsvRows } from '@/lib/utils/csv';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -716,4 +718,106 @@ export async function exportMemberScoresCsv(): Promise<{ success: boolean; csv?:
     const csv = '﻿' + [header, ...lines].join('\n'); // UTF-8 BOM for Excel
 
     return { success: true, csv };
+}
+
+// ── 匯出成員清單（含小隊摘要）────────────────────────────────────────────────
+export async function exportMembersWithSummary(): Promise<{ success: boolean; csv?: string; error?: string }> {
+    try {
+        const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+        // D2: scope 判定
+        let squadNameFilter: string | null = null; // null = 全營（admin）
+        const isAdmin = await verifyAdminSession();
+        if (!isAdmin) {
+            let userId: string;
+            try { userId = await requireUser(); } catch { return { success: false, error: '無權限' }; }
+            const { data: me } = await supabase
+                .from('CharacterStats')
+                .select('SquadName, IsCommandant')
+                .eq('UserID', userId)
+                .single();
+            if (!me?.IsCommandant || !me?.SquadName) return { success: false, error: '無權限' };
+            squadNameFilter = me.SquadName as string;
+        }
+
+        // D3: 並行抓兩個資料源
+        const membersQuery = supabase
+            .from('CharacterStats')
+            .select('UserID, Name, SquadName, TeamName, Score, Streak, IsCaptain, IsCommandant, LastCheckIn')
+            .order('Score', { ascending: false });
+        if (squadNameFilter) membersQuery.eq('SquadName', squadNameFilter);
+
+        const [{ data: membersRaw, error: membersErr }, { data: gatheringsRaw, error: gatheringsErr }] = await Promise.all([
+            membersQuery,
+            supabase
+                .from('SquadGatheringSessions')
+                .select('team_name')
+                .eq('status', 'approved'),
+        ]);
+
+        if (membersErr) return { success: false, error: '成員查詢失敗：' + membersErr.message };
+        if (gatheringsErr) return { success: false, error: '凝聚查詢失敗：' + gatheringsErr.message };
+
+        type MemberRow = { UserID: string; Name: string; SquadName: string | null; TeamName: string | null; Score: number; Streak: number; IsCaptain: boolean; IsCommandant: boolean; LastCheckIn: string | null };
+        const members = (membersRaw ?? []) as MemberRow[];
+
+        // 3.1: role label
+        const roleLabel = (m: MemberRow) => m.IsCommandant ? '大隊長' : m.IsCaptain ? '小隊長' : '一般';
+        // 3.2: 大隊長「小隊」欄填「（大隊長）」
+        const squadLabel = (m: MemberRow) => m.IsCommandant ? '（大隊長）' : (m.TeamName ?? '');
+
+        // 成員區
+        const memberHeader = ['UserID', '姓名', '大隊', '小隊', '角色', '累積積分', '連勤天數', '最後打卡日'];
+        const memberRows = members.map(m => [
+            m.UserID,
+            m.Name,
+            m.SquadName ?? '',
+            squadLabel(m),
+            roleLabel(m),
+            m.Score,
+            m.Streak,
+            m.LastCheckIn ? m.LastCheckIn.slice(0, 10) : '',
+        ]);
+
+        // D4: 小隊摘要 — group by TeamName
+        const teamMap = new Map<string, { count: number; totalScore: number; captains: string[] }>();
+        for (const m of members) {
+            if (!m.TeamName || m.IsCommandant) continue;
+            const key = m.TeamName;
+            if (!teamMap.has(key)) teamMap.set(key, { count: 0, totalScore: 0, captains: [] });
+            const entry = teamMap.get(key)!;
+            entry.count++;
+            entry.totalScore += m.Score;
+            if (m.IsCaptain) entry.captains.push(m.Name);
+        }
+
+        // 凝聚次數 per team
+        const gatheringCount = new Map<string, number>();
+        for (const g of (gatheringsRaw ?? []) as { team_name: string }[]) {
+            if (!g.team_name) continue;
+            gatheringCount.set(g.team_name, (gatheringCount.get(g.team_name) ?? 0) + 1);
+        }
+
+        const summaryHeader = ['小隊', '隊員數', '總積分', '平均積分', '隊長', '已核准凝聚次數'];
+        const summaryRows = Array.from(teamMap.entries()).map(([teamName, s]) => [
+            teamName,
+            s.count,
+            s.totalScore,
+            s.count > 0 ? Math.floor(s.totalScore / s.count) : 0,
+            s.captains.join('、') || '（未設定）',
+            gatheringCount.get(teamName) ?? 0,
+        ]);
+
+        // D5: 組合 CSV — 成員區 + 空行 + 摘要區，前綴 BOM
+        const csv = '﻿' + [
+            formatCsvRows([memberHeader, ...memberRows]),
+            '',
+            formatCsvRows([summaryHeader, ...summaryRows]),
+        ].join('\n');
+
+        return { success: true, csv };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: '匯出失敗：' + msg };
+    }
 }

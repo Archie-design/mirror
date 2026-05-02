@@ -4,7 +4,7 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -467,6 +467,7 @@ export function AdminDashboard({
 
     // F6 CSV export
     const [csvExporting, setCsvExporting] = React.useState(false);
+    const [memberExporting, setMemberExporting] = React.useState(false);
 
     // Snapshot management state
     const [snapshotStatus, setSnapshotStatus] = React.useState<SnapshotStatus | null>(null);
@@ -678,6 +679,25 @@ export function AdminDashboard({
                                 />
                                 <button disabled={isImporting || !csvInput} className="w-full p-4 rounded-2xl bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black tracking-widest shadow-[0_8px_24px_-8px_rgba(245,200,66,0.5)] hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                                     {isImporting ? '匯入中…' : '批量匯入名冊'}
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setMemberExporting(true);
+                                        const res = await exportMembersWithSummary();
+                                        setMemberExporting(false);
+                                        if (!res.success || !res.csv) { alert(res.error || '匯出失敗'); return; }
+                                        const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `members_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    disabled={memberExporting}
+                                    className="w-full p-3 rounded-2xl bg-sky-600/20 border border-sky-500/30 text-sky-300 font-black text-sm hover:bg-sky-600/30 disabled:opacity-50 transition-all min-h-[44px]"
+                                >
+                                    <Download size={13} className="inline mr-1.5" />{memberExporting ? '匯出中…' : '下載成員清單'}
                                 </button>
                             </form>
                         </div>
