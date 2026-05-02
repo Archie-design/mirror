@@ -14,7 +14,7 @@ export async function connectDb(): Promise<Client> {
     }
     const client = new Client({
         connectionString: process.env.DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'development' ? { rejectUnauthorized: false } : true,
+        ssl: { rejectUnauthorized: false },
     });
     await client.connect();
     return client;
