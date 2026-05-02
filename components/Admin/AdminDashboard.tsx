@@ -4,7 +4,7 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -67,6 +67,10 @@ function MemberManagementSection() {
     const [adjustDelta, setAdjustDelta] = React.useState('');
     const [adjustReason, setAdjustReason] = React.useState('');
     const [adjusting, setAdjusting] = React.useState(false);
+
+    // purge test accounts
+    const [purgeList, setPurgeList] = React.useState<{ userId: string; name: string }[] | null>(null);
+    const [purging, setPurging] = React.useState(false);
 
     // F2 check-in history
     const [expandedLogsId, setExpandedLogsId] = React.useState<string | null>(null);
@@ -325,6 +329,67 @@ function MemberManagementSection() {
             <p className="text-[10px] text-emerald-200/40 text-center tracking-widest uppercase">
                 共 {members.length} 人{search && ` · 篩選 ${filtered.length} 人`}
             </p>
+
+            <div className="border-t border-red-900/30 pt-4">
+                <button
+                    onClick={async () => {
+                        const res = await listTestAccounts();
+                        if (!res.success) { setMsg(res.error || '查詢失敗'); return; }
+                        if (!res.accounts || res.accounts.length === 0) {
+                            setMsg('目前無測試帳號');
+                            return;
+                        }
+                        setPurgeList(res.accounts);
+                    }}
+                    className="w-full py-2.5 rounded-xl text-xs font-black text-[#E07A6E] border border-[#E07A6E]/30 hover:bg-[#E07A6E]/10 transition-all min-h-[44px]"
+                >
+                    清除測試帳號
+                </button>
+            </div>
+
+            {/* Purge confirm dialog */}
+            {purgeList && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#0d1f17] border border-[#E07A6E]/40 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-fade-up">
+                        <div className="flex items-center gap-2 text-[#E07A6E]">
+                            <Trash2 size={16} />
+                            <span className="font-display font-black text-sm tracking-widest">清除測試帳號</span>
+                        </div>
+                        <p className="text-xs text-emerald-200/70">以下 <span className="text-[#E07A6E] font-black">{purgeList.length} 筆</span>帳號的 UserID 不符合 9 位數字規則，將被完全刪除（含打卡、申請、報到等所有資料）。</p>
+                        <div className="bg-[#061410] border border-[#E07A6E]/20 rounded-2xl p-3 max-h-48 overflow-y-auto space-y-1">
+                            {purgeList.map(a => (
+                                <div key={a.userId} className="flex items-center gap-2 text-xs">
+                                    <span className="font-mono text-[#E07A6E]/70 text-[10px] w-28 truncate">{a.userId}</span>
+                                    <span className="text-emerald-200/60 truncate">{a.name || '（無名）'}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-[#E07A6E]/60 font-black tracking-widest uppercase text-center">⚠ 此操作不可撤銷</p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setPurgeList(null)}
+                                disabled={purging}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black text-emerald-200/60 border border-emerald-900/60 hover:text-emerald-200 hover:border-emerald-700/60 transition-all disabled:opacity-40"
+                            >取消</button>
+                            <button
+                                onClick={async () => {
+                                    setPurging(true);
+                                    const res = await purgeTestAccounts();
+                                    setPurging(false);
+                                    setPurgeList(null);
+                                    if (!res.success) { setMsg(res.error || '清除失敗'); return; }
+                                    setMsg(`已清除 ${res.count} 筆測試帳號`);
+                                    await load();
+                                }}
+                                disabled={purging}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black bg-[#E07A6E]/20 text-[#E07A6E] border border-[#E07A6E]/40 hover:bg-[#E07A6E]/30 transition-all disabled:opacity-50"
+                            >
+                                {purging ? '清除中…' : `確認刪除（${purgeList.length} 筆）`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

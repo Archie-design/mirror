@@ -629,6 +629,64 @@ export async function getBonusApplicationStats(): Promise<{
     return { success: true, stats };
 }
 
+// ── 清除測試帳號 ──────────────────────────────────────────────────────────────
+
+export async function listTestAccounts(): Promise<{ success: boolean; accounts?: { userId: string; name: string }[]; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data, error } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name');
+
+    if (error) return { success: false, error: error.message };
+
+    // Filter: UserID not matching ^[0-9]{9}$
+    const testAccounts = ((data ?? []) as { UserID: string; Name: string }[])
+        .filter(r => !/^[0-9]{9}$/.test(r.UserID))
+        .map(r => ({ userId: r.UserID, name: r.Name }));
+
+    return { success: true, accounts: testAccounts };
+}
+
+export async function purgeTestAccounts(): Promise<{ success: boolean; count?: number; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const listRes = await listTestAccounts();
+    if (!listRes.success || !listRes.accounts) return { success: false, error: listRes.error };
+    if (listRes.accounts.length === 0) return { success: true, count: 0 };
+
+    const deletedIds: string[] = [];
+    const client = await connectDb();
+    try {
+        await client.query('BEGIN');
+        for (const { userId } of listRes.accounts) {
+            await client.query(`DELETE FROM "BonusApplications"           WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "CourseRegistrations"         WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "CourseAttendance"            WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "SquadGatheringCheckins"      WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "SquadGatheringAttendances"   WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "OnlineGatheringApplications" WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "UserNineGrid"                WHERE member_id = $1`, [userId]);
+            await client.query(`DELETE FROM "FinePayments"                WHERE user_id   = $1`, [userId]);
+            await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = $1`, [userId]);
+            await client.query(`DELETE FROM "Rosters" WHERE phone = $1`, [userId]);
+            deletedIds.push(userId);
+        }
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        const msg = error instanceof Error ? error.message : String(error);
+        await logAdminAction('purge_test_accounts', 'admin', undefined, undefined, { error: msg, deletedSoFar: deletedIds }, 'error');
+        return { success: false, error: msg };
+    } finally {
+        await client.end();
+    }
+
+    await logAdminAction('purge_test_accounts', 'admin', undefined, undefined, { deletedIds, count: deletedIds.length });
+    return { success: true, count: deletedIds.length };
+}
+
 // ── F6 匯出成員積分 CSV ──────────────────────────────────────────────────────
 export async function exportMemberScoresCsv(): Promise<{ success: boolean; csv?: string; error?: string }> {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
