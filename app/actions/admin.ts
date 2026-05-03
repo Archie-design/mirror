@@ -847,7 +847,7 @@ export async function resetSeasonData(): Promise<{ success: boolean; error?: str
             await client.query(`DELETE FROM "WeeklyRankSnapshot"`);
             await client.query(`DELETE FROM "MonthlyRankSnapshot"`);
             await client.query(
-                `INSERT INTO "AdminLogs"(action,actor,details,result) VALUES($1,$2,$3,$4)`,
+                `INSERT INTO "AdminActivityLog"(action,actor,details,result) VALUES($1,$2,$3,$4)`,
                 [
                     'reset_season_data',
                     'admin',
