@@ -4,7 +4,7 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts, resetSeasonData } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -71,6 +71,11 @@ function MemberManagementSection() {
     // purge test accounts
     const [purgeList, setPurgeList] = React.useState<{ userId: string; name: string }[] | null>(null);
     const [purging, setPurging] = React.useState(false);
+
+    // season reset
+    const [showResetConfirm, setShowResetConfirm] = React.useState(false);
+    const [seasonResetting, setSeasonResetting] = React.useState(false);
+    const canReset = new Date().toISOString().slice(0, 10) < '2026-05-10';
 
     // F2 check-in history
     const [expandedLogsId, setExpandedLogsId] = React.useState<string | null>(null);
@@ -345,6 +350,15 @@ function MemberManagementSection() {
                 >
                     清除測試帳號
                 </button>
+                {canReset && (
+                    <button
+                        onClick={() => setShowResetConfirm(true)}
+                        disabled={seasonResetting}
+                        className="w-full py-2.5 rounded-xl text-xs font-black text-rose-300 border border-rose-500/40 hover:bg-rose-500/10 transition-all min-h-[44px] disabled:opacity-50 mt-2"
+                    >
+                        季前重置全部進度
+                    </button>
+                )}
             </div>
 
             {/* Purge confirm dialog */}
@@ -385,6 +399,53 @@ function MemberManagementSection() {
                                 className="flex-1 py-2.5 rounded-xl text-xs font-black bg-[#E07A6E]/20 text-[#E07A6E] border border-[#E07A6E]/40 hover:bg-[#E07A6E]/30 transition-all disabled:opacity-50"
                             >
                                 {purging ? '清除中…' : `確認刪除（${purgeList.length} 筆）`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Season reset confirm dialog */}
+            {showResetConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#0d1f17] border border-rose-500/40 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-fade-up">
+                        <div className="flex items-center gap-2 text-rose-400">
+                            <Trash2 size={16} />
+                            <span className="font-display font-black text-sm tracking-widest">季前重置全部進度</span>
+                        </div>
+                        <p className="text-xs text-emerald-200/70">以下資料將被<span className="text-rose-400 font-black">全員清空</span>，帳號與名冊不受影響：</p>
+                        <ul className="text-[11px] text-emerald-200/50 space-y-0.5 list-disc list-inside">
+                            <li>CharacterStats 積分 / 連勤天數 / 最後打卡日 → 歸零</li>
+                            <li>DailyLogs（打卡記錄）</li>
+                            <li>BonusApplications（加碼申請）</li>
+                            <li>CourseRegistrations / CourseAttendance（課程報名）</li>
+                            <li>FinePayments / SquadFineSubmissions（罰款記錄）</li>
+                            <li>SquadGatheringSessions（小隊凝聚）</li>
+                            <li>UserNineGrid（九宮格）</li>
+                            <li>WeeklyRankSnapshot / MonthlyRankSnapshot（排行榜快照）</li>
+                        </ul>
+                        <p className="text-[10px] text-rose-400/70 font-black tracking-widest uppercase text-center">⚠ 此操作不可撤銷，且開課後（2026-05-10）將無法再執行</p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setShowResetConfirm(false)}
+                                disabled={seasonResetting}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black text-emerald-200/60 border border-emerald-900/60 hover:text-emerald-200 hover:border-emerald-700/60 transition-all disabled:opacity-40"
+                            >取消</button>
+                            <button
+                                onClick={async () => {
+                                    setSeasonResetting(true);
+                                    const res = await resetSeasonData();
+                                    setSeasonResetting(false);
+                                    setShowResetConfirm(false);
+                                    if (!res.success) { setMsg(res.error || '重置失敗'); return; }
+                                    const c = res.counts ?? {};
+                                    setMsg(`重置完成｜打卡 ${c.dailyLogs ?? 0} 筆・申請 ${c.bonusApps ?? 0} 筆・報名 ${c.courseRegs ?? 0} 筆・凝聚 ${c.gatherings ?? 0} 筆・九宮格 ${c.nineGrid ?? 0} 筆已清除`);
+                                    await load();
+                                }}
+                                disabled={seasonResetting}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition-all disabled:opacity-50"
+                            >
+                                {seasonResetting ? '重置中…' : '確認重置'}
                             </button>
                         </div>
                     </div>

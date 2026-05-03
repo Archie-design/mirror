@@ -821,3 +821,49 @@ export async function exportMembersWithSummary(): Promise<{ success: boolean; cs
         return { success: false, error: '匯出失敗：' + msg };
     }
 }
+
+// ── 季前全員進度重置 ──────────────────────────────────────────────────────────
+export async function resetSeasonData(): Promise<{ success: boolean; error?: string; counts?: Record<string, number> }> {
+    try {
+        if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+        const today = new Date().toISOString().slice(0, 10);
+        if (today >= '2026-05-10') return { success: false, error: '活動已開始（2026-05-10），無法執行重置' };
+
+        const client = await connectDb();
+        try {
+            await client.query('BEGIN');
+            await client.query(`UPDATE "CharacterStats" SET "Score"=0, "Streak"=0, "LastCheckIn"=NULL`);
+            const { rowCount: dlCount } = await client.query(`DELETE FROM "DailyLogs"`);
+            const { rowCount: baCount } = await client.query(`DELETE FROM "BonusApplications"`);
+            const { rowCount: crCount } = await client.query(`DELETE FROM "CourseRegistrations"`);
+            await client.query(`DELETE FROM "CourseAttendance"`);
+            await client.query(`DELETE FROM "FinePayments"`);
+            await client.query(`DELETE FROM "SquadFineSubmissions"`);
+            await client.query(`DELETE FROM "SquadGatheringCheckins"`);
+            await client.query(`DELETE FROM "SquadGatheringAttendances"`);
+            await client.query(`DELETE FROM "OnlineGatheringApplications"`);
+            const { rowCount: sgCount } = await client.query(`DELETE FROM "SquadGatheringSessions"`);
+            const { rowCount: ngCount } = await client.query(`DELETE FROM "UserNineGrid"`);
+            await client.query(`DELETE FROM "WeeklyRankSnapshot"`);
+            await client.query(`DELETE FROM "MonthlyRankSnapshot"`);
+            await client.query(
+                `INSERT INTO "AdminLogs"(action,actor,details,result) VALUES($1,$2,$3,$4)`,
+                [
+                    'reset_season_data',
+                    'admin',
+                    JSON.stringify({ dailyLogs: dlCount, bonusApps: baCount, courseRegs: crCount, gatherings: sgCount, nineGrid: ngCount }),
+                    'success',
+                ]
+            );
+            await client.query('COMMIT');
+            return { success: true, counts: { dailyLogs: dlCount ?? 0, bonusApps: baCount ?? 0, courseRegs: crCount ?? 0, gatherings: sgCount ?? 0, nineGrid: ngCount ?? 0 } };
+        } catch (e) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw e;
+        } finally {
+            client.end().catch(() => {});
+        }
+    } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+}
