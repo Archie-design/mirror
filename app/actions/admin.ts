@@ -8,7 +8,7 @@ import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { standardizePhone } from '@/lib/utils/phone';
 import { requireUser } from '@/lib/auth';
 import { formatCsvRows } from '@/lib/utils/csv';
-import { BOOTSTRAP_CACHE_TAG } from '@/app/actions/bootstrap';
+import { BOOTSTRAP_CACHE_TAG } from '@/lib/cache-tags';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
