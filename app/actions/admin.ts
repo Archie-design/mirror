@@ -1,12 +1,14 @@
 'use server';
 
 import 'server-only';
+import { revalidateTag } from 'next/cache';
 import { connectDb } from '@/lib/db';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { standardizePhone } from '@/lib/utils/phone';
 import { requireUser } from '@/lib/auth';
 import { formatCsvRows } from '@/lib/utils/csv';
+import { BOOTSTRAP_CACHE_TAG } from '@/app/actions/bootstrap';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -376,6 +378,7 @@ export async function updateSystemSetting(key: string, value: string, actorName:
         .upsert({ SettingName: key, Value: value }, { onConflict: 'SettingName' });
     if (error) return { success: false, error: error.message };
 
+    revalidateTag(BOOTSTRAP_CACHE_TAG, 'default');
     await logAdminAction('system_setting_update', actorName, key, undefined, {
         valuePreview: value.length > 80 ? value.slice(0, 80) + '…' : value,
     });
@@ -403,6 +406,7 @@ export async function addTempQuest(
     }]);
     if (error) return { success: false, error: error.message };
 
+    revalidateTag(BOOTSTRAP_CACHE_TAG, 'default');
     await logAdminAction('temp_quest_add', actorName, id, trimmedTitle, { reward });
     return { success: true, id };
 }
@@ -415,6 +419,7 @@ export async function toggleTempQuest(id: string, active: boolean, actorName: st
     const { error } = await supabase.from('temporaryquests').update({ active }).eq('id', id);
     if (error) return { success: false, error: error.message };
 
+    revalidateTag(BOOTSTRAP_CACHE_TAG, 'default');
     await logAdminAction('temp_quest_toggle', actorName, id, undefined, { active });
     return { success: true };
 }
@@ -427,6 +432,7 @@ export async function deleteTempQuest(id: string, actorName: string = 'admin') {
     const { error } = await supabase.from('temporaryquests').delete().eq('id', id);
     if (error) return { success: false, error: error.message };
 
+    revalidateTag(BOOTSTRAP_CACHE_TAG, 'default');
     await logAdminAction('temp_quest_delete', actorName, id);
     return { success: true };
 }

@@ -95,6 +95,10 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
         const raw = e.target.files?.[0];
         e.target.value = '';
         if (!raw) return;
+        if (!raw.type.startsWith('image/')) {
+            setError('請上傳 JPG、PNG 或 GIF 圖片（不支援 PDF、影片、文件等格式）');
+            return;
+        }
         if (raw.size > 15 * 1024 * 1024) {
             setError('原始檔案過大（>15MB），請先在手機相簿縮小');
             return;
@@ -112,8 +116,9 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                     [questId]: { ...getForm(questId), file: compressedFile, previewUrl },
                 };
             });
-        } catch (err: any) {
-            setError('圖片處理失敗：' + (err?.message ?? ''));
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setError('圖片處理失敗：' + msg);
         }
     }
 

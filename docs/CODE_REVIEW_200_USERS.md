@@ -1,3 +1,5 @@
+> ⚠️ **已整合至 [CODE_REVIEW_CONSOLIDATED.md](./CODE_REVIEW_CONSOLIDATED.md)**（保留作 V1 歷史紀錄）。最新待辦項目請見彙整文件。
+
 # Code Review — 人生大戲分享移位 + 計分重構（200 人環境壓力檢測）
 
 **Review 日期**：2026-04-20

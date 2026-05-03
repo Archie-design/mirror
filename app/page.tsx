@@ -29,6 +29,7 @@ import CourseTab from '@/components/Tabs/CourseTab';
 const AdminDashboard = dynamic(() => import('@/components/Admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })), { ssr: false });
 import { processCheckInTransaction, clearTodayLogs, undoCheckIn } from '@/app/actions/quest';
 import { importRostersData, autoAssignSquadsForTesting, updateSystemSetting, addTempQuest, toggleTempQuest, deleteTempQuest } from '@/app/actions/admin';
+import { getBootstrapData } from '@/app/actions/bootstrap';
 import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
@@ -456,14 +457,19 @@ export default function App() {
   };
 
   // 登入成功後若 URL 含 ?returnTo=... 則重導向，回傳 true 代表已重導向
+  // 僅接受同 origin 的相對路徑；以 URL() 解析以擋下 `//attacker.com` 這類 protocol-relative open redirect。
   const handleReturnTo = (): boolean => {
     if (typeof window === 'undefined') return false;
     const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-    if (returnTo && returnTo.startsWith('/')) {
-      window.location.href = returnTo;
+    if (!returnTo) return false;
+    try {
+      const url = new URL(returnTo, window.location.origin);
+      if (url.origin !== window.location.origin) return false;
+      window.location.href = url.pathname + url.search + url.hash;
       return true;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -545,13 +551,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // One-time static data load — settings, history
+  // One-time static data load — settings + temp quests，走 server action 共用 60s cache
+  // (200 人開幕同時湧入時 200 次 DB hit 折成 1 次)
   useEffect(() => {
     const loadStaticData = async () => {
-      const { data: settingsData } = await supabase.from('SystemSettings').select('*');
-      if (settingsData) {
-        type SettingRow = { SettingName: string; Value: string };
-        const sObj = (settingsData as SettingRow[]).reduce<Record<string, string>>(
+      const { settings, tempQuests } = await getBootstrapData();
+      if (settings.length) {
+        const sObj = settings.reduce<Record<string, string>>(
           (acc, curr) => ({ ...acc, [curr.SettingName]: curr.Value }),
           {}
         );
@@ -573,9 +579,8 @@ export default function App() {
         });
       }
 
-      const { data: tempQuestsData } = await supabase.from('temporaryquests').select('*').order('created_at', { ascending: false });
-      if (tempQuestsData) {
-        const parsed = tempQuestsData.map((t: any) => ({ ...t, limit: t.limit_count }));
+      if (tempQuests.length) {
+        const parsed = tempQuests.map(t => ({ ...t, limit: t.limit_count }));
         setTemporaryQuests(parsed as TemporaryQuest[]);
       }
     };

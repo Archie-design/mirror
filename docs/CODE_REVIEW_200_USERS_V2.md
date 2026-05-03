@@ -1,3 +1,5 @@
+> ⚠️ **已整合至 [CODE_REVIEW_CONSOLIDATED.md](./CODE_REVIEW_CONSOLIDATED.md)**（保留作 V2 歷史紀錄）。最新待辦項目請見彙整文件。
+
 # Code Review V2 — 200 人 × 9 週系統整體審查
 
 **Review 日期**：2026-04-22

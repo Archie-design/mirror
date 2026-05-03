@@ -143,8 +143,26 @@ export function DailyQuestsTab({
     );
     const [twHour, setTwHour] = useState(getTaipeiHour);
     useEffect(() => {
-        const id = setInterval(() => setTwHour(getTaipeiHour()), 60_000);
-        return () => clearInterval(id);
+        let id: ReturnType<typeof setInterval> | null = null;
+        const start = () => {
+            if (id !== null) return;
+            id = setInterval(() => setTwHour(getTaipeiHour()), 60_000);
+        };
+        const stop = () => { if (id !== null) { clearInterval(id); id = null; } };
+        const onVis = () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+                setTwHour(getTaipeiHour());
+                start();
+            } else {
+                stop();
+            }
+        };
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') start();
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis);
+        return () => {
+            stop();
+            if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis);
+        };
     }, []);
     const isBeforeNoon = twHour < 12;
     const showDawnQuest = (p1DoneRecently && isBeforeNoon) || dawnDone;

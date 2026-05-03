@@ -4,7 +4,7 @@
 **製作日期**：2026-04-30  
 **最後更新**：2026-05-01（管理後台 v2 — 7 項新功能）  
 **對應規格**：[GAME_DESIGN.md v4.1](./GAME_DESIGN.md)  
-**對應技術審查**：[CODE_REVIEW_200_USERS_V3.md](./CODE_REVIEW_200_USERS_V3.md)  
+**對應技術審查**：[CODE_REVIEW_CONSOLIDATED.md](./CODE_REVIEW_CONSOLIDATED.md)（整合 V1+V2+V3+V4）  
 **閱讀對象**：活動主辦方、營運團隊（非技術人員）
 
 ### 版本紀錄
@@ -872,7 +872,7 @@ LINE Login 整合需 LINE Developers Console 設定正確的 callback URL 與環
 ### 相關文件索引
 
 - [GAME_DESIGN.md](./GAME_DESIGN.md) — 系統規格表 v4.1
-- [CODE_REVIEW_200_USERS_V3.md](./CODE_REVIEW_200_USERS_V3.md) — 程式碼層技術審查
+- [CODE_REVIEW_CONSOLIDATED.md](./CODE_REVIEW_CONSOLIDATED.md) — 程式碼層技術審查（整合 V1+V2+V3+V4）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 系統架構文件
 - [QUOTATION.md](./QUOTATION.md) — 報價與專案範圍
 
