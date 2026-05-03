@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { signUserId, verifyPayload, SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth';
+import { computeAdminToken, ADMIN_COOKIE, ADMIN_TTL_SECONDS } from '@/lib/admin-token';
 
-type LineState = { action: 'login' | 'bind'; uid?: string; nonce: string };
+type LineState = { action: 'login' | 'bind' | 'admin_login'; uid?: string; nonce: string };
 
 // Handles LINE Login OAuth callback
 // GET /api/auth/line/callback?code=XXX&state=YYY
@@ -68,7 +69,38 @@ export async function GET(request: NextRequest) {
             return NextResponse.redirect(`${appUrl}/?line_error=invalid_state`);
         }
 
-        if (parsed.action === 'bind') {
+        if (parsed.action === 'admin_login') {
+            const { data: user } = await supabase
+                .from('CharacterStats')
+                .select('UserID, IsAdmin')
+                .eq('LineUserId', lineUserId)
+                .maybeSingle();
+
+            if (!user) {
+                return NextResponse.redirect(`${appUrl}/?admin_auth=error&reason=not_bound`);
+            }
+            if (!user.IsAdmin) {
+                return NextResponse.redirect(`${appUrl}/?admin_auth=error&reason=not_admin`);
+            }
+
+            let token: string;
+            try {
+                token = computeAdminToken();
+            } catch {
+                return NextResponse.redirect(`${appUrl}/?admin_auth=error&reason=config`);
+            }
+
+            const res = NextResponse.redirect(`${appUrl}/?admin_auth=1`);
+            res.cookies.set(ADMIN_COOKIE, token, {
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: ADMIN_TTL_SECONDS,
+                path: '/',
+                secure: process.env.NODE_ENV === 'production',
+            });
+            return res;
+
+        } else if (parsed.action === 'bind') {
             const uid = parsed.uid ?? '';
             if (!uid) {
                 return NextResponse.redirect(`${appUrl}/?line_error=invalid_state`);

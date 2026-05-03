@@ -221,7 +221,7 @@ export async function listAllMembers() {
     const supabase = createClient(_supabaseUrl, _supabaseKey);
     const { data, error } = await supabase
         .from('CharacterStats')
-        .select('UserID, Name, Email, SquadName, TeamName, IsCaptain, IsCommandant, Score, Streak')
+        .select('UserID, Name, Email, SquadName, TeamName, IsCaptain, IsCommandant, IsAdmin, LineUserId, Score, Streak')
         .order('Name');
     if (error) return { success: false, error: error.message, members: [] };
     return { success: true, members: data || [] };
@@ -332,6 +332,35 @@ export async function setMemberRole(
     if (error) return { success: false, error: error.message };
 
     await logAdminAction('set_member_role', actorName, targetUserId, member.Name, { role });
+    return { success: true };
+}
+
+// ── 管理員身份授予/撤銷 ────────────────────────────────────────
+export async function setMemberAdminStatus(
+    targetUserId: string,
+    isAdmin: boolean
+): Promise<{ success: boolean; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data: member } = await supabase
+        .from('CharacterStats')
+        .select('Name, LineUserId')
+        .eq('UserID', targetUserId)
+        .maybeSingle();
+    if (!member) return { success: false, error: '找不到此成員' };
+
+    if (isAdmin && !member.LineUserId) {
+        return { success: false, error: '此成員尚未綁定 LINE 帳號，無法設為管理員' };
+    }
+
+    const { error } = await supabase
+        .from('CharacterStats')
+        .update({ IsAdmin: isAdmin })
+        .eq('UserID', targetUserId);
+    if (error) return { success: false, error: error.message };
+
+    await logAdminAction('set_member_admin', 'admin', targetUserId, member.Name as string, { isAdmin });
     return { success: true };
 }
 

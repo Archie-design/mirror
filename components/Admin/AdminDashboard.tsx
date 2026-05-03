@@ -4,7 +4,7 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts, resetSeasonData } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -17,6 +17,8 @@ interface MemberRow {
     TeamName?: string;
     IsCaptain?: boolean;
     IsCommandant?: boolean;
+    IsAdmin?: boolean;
+    LineUserId?: string;
     Score?: number;
 }
 
@@ -76,6 +78,10 @@ function MemberManagementSection() {
     const [showResetConfirm, setShowResetConfirm] = React.useState(false);
     const [seasonResetting, setSeasonResetting] = React.useState(false);
     const canReset = new Date().toISOString().slice(0, 10) < '2026-05-10';
+
+    // admin identity toggle
+    const [adminToggleTarget, setAdminToggleTarget] = React.useState<MemberRow | null>(null);
+    const [adminToggling, setAdminToggling] = React.useState(false);
 
     // F2 check-in history
     const [expandedLogsId, setExpandedLogsId] = React.useState<string | null>(null);
@@ -217,6 +223,7 @@ function MemberManagementSection() {
                                 <span className="text-emerald-200/45 flex-1 truncate min-w-0">{m.SquadName || '—'} / {m.TeamName || '—'}</span>
                                 {m.IsCaptain && <span className="text-[10px] text-indigo-300 bg-indigo-400/10 border border-indigo-400/20 px-1.5 py-0.5 rounded-full">隊長</span>}
                                 {m.IsCommandant && <span className="text-[10px] text-[#E07A6E] bg-[#E07A6E]/10 border border-[#E07A6E]/20 px-1.5 py-0.5 rounded-full">大隊長</span>}
+                                {m.IsAdmin && <span className="text-[10px] text-amber-200 bg-amber-400/15 border border-amber-400/25 px-1.5 py-0.5 rounded-full">管理員</span>}
                                 <span className="text-[#F5C842]/60 text-[10px] font-display font-black">{(m.Score ?? 0).toLocaleString()} 分</span>
                                 {!isEditing && (
                                     <div className="flex gap-1 shrink-0 flex-wrap">
@@ -239,6 +246,13 @@ function MemberManagementSection() {
                                             className="text-[#E07A6E] hover:text-[#E07A6E] hover:bg-[#E07A6E]/10 text-[11px] font-bold px-2 py-1 rounded-lg disabled:opacity-40 transition-colors"
                                         >
                                             {deletingId === m.UserID ? '移除中…' : '移除'}
+                                        </button>
+                                        <button
+                                            onClick={() => setAdminToggleTarget(m)}
+                                            className={`text-[11px] font-bold px-2 py-1 rounded-lg transition-colors ${m.IsAdmin ? 'text-amber-300 hover:text-amber-200 hover:bg-amber-400/10' : 'text-emerald-200/40 hover:text-amber-300 hover:bg-amber-400/10'}`}
+                                            title={m.IsAdmin ? '撤銷管理員' : '設為管理員'}
+                                        >
+                                            {m.IsAdmin ? '管' : '授'}
                                         </button>
                                     </div>
                                 )}
@@ -451,6 +465,51 @@ function MemberManagementSection() {
                     </div>
                 </div>
             )}
+
+            {/* Admin identity toggle confirm dialog */}
+            {adminToggleTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#0d1f17] border border-amber-400/40 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-fade-up">
+                        <div className="flex items-center gap-2 text-amber-300">
+                            <UserCog size={16} />
+                            <span className="font-display font-black text-sm tracking-widest">
+                                {adminToggleTarget.IsAdmin ? '撤銷管理員權限' : '授予管理員權限'}
+                            </span>
+                        </div>
+                        <p className="text-xs text-emerald-200/70">
+                            確認將「<span className="text-amber-200 font-black">{adminToggleTarget.Name}</span>」
+                            {adminToggleTarget.IsAdmin ? '的管理員權限撤銷' : '設為管理員'}？
+                        </p>
+                        {!adminToggleTarget.IsAdmin && !adminToggleTarget.LineUserId && (
+                            <p className="text-[11px] text-amber-400/80 bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-2">
+                                ⚠ 此成員尚未綁定 LINE，授予後仍無法以 LINE 登入後台。
+                            </p>
+                        )}
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setAdminToggleTarget(null)}
+                                disabled={adminToggling}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black text-emerald-200/60 border border-emerald-900/60 hover:text-emerald-200 hover:border-emerald-700/60 transition-all disabled:opacity-40"
+                            >取消</button>
+                            <button
+                                onClick={async () => {
+                                    setAdminToggling(true);
+                                    const res = await setMemberAdminStatus(adminToggleTarget.UserID, !adminToggleTarget.IsAdmin);
+                                    setAdminToggling(false);
+                                    setAdminToggleTarget(null);
+                                    if (!res.success) { setMsg(res.error || '操作失敗'); return; }
+                                    setMsg(`已${!adminToggleTarget.IsAdmin ? '授予' : '撤銷'} ${adminToggleTarget.Name} 的管理員權限`);
+                                    await load();
+                                }}
+                                disabled={adminToggling}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all disabled:opacity-50"
+                            >
+                                {adminToggling ? '處理中…' : '確認'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -529,6 +588,9 @@ export function AdminDashboard({
     // F6 CSV export
     const [csvExporting, setCsvExporting] = React.useState(false);
     const [memberExporting, setMemberExporting] = React.useState(false);
+
+    // Admin login fallback (password) toggle
+    const [showFallback, setShowFallback] = React.useState(false);
 
     // Snapshot management state
     const [snapshotStatus, setSnapshotStatus] = React.useState<SnapshotStatus | null>(null);
@@ -619,22 +681,45 @@ export function AdminDashboard({
                         <p className="text-[10px] font-black uppercase tracking-[0.5em] text-[#F5C842]/70">Wizard&apos;s Chamber</p>
                         <h1 className="font-display text-4xl font-black text-emerald-50 tracking-wider">大法師密室</h1>
                         <div className="mx-auto w-24 h-px brass-rule" />
-                        <p className="text-xs text-emerald-200/60 tracking-wide">說出通關密語，方得入內。</p>
+                        <p className="text-xs text-emerald-200/60 tracking-wide">以綁定的 LINE 帳號登入。</p>
                     </div>
-                    <form onSubmit={onAuth} className="space-y-5">
-                        <input
-                            name="password"
-                            type="password"
-                            required
-                            autoFocus
-                            placeholder="密令"
-                            className="w-full bg-[#061410] border border-[#F5C842]/30 rounded-2xl p-5 text-[#F5C842] text-center text-xl outline-none focus:border-[#F5C842] focus:shadow-[0_0_24px_-4px_rgba(245,200,66,0.4)] font-display font-black tracking-[0.6em] placeholder:text-emerald-200/25 placeholder:tracking-[0.3em] transition-all"
-                        />
-                        <div className="flex gap-3">
-                            <button type="button" onClick={onClose} className="flex-1 py-4 bg-[#081812] text-emerald-200/60 font-bold rounded-2xl border border-emerald-900/50 hover:text-emerald-200 transition-colors">返回</button>
-                            <button className="flex-[1.5] py-4 bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black text-base rounded-2xl shadow-[0_8px_24px_-8px_rgba(245,200,66,0.6)] active:scale-95 transition-all tracking-widest">進入密室</button>
-                        </div>
-                    </form>
+                    <div className="space-y-4">
+                        {/* Primary: LINE login */}
+                        <a
+                            href="/api/auth/line?action=admin_login"
+                            className="flex items-center justify-center gap-3 w-full py-4 bg-[#06C755] hover:bg-[#05b34c] text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-all"
+                        >
+                            <svg width="22" height="22" viewBox="0 0 50 50" fill="white" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M25 2C12.3 2 2 10.8 2 21.7c0 9.5 8.4 17.4 19.7 19.1.8.2 1.8.5 2.1 1.1.2.6.2 1.5 0 2.1l-.3 2c-.1.6-.5 2.3 2 1.3 2.5-1 13.5-8 18.4-13.6C47.3 30.4 48 26.2 48 21.7 48 10.8 37.7 2 25 2z"/>
+                            </svg>
+                            以 LINE 帳號登入
+                        </a>
+
+                        {/* Fallback: password */}
+                        <button
+                            type="button"
+                            onClick={() => setShowFallback(v => !v)}
+                            className="w-full text-[11px] text-emerald-200/35 hover:text-emerald-200/60 transition-colors py-1"
+                        >
+                            緊急備用入口 {showFallback ? '▲' : '▼'}
+                        </button>
+
+                        {showFallback && (
+                            <form onSubmit={onAuth} className="space-y-3">
+                                <input
+                                    name="password"
+                                    type="password"
+                                    required
+                                    autoFocus
+                                    placeholder="密令"
+                                    className="w-full bg-[#061410] border border-[#F5C842]/30 rounded-2xl p-4 text-[#F5C842] text-center text-lg outline-none focus:border-[#F5C842] focus:shadow-[0_0_24px_-4px_rgba(245,200,66,0.4)] font-display font-black tracking-[0.6em] placeholder:text-emerald-200/25 placeholder:tracking-[0.3em] transition-all"
+                                />
+                                <button className="w-full py-3 bg-gradient-to-b from-[#F5C842] to-[#d4a726] text-[#1A2A1A] font-display font-black text-sm rounded-2xl shadow-[0_8px_24px_-8px_rgba(245,200,66,0.6)] active:scale-95 transition-all tracking-widest">進入密室</button>
+                            </form>
+                        )}
+
+                        <button type="button" onClick={onClose} className="w-full py-3 bg-[#081812] text-emerald-200/50 font-bold rounded-2xl border border-emerald-900/50 hover:text-emerald-200 transition-colors text-sm">返回</button>
+                    </div>
                 </div>
             </div>
         );

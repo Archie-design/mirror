@@ -2,11 +2,8 @@
 
 import 'server-only';
 import { cookies } from 'next/headers';
-import { createHmac, timingSafeEqual } from 'node:crypto';
-
-const ADMIN_COOKIE = 'admin_session';
-const ADMIN_TTL_SECONDS = 30 * 60;
-const TOKEN_LABEL = 'admin-session-v1';
+import { timingSafeEqual } from 'node:crypto';
+import { ADMIN_COOKIE, ADMIN_TTL_SECONDS, computeAdminToken } from '@/lib/admin-token';
 
 function getAdminPassword(): string {
     const pw = process.env.ADMIN_PASSWORD;
@@ -18,14 +15,6 @@ function getAdminPassword(): string {
         throw new Error('ADMIN_PASSWORD env var not set');
     }
     return pw;
-}
-
-function adminToken(): string {
-    if (process.env.NODE_ENV === 'production' && !process.env.AUTH_SESSION_SECRET) {
-        throw new Error('AUTH_SESSION_SECRET env var is required in production');
-    }
-    const secret = process.env.AUTH_SESSION_SECRET || getAdminPassword();
-    return createHmac('sha256', secret).update(TOKEN_LABEL).digest('hex');
 }
 
 function safeEqualString(a: string, b: string): boolean {
@@ -47,7 +36,7 @@ export async function loginAdmin(password: string): Promise<{ success: boolean; 
         return { success: false, error: 'invalid' };
     }
     const c = await cookies();
-    c.set(ADMIN_COOKIE, adminToken(), {
+    c.set(ADMIN_COOKIE, computeAdminToken(), {
         httpOnly: true,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
@@ -66,5 +55,5 @@ export async function verifyAdminSession(): Promise<boolean> {
     const c = await cookies();
     const token = c.get(ADMIN_COOKIE)?.value;
     if (!token) return false;
-    return safeEqualString(token, adminToken());
+    return safeEqualString(token, computeAdminToken());
 }

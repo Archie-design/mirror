@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
         }
         // 簽章 10 分鐘有效；payload 含 uid，callback 驗簽後使用
         state = signPayload({ action: 'bind', uid, nonce }, 10 * 60);
+    } else if (action === 'admin_login') {
+        state = signPayload({ action: 'admin_login', nonce }, 10 * 60);
     } else {
         state = signPayload({ action: 'login', nonce }, 10 * 60);
     }

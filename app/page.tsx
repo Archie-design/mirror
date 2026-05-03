@@ -651,6 +651,24 @@ export default function App() {
     const init = async () => {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
+
+        const adminAuthParam = params.get('admin_auth');
+        if (adminAuthParam) {
+          window.history.replaceState({}, '', '/');
+          if (adminAuthParam === '1') {
+            setView('admin');
+          } else {
+            const reason = params.get('reason');
+            const msg = reason === 'not_bound'
+              ? '此 LINE 帳號尚未綁定任何學員帳號，無法登入大法師密室。'
+              : reason === 'not_admin'
+              ? '此帳號無管理員權限，無法進入大法師密室。'
+              : '管理員 LINE 登入失敗，請稍後再試。';
+            setModalMessage({ text: msg, type: 'error' });
+          }
+          return;
+        }
+
         const lineAuth = params.get('line_auth');
         const lineBound = params.get('line_bound');
         const lineError = params.get('line_error');
