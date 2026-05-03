@@ -84,6 +84,17 @@
 - **WHEN** 學員當日尚未打 p1，直接呼叫 p1_dawn
 - **THEN** 系統拒絕並回傳「需先完成 p1（打拳）才能記錄破曉加成」
 
+#### Scenario: p1 chip 勾選「同記破曉打拳」後一併提交
+
+- **WHEN** 學員在 12:00 前、尚未打 p1 及 p1_dawn 的狀態下，在加權定課 p1 chip 下方勾選「同記破曉打拳 +50分」核取方塊後點擊 p1 chip
+- **THEN** 系統先提交 p1；p1 到帳後（logs 更新）自動接著提交 p1_dawn，最終當日累計 +100
+
+UI 規格：
+- 核取方塊僅在以下條件全部成立時顯示：12:00 前、p1 尚未打卡、p1_dawn 尚未打卡、`p1_dawn` 未被管理員停用
+- 預設 **未勾選**
+- 勾選後點擊 p1 chip → p1 送出後由前端 useEffect 自動補送 p1_dawn（sequential submission）
+- 提交完成後核取方塊重設為未勾選
+
 ---
 
 ### Requirement: 飲控 diet_veg / diet_seafood 互斥單日

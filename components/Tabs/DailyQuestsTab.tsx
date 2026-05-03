@@ -103,6 +103,8 @@ export function DailyQuestsTab({
             return stored ? JSON.parse(stored) : [];
         } catch { return []; }
     });
+    const [p1DawnSelected, setP1DawnSelected] = useState(false);
+    const [p1DawnPending, setP1DawnPending] = useState(false);
 
     const disabledSet = new Set(disabledQuests || []);
     const applyOverride = (q: Quest): Quest =>
@@ -147,6 +149,15 @@ export function DailyQuestsTab({
     const isBeforeNoon = twHour < 12;
     const showDawnQuest = (p1DoneRecently && isBeforeNoon) || dawnDone;
 
+    // 連續提交：p1 到帳後自動補記破曉
+    useEffect(() => {
+        if (p1DawnPending && p1Done && !dawnDone) {
+            setP1DawnPending(false);
+            setP1DawnSelected(false);
+            onCheckIn(dawnQuest);
+        }
+    }, [p1Done, p1DawnPending, dawnDone]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // ── 飲控 diet ──
     const dietQuests = DIET_QUEST_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
     const dietDoneLog = todayLogs.find(l => DIET_QUEST_IDS.has(l.QuestID));
@@ -163,6 +174,42 @@ export function DailyQuestsTab({
 
     const renderChip = (q: Quest, isDone: boolean, isDisabled: boolean) => {
         const log = todayLogs.find(l => l.QuestID === q.id);
+        const showP1Toggle = q.id === 'p1' && !isDone && !dawnDone && !isEditMode && !disabledSet.has('p1_dawn');
+
+        const handleCheckIn = showP1Toggle
+            ? () => { onCheckIn(q); if (p1DawnSelected) setP1DawnPending(true); }
+            : () => isDone ? onUndo(q) : onCheckIn(q);
+
+        if (showP1Toggle) {
+            return (
+                <div key={q.id} className="flex flex-col gap-1.5">
+                    <QuestChip
+                        quest={q}
+                        isDone={isDone}
+                        isDisabled={isDisabled}
+                        doneTime={log ? formatCheckInTime(log.Timestamp) : undefined}
+                        onCheckIn={handleCheckIn}
+                        editMode={isEditMode}
+                        isFav={favIds.includes(q.id)}
+                        onToggleFav={() => toggleFav(q.id)}
+                    />
+                    <label className={`flex items-center gap-2 px-2 select-none ${isBeforeNoon ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
+                        <input
+                            type="checkbox"
+                            checked={p1DawnSelected}
+                            onChange={e => isBeforeNoon && setP1DawnSelected(e.target.checked)}
+                            disabled={!isBeforeNoon}
+                            className="w-3.5 h-3.5 accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <span className="text-xs font-bold text-amber-600/80 flex items-center gap-1">
+                            <Sunrise size={10} />
+                            {isBeforeNoon ? `同記破曉打拳 +${dawnQuest.reward}分` : '破曉時段已過（12:00前）'}
+                        </span>
+                    </label>
+                </div>
+            );
+        }
+
         return (
             <QuestChip
                 key={q.id}
@@ -170,7 +217,7 @@ export function DailyQuestsTab({
                 isDone={isDone}
                 isDisabled={isDisabled}
                 doneTime={log ? formatCheckInTime(log.Timestamp) : undefined}
-                onCheckIn={() => isDone ? onUndo(q) : onCheckIn(q)}
+                onCheckIn={handleCheckIn}
                 editMode={isEditMode}
                 isFav={favIds.includes(q.id)}
                 onToggleFav={() => toggleFav(q.id)}
