@@ -107,7 +107,7 @@ export function NineGridCard({ grid, userId, userName, onRefresh, currentWeeklyM
                     <span className="text-sm font-black" style={{ color }}>人生大戲九宮格</span>
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full border"
                         style={{ color, background: `${color}18`, borderColor: `${color}40` }}>
-                        {grid.companion_type}
+                        {FORTUNE_COMPANIONS.find(f => f.companion === grid.companion_type)?.name ?? grid.companion_type}
                     </span>
                 </div>
                 <div className="text-right">

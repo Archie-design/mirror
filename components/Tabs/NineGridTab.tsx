@@ -66,8 +66,6 @@ export function NineGridTab({
     logs, currentWeeklyMonday, onCheckIn, onUndo,
     questRewardOverrides, disabledQuests,
 }: NineGridTabProps) {
-    const hasFortuneData = FORTUNE_COMPANIONS.some(f => (userData[f.dbCol as keyof CharacterStats] as number ?? 0) > 0);
-
     const [fortunes, setFortunes] = useState<Record<string, number>>(() => {
         const init: Record<string, number> = {};
         for (const f of FORTUNE_COMPANIONS) {
@@ -159,33 +157,9 @@ export function NineGridTab({
                 <div className="flex items-center gap-2 px-1">
                     <span className="text-xs font-black px-3 py-1 rounded-full text-white"
                         style={{ background: tagBg }}>
-                        旅伴：{grid.companion_type}
+                        旅伴：{detail?.name ?? grid.companion_type}
                     </span>
-                    {hasFortuneData && (
-                        <span className="text-xs text-[#5A7A5A] font-bold">
-                            當時評分：{FORTUNE_COMPANIONS.find(f => f.companion === grid.companion_type)?.desc}
-                        </span>
-                    )}
                 </div>
-                {detail && (
-                    <div
-                        className="rounded-2xl p-4 border"
-                        style={{ background: detail.bgColor, borderColor: `${detail.color}30` }}
-                    >
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg font-black" style={{ color: detail.color }}>
-                                {detail.name}
-                            </span>
-                            <span className="text-xs text-[#5A7A5A] font-bold">· {detail.archetype}</span>
-                        </div>
-                        <p className="text-xs font-black mb-1" style={{ color: detail.color }}>
-                            ◆ {detail.symbol}
-                        </p>
-                        <p className="text-xs text-[#5A7A5A] font-bold leading-relaxed">
-                            {detail.story}
-                        </p>
-                    </div>
-                )}
                 <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} currentWeeklyMonday={currentWeeklyMonday} />
 
                 {/* 人生大戲分享 */}
