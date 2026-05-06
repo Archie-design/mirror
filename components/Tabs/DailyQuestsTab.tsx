@@ -136,36 +136,7 @@ export function DailyQuestsTab({
     const p1DoneRecently = p1Done || logs.some(l =>
         l.QuestID === 'p1' && getLogicalDateStr(l.Timestamp) === prevLogicalDateStr
     );
-    // 破曉打拳僅限中午 12:00 前記錄；每分鐘更新一次，確保跨越正午邊界時 UI 自動隱藏
-    const getTaipeiHour = () => parseInt(
-        new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', hour: 'numeric', hour12: false }).format(new Date()),
-        10,
-    );
-    const [twHour, setTwHour] = useState(getTaipeiHour);
-    useEffect(() => {
-        let id: ReturnType<typeof setInterval> | null = null;
-        const start = () => {
-            if (id !== null) return;
-            id = setInterval(() => setTwHour(getTaipeiHour()), 60_000);
-        };
-        const stop = () => { if (id !== null) { clearInterval(id); id = null; } };
-        const onVis = () => {
-            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-                setTwHour(getTaipeiHour());
-                start();
-            } else {
-                stop();
-            }
-        };
-        if (typeof document === 'undefined' || document.visibilityState === 'visible') start();
-        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis);
-        return () => {
-            stop();
-            if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis);
-        };
-    }, []);
-    const isBeforeNoon = twHour < 12;
-    const showDawnQuest = (p1DoneRecently && isBeforeNoon) || dawnDone;
+    const showDawnQuest = p1DoneRecently || dawnDone;
 
     // 連續提交：p1 到帳後自動補記破曉
     useEffect(() => {
@@ -211,17 +182,16 @@ export function DailyQuestsTab({
                         isFav={favIds.includes(q.id)}
                         onToggleFav={() => toggleFav(q.id)}
                     />
-                    <label className={`flex items-center gap-2 px-2 select-none ${isBeforeNoon ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}>
+                    <label className="flex items-center gap-2 px-2 select-none cursor-pointer">
                         <input
                             type="checkbox"
                             checked={p1DawnSelected}
-                            onChange={e => isBeforeNoon && setP1DawnSelected(e.target.checked)}
-                            disabled={!isBeforeNoon}
-                            className="w-3.5 h-3.5 accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                            onChange={e => setP1DawnSelected(e.target.checked)}
+                            className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
                         />
                         <span className="text-xs font-bold text-amber-600/80 flex items-center gap-1">
                             <Sunrise size={10} />
-                            {isBeforeNoon ? `同記破曉打拳 +${dawnQuest.reward}分` : '破曉時段已過（12:00前）'}
+                            {`同記破曉打拳 +${dawnQuest.reward}分`}
                         </span>
                     </label>
                 </div>

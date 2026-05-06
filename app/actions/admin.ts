@@ -478,6 +478,100 @@ export async function adjustMemberScore(
     return { success: true, newScore };
 }
 
+// ── F1-B 批次積分調整（CSV 匯入）──────────────────────────────────────────────
+export type BulkAdjustRow = { identifier: string; delta: number; reason: string };
+export type BulkAdjustResult = { identifier: string; name?: string; delta: number; newScore?: number; error?: string };
+
+export async function bulkAdjustScores(
+    rows: BulkAdjustRow[],
+    actorName: string = 'admin'
+): Promise<{ success: boolean; results?: BulkAdjustResult[]; error?: string }> {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    if (!rows.length) return { success: false, error: '沒有資料' };
+    if (rows.length > 200) return { success: false, error: '單次最多 200 筆' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+    const { data: allMembers, error: listErr } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name, Score');
+    if (listErr) return { success: false, error: listErr.message };
+
+    const byName = new Map<string, { UserID: string; Name: string; Score: number }[]>();
+    const byPhone = new Map<string, { UserID: string; Name: string; Score: number }>();
+    for (const m of allMembers ?? []) {
+        if (!byName.has(m.Name)) byName.set(m.Name, []);
+        byName.get(m.Name)!.push(m);
+        byPhone.set(m.UserID, m);
+    }
+
+    const results: BulkAdjustResult[] = [];
+
+    for (const row of rows) {
+        const { identifier, delta, reason } = row;
+        if (!Number.isFinite(delta) || delta === 0) {
+            results.push({ identifier, delta, error: '分數不可為 0 或非數字' });
+            continue;
+        }
+        if (!reason.trim()) {
+            results.push({ identifier, delta, error: '原因不可為空' });
+            continue;
+        }
+
+        // Match by exact Name first; fall back to UserID suffix
+        let matched: { UserID: string; Name: string; Score: number } | null = null;
+        const byNameHits = byName.get(identifier.trim());
+        if (byNameHits && byNameHits.length === 1) {
+            matched = byNameHits[0];
+        } else if (byNameHits && byNameHits.length > 1) {
+            results.push({ identifier, delta, error: '姓名重複，請改用手機號碼' });
+            continue;
+        } else {
+            // Try phone: exact UserID or suffix match
+            const norm = identifier.replace(/\D/g, '');
+            if (norm.length >= 4) {
+                const exact = byPhone.get(norm) ?? byPhone.get('886' + norm.replace(/^0/, ''));
+                if (exact) {
+                    matched = exact;
+                } else {
+                    // suffix match (last N digits)
+                    for (const [uid, m] of byPhone) {
+                        if (uid.endsWith(norm)) { matched = m; break; }
+                    }
+                }
+            }
+        }
+
+        if (!matched) {
+            results.push({ identifier, delta, error: '找不到成員' });
+            continue;
+        }
+
+        const newScore = Math.max(0, (matched.Score ?? 0) + delta);
+        const { error: upErr } = await supabase
+            .from('CharacterStats')
+            .update({ Score: newScore })
+            .eq('UserID', matched.UserID);
+        if (upErr) {
+            results.push({ identifier, name: matched.Name, delta, error: upErr.message });
+            continue;
+        }
+        // Update local cache so subsequent rows in same batch see correct score
+        matched.Score = newScore;
+
+        await supabase.from('DailyLogs').insert({
+            Timestamp: new Date().toISOString(),
+            UserID: matched.UserID,
+            QuestID: 'admin_adjust',
+            QuestTitle: reason.trim(),
+            RewardPoints: delta,
+        });
+        await logAdminAction('score_adjust', actorName, matched.UserID, matched.Name, { delta, reason: reason.trim(), bulk: true });
+        results.push({ identifier, name: matched.Name, delta, newScore });
+    }
+
+    return { success: true, results };
+}
+
 // ── F2 打卡紀錄查詢 ──────────────────────────────────────────────────────────
 export async function getMemberCheckInHistory(
     targetUserId: string,

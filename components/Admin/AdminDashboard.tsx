@@ -4,7 +4,8 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, bulkAdjustScores, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus } from '@/app/actions/admin';
+import type { BulkAdjustResult } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -82,6 +83,13 @@ function MemberManagementSection() {
     // admin identity toggle
     const [adminToggleTarget, setAdminToggleTarget] = React.useState<MemberRow | null>(null);
     const [adminToggling, setAdminToggling] = React.useState(false);
+
+    // F1-B bulk score adjust
+    const [showBulk, setShowBulk] = React.useState(false);
+    const [bulkCsv, setBulkCsv] = React.useState('');
+    const [bulkPreview, setBulkPreview] = React.useState<{ identifier: string; delta: number; reason: string }[] | null>(null);
+    const [bulkRunning, setBulkRunning] = React.useState(false);
+    const [bulkResults, setBulkResults] = React.useState<BulkAdjustResult[] | null>(null);
 
     // F2 check-in history
     const [expandedLogsId, setExpandedLogsId] = React.useState<string | null>(null);
@@ -182,6 +190,33 @@ function MemberManagementSection() {
         await load();
     };
 
+    const parseBulkCsv = () => {
+        const rows: { identifier: string; delta: number; reason: string }[] = [];
+        for (const raw of bulkCsv.split('\n')) {
+            const line = raw.trim();
+            if (!line) continue;
+            const parts = line.split(',').map(s => s.trim());
+            if (parts.length < 2) continue;
+            const identifier = parts[0];
+            const delta = parseInt(parts[1]);
+            const reason = parts.slice(2).join(',').trim() || '批次調整';
+            if (!identifier || isNaN(delta)) continue;
+            rows.push({ identifier, delta, reason });
+        }
+        setBulkPreview(rows);
+        setBulkResults(null);
+    };
+
+    const runBulkAdjust = async () => {
+        if (!bulkPreview?.length) return;
+        setBulkRunning(true);
+        const res = await bulkAdjustScores(bulkPreview);
+        setBulkRunning(false);
+        if (!res.success) { setMsg(res.error ?? '批次調整失敗'); return; }
+        setBulkResults(res.results ?? []);
+        await load();
+    };
+
     // Collect unique squad/team names for datalist
     const squads = [...new Set(members.map(m => m.SquadName).filter(Boolean))];
     const teams = [...new Set(members.map(m => m.TeamName).filter(Boolean))];
@@ -202,7 +237,111 @@ function MemberManagementSection() {
                 >
                     {loading ? '…' : '重整'}
                 </button>
+                <button
+                    onClick={() => { setShowBulk(v => !v); setBulkPreview(null); setBulkResults(null); setBulkCsv(''); }}
+                    className="px-3 rounded-xl text-xs font-black text-amber-300 border border-amber-400/30 hover:border-amber-400/60 bg-[#081812] min-h-[44px] transition-colors whitespace-nowrap"
+                >
+                    批次加分
+                </button>
             </div>
+
+            {/* F1-B 批次加分面板 */}
+            {showBulk && (
+                <div className="bg-[#061410] border border-amber-400/20 rounded-2xl p-4 space-y-3">
+                    <p className="text-[11px] text-amber-400/70 font-bold">批次積分調整 — CSV 格式（每行：<span className="font-mono">姓名或手機, 分數, 原因</span>）</p>
+                    <p className="text-[10px] text-emerald-200/40">範例：劉永凌,500,活動獎勵　／　0912345678,-200,補扣　／　姓名重複時請改用手機號碼</p>
+                    <textarea
+                        value={bulkCsv}
+                        onChange={e => { setBulkCsv(e.target.value); setBulkPreview(null); setBulkResults(null); }}
+                        rows={6}
+                        placeholder={"劉永凌,500,活動獎勵\n吳采恩,300,活動獎勵\n0912345678,-100,補扣"}
+                        className="w-full bg-[#030d09] border border-emerald-900/60 rounded-xl px-3 py-2 text-emerald-100 text-xs font-mono outline-none focus:border-amber-400/50 resize-y"
+                    />
+                    <div className="flex gap-2 flex-wrap">
+                        <button
+                            onClick={parseBulkCsv}
+                            disabled={!bulkCsv.trim()}
+                            className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-900/40 border border-emerald-400/30 text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-40 transition-all"
+                        >
+                            預覽比對
+                        </button>
+                        {bulkPreview && !bulkResults && (
+                            <button
+                                onClick={runBulkAdjust}
+                                disabled={bulkRunning || bulkPreview.length === 0}
+                                className="px-4 py-2 rounded-xl text-xs font-black bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 disabled:opacity-40 transition-all"
+                            >
+                                {bulkRunning ? '執行中…' : `確認執行（${bulkPreview.length} 筆）`}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Preview table */}
+                    {bulkPreview && !bulkResults && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[11px]">
+                                <thead>
+                                    <tr className="text-emerald-200/40 border-b border-emerald-900/60">
+                                        <th className="text-left py-1 pr-3">識別符</th>
+                                        <th className="text-right py-1 pr-3">分數</th>
+                                        <th className="text-left py-1">原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {bulkPreview.map((r, i) => (
+                                        <tr key={i} className="border-b border-emerald-900/30">
+                                            <td className="py-1 pr-3 text-emerald-100 font-mono">{r.identifier}</td>
+                                            <td className={`py-1 pr-3 text-right font-black ${r.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                {r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}
+                                            </td>
+                                            <td className="py-1 text-emerald-200/60">{r.reason}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Results table */}
+                    {bulkResults && (
+                        <div className="space-y-1.5">
+                            <p className="text-[11px] font-black text-emerald-300">
+                                執行完成：{bulkResults.filter(r => !r.error).length} 成功 / {bulkResults.filter(r => r.error).length} 失敗
+                            </p>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-[11px]">
+                                    <thead>
+                                        <tr className="text-emerald-200/40 border-b border-emerald-900/60">
+                                            <th className="text-left py-1 pr-3">識別符</th>
+                                            <th className="text-left py-1 pr-3">姓名</th>
+                                            <th className="text-right py-1 pr-3">分數</th>
+                                            <th className="text-left py-1">結果</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {bulkResults.map((r, i) => (
+                                            <tr key={i} className="border-b border-emerald-900/30">
+                                                <td className="py-1 pr-3 text-emerald-200/60 font-mono">{r.identifier}</td>
+                                                <td className="py-1 pr-3 text-emerald-100">{r.name ?? '—'}</td>
+                                                <td className={`py-1 pr-3 text-right font-black ${r.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                    {r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}
+                                                </td>
+                                                <td className="py-1">
+                                                    {r.error
+                                                        ? <span className="text-rose-400">{r.error}</span>
+                                                        : <span className="text-emerald-400">✓ {r.newScore?.toLocaleString()} 分</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {msg && (
                 <p className="text-xs text-center font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-2 animate-fade-up">
                     {msg}

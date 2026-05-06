@@ -48,7 +48,7 @@ export const DAILY_WEIGHTED_LIMIT = 3;
 export const DAWN_QUEST: Quest = {
     id: 'p1_dawn',
     title: '破曉打拳',
-    sub: '在破曉時段（05:00–08:00）完成打拳，疊加在打拳 p1 之上',
+    sub: '完成打拳（p1）後即可記錄破曉加成，不限時段',
     reward: 500,
     icon: '🌅',
 };

@@ -148,6 +148,27 @@ export async function updateUserFortunes(userId: string, fortunes: Record<string
     return { success: true };
 }
 
+// ── 學員：自行回溯本週完成的格子 ─────────────────────────────────────────────
+export async function undoNineGridCellSelf(
+    userId: string,
+    cellIndex: number,
+): Promise<{ success: true; scoreReversed: number } | { success: false; error: string }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+    if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase.rpc('undo_nine_grid_cell_self', {
+        p_user_id: userId,
+        p_cell_index: cellIndex,
+    });
+
+    if (error) return { success: false, error: 'RPC 錯誤：' + error.message };
+    if (!data || data.success === false) {
+        return { success: false, error: (data && data.error) || '回溯失敗' };
+    }
+    return { success: true, scoreReversed: data.scoreReversed ?? 0 };
+}
+
 // ── 小隊長：回溯隊員某格打卡 ──────────────────────────────────────────────────
 // 委派給 DB RPC uncomplete_cell_by_captain：以 SELECT FOR UPDATE 鎖定 UserNineGrid，
 // 在同一 transaction 完成 cells 重置、DailyLogs 刪除、分數扣回，避免 partial failure。

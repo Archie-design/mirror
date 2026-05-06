@@ -186,7 +186,7 @@ export function NineGridTab({
                         </p>
                     </div>
                 )}
-                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} />
+                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} currentWeeklyMonday={currentWeeklyMonday} />
 
                 {/* 人生大戲分享 */}
                 {(wk4SmallQuest || wk4LargeQuest) && (
