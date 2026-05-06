@@ -13,16 +13,16 @@ interface BonusQuestsSectionProps {
 }
 
 const QUEST_LIST: { id: string; title: string; reward: number; tier: 1 | 2; desc: string }[] = [
-    { id: 'o1',   title: '超越巔峰',               reward: 1000, tier: 2, desc: '小隊共同完成一項任務，每位申請成員各得分' },
-    { id: 'o2_1', title: '戲劇進修－生命數字',       reward: 300,  tier: 1, desc: '完成心成課程：生命數字' },
-    { id: 'o2_2', title: '戲劇進修－生命蛻變',       reward: 300,  tier: 1, desc: '完成心成課程：生命蛻變' },
-    { id: 'o2_3', title: '戲劇進修－複訓大堂課',     reward: 300,  tier: 1, desc: '完成心成課程：複訓大堂課' },
-    { id: 'o2_4', title: '戲劇進修－告別負債&貧窮',  reward: 300,  tier: 1, desc: '完成心成課程：告別負債&貧窮' },
-    { id: 'o3',   title: '聯誼會（1年）',            reward: 500,  tier: 2, desc: '報名/續報聯誼會 1 年' },
-    { id: 'o4',   title: '聯誼會（2年）',            reward: 1000, tier: 2, desc: '報名/續報聯誼會 2 年' },
-    { id: 'o5',   title: '報高階（訂金）',           reward: 500,  tier: 2, desc: '報名高階課程，每階訂金各計一次' },
-    { id: 'o6',   title: '報高階（完款）',           reward: 1000, tier: 2, desc: '報名高階課程完款，每階完款各計一次' },
-    { id: 'o7',   title: '傳愛',                     reward: 1000, tier: 2, desc: '介紹他人參加，無上限，每人各計一次' },
+    { id: 'o1',   title: '超越巔峰',               reward: 10000, tier: 2, desc: '小隊共同完成一項任務，每位申請成員各得分' },
+    { id: 'o2_1', title: '戲劇進修－生命數字',       reward: 3000,  tier: 1, desc: '完成心成課程：生命數字' },
+    { id: 'o2_2', title: '戲劇進修－生命蛻變',       reward: 10000, tier: 1, desc: '完成心成課程：生命蛻變' },
+    { id: 'o2_3', title: '戲劇進修－複訓大堂課',     reward: 3000,  tier: 1, desc: '完成心成課程：複訓大堂課' },
+    { id: 'o2_4', title: '戲劇進修－告別負債&貧窮',  reward: 3000,  tier: 1, desc: '完成心成課程：告別負債&貧窮' },
+    { id: 'o3',   title: '聯誼會（1年）',            reward: 5000,  tier: 2, desc: '報名/續報聯誼會 1 年' },
+    { id: 'o4',   title: '聯誼會（2年）',            reward: 15000, tier: 2, desc: '報名/續報聯誼會 2 年' },
+    { id: 'o5',   title: '報高階（訂金）',           reward: 5000,  tier: 2, desc: '報名高階課程，每階訂金各計一次' },
+    { id: 'o6',   title: '報高階（完款）',           reward: 10000, tier: 2, desc: '報名高階課程完款，每階完款各計一次' },
+    { id: 'o7',   title: '傳愛',                     reward: 5000,  tier: 2, desc: '介紹他人參加，無上限，每人各計一次' },
 ];
 
 const MULTI_SUBMIT_IDS = new Set(['o5', 'o6', 'o7']);

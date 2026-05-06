@@ -507,9 +507,9 @@ export async function listPendingGatherings(): Promise<{
         const attendees = attendeesBySession.get(session.id) ?? [];
         const teamCount = countByTeam.get(session.teamName) ?? 0;
         const hasCommandant = attendees.some(a => a.isCommandant);
-        let reward = 300;
-        if (teamCount && attendees.length >= teamCount) reward += 100;
-        if (hasCommandant) reward += 100;
+        let reward = 3000;
+        if (teamCount && attendees.length >= teamCount) reward += 1000;
+        if (hasCommandant) reward += 1000;
         return {
             session,
             attendees,
@@ -589,9 +589,9 @@ export async function reviewGathering(
     const hasCommandant = attendees.some(a => a.is_commandant);
     const memberCount = teamMemberCount ?? 0;
 
-    let reward = 300;
-    if (memberCount > 0 && attendees.length >= memberCount) reward += 100;
-    if (hasCommandant) reward += 100;
+    let reward = 3000;
+    if (memberCount > 0 && attendees.length >= memberCount) reward += 1000;
+    if (hasCommandant) reward += 1000;
 
     // 先鎖定 session 狀態為 approved（冪等保護：若 update 0 rows 代表已被他人處理）
     const { data: locked, error: lockErr } = await supabase

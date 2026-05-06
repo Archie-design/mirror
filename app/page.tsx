@@ -317,7 +317,9 @@ export default function App() {
       if (!res.success) throw new Error(res.error);
       setTemporaryQuests(prev => prev.map(q => q.id === id ? { ...q, active } : q));
     } catch (err: any) {
-      setModalMessage({ text: "更新臨時任務狀態失敗：" + (err?.message ?? ''), type: 'error' });
+      const msg: string = err?.message ?? '';
+      if (msg.includes('無權限')) { setAdminAuth(false); setModalMessage({ text: '管理員登入已過期，請重新驗證身分。', type: 'error' }); }
+      else setModalMessage({ text: "更新臨時任務狀態失敗：" + msg, type: 'error' });
     } finally {
       setIsSyncing(false);
     }
@@ -331,7 +333,9 @@ export default function App() {
       if (!res.success) throw new Error(res.error);
       setTemporaryQuests(prev => prev.filter(q => q.id !== id));
     } catch (err: any) {
-      setModalMessage({ text: "刪除臨時任務失敗：" + (err?.message ?? ''), type: 'error' });
+      const msg: string = err?.message ?? '';
+      if (msg.includes('無權限')) { setAdminAuth(false); setModalMessage({ text: '管理員登入已過期，請重新驗證身分。', type: 'error' }); return; }
+      setModalMessage({ text: "刪除臨時任務失敗：" + msg, type: 'error' });
     } finally {
       setIsSyncing(false);
     }

@@ -13,16 +13,16 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 // ── 一次性任務獎勵對照表（o1–o7）────────────────────────────────────────────
 const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
-    o1:   { reward: 1000, title: '超越巔峰' },
-    o2_1: { reward: 300,  title: '戲劇進修－生命數字' },
-    o2_2: { reward: 300,  title: '戲劇進修－生命蛻變' },
-    o2_3: { reward: 300,  title: '戲劇進修－複訓大堂課' },
-    o2_4: { reward: 300,  title: '戲劇進修－告別負債&貧窮' },
-    o3:   { reward: 500,  title: '聯誼會（1年）' },
-    o4:   { reward: 1000, title: '聯誼會（2年）' },
-    o5:   { reward: 500,  title: '報高階（訂金）' },
-    o6:   { reward: 1000, title: '報高階（完款）' },
-    o7:   { reward: 1000, title: '傳愛' },
+    o1:   { reward: 10000, title: '超越巔峰' },
+    o2_1: { reward: 3000,  title: '戲劇進修－生命數字' },
+    o2_2: { reward: 10000, title: '戲劇進修－生命蛻變' },
+    o2_3: { reward: 3000,  title: '戲劇進修－複訓大堂課' },
+    o2_4: { reward: 3000,  title: '戲劇進修－告別負債&貧窮' },
+    o3:   { reward: 5000,  title: '聯誼會（1年）' },
+    o4:   { reward: 15000, title: '聯誼會（2年）' },
+    o5:   { reward: 5000,  title: '報高階（訂金）' },
+    o6:   { reward: 10000, title: '報高階（完款）' },
+    o7:   { reward: 5000,  title: '傳愛' },
 };
 
 // 戲劇進修類：一級審核（小隊長核准即最終，直接入帳）

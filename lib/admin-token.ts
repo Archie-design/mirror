@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 
 export const ADMIN_COOKIE = 'admin_session';
-export const ADMIN_TTL_SECONDS = 30 * 60;
+export const ADMIN_TTL_SECONDS = 8 * 60 * 60;
 
 const TOKEN_LABEL = 'admin-session-v1';
 
