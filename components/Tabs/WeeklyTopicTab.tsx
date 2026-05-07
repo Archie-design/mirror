@@ -563,7 +563,6 @@ export function WeeklyTopicTab({
                                                     <input
                                                         type="file"
                                                         accept="image/jpeg,image/png,image/webp"
-                                                        capture="environment"
                                                         onChange={handleFileSelect}
                                                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                                                     />

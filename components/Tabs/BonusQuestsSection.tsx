@@ -306,7 +306,6 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                                                 <input
                                                     type="file"
                                                     accept="image/jpeg,image/png,image/webp"
-                                                    capture="environment"
                                                     onChange={e => handleFilePick(quest.id, e)}
                                                     className="hidden"
                                                 />
