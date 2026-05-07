@@ -2,17 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { UserPlus } from 'lucide-react';
 import { SunflowerIcon, EmeraldCastleIcon, RainbowIcon, RubySlipperIcon, StarWandIcon, HeartGlowIcon } from '@/components/ui/FilmIcons';
-
-const OZ_TIERS = [
-    { minScore: 18000, src: '/icons/oz-4-mirror.png',  label: '合・鏡中自照' },
-    { minScore:  9000, src: '/icons/oz-3-wizard.png',  label: '轉・大法師顯靈' },
-    { minScore:  3000, src: '/icons/oz-2-journey.png', label: '承・旅伴同行' },
-    { minScore:     0, src: '/icons/oz-1-start.png',   label: '起・踏上旅程' },
-] as const;
-
-function getOzTier(score: number) {
-    return OZ_TIERS.find(t => score >= t.minScore) ?? OZ_TIERS[3];
-}
+import { OZ_TIERS, getOzTier } from '@/lib/oz-tiers';
 
 function LineIcon() {
     return (
@@ -78,7 +68,12 @@ export function LoginForm({ onLogin, onGoToRegister, onGoToAdmin, isSyncing }: L
                 </div>
                 <h1 className="font-display text-2xl md:text-3xl font-black text-[#1A2A1A] mb-1 tracking-wide">覺醒開運親證班</h1>
                 <p className="text-base text-[#5A7A5A] font-bold tracking-[0.3em]">你的黃磚路</p>
-                <p className="text-base text-[#F5C842] font-bold tracking-widest mt-0.5">{tier.label}</p>
+                <div className="flex items-center justify-center gap-2 mt-1.5">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#1A6B4A] text-white text-xs font-black shadow-sm tabular-nums">
+                        LV.{tier.level}
+                    </span>
+                    <p className="text-base text-[#F5C842] font-bold tracking-widest">{tier.label}</p>
+                </div>
             </div>
 
             {/* 表單 */}

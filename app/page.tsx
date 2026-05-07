@@ -39,6 +39,8 @@ import { getMemberGrid, initMemberGrid, updateUserFortunes } from '@/app/actions
 import { loginWithPhone, registerAccount, logoutUser } from '@/app/actions/auth';
 import { FORTUNE_COMPANIONS, getLowestFortune } from '@/components/Login/RegisterForm';
 import { UserNineGrid } from '@/types';
+import { LevelUpModal } from '@/components/LevelUpModal';
+import { getOzTier, type OzTier } from '@/lib/oz-tiers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_key';
@@ -99,6 +101,7 @@ export default function App() {
   const [temporaryQuests, setTemporaryQuests] = useState<TemporaryQuest[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
   const [modalMessage, setModalMessage] = useState<{ text: string, type: 'info' | 'error' | 'success' } | null>(null);
+  const [levelUpTier, setLevelUpTier] = useState<OzTier | null>(null);
   const [undoTarget, setUndoTarget] = useState<Quest | null>(null);
   const [adminAuth, setAdminAuth] = useState(false);
   const [teamSettings, setTeamSettings] = useState<TeamSettings | null>(null);
@@ -733,9 +736,15 @@ export default function App() {
   }, [gmViewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (userData?.Score != null) {
-      localStorage.setItem('oz_score', String(userData.Score));
+    if (userData?.Score == null) return;
+    const stored = localStorage.getItem('oz_score');
+    const newScore = userData.Score;
+    if (stored !== null) {
+      const prevTier = getOzTier(Number(stored));
+      const newTier = getOzTier(newScore);
+      if (newTier.level > prevTier.level) setLevelUpTier(newTier);
     }
+    localStorage.setItem('oz_score', String(newScore));
   }, [userData?.Score]);
 
   useEffect(() => {
@@ -1057,6 +1066,7 @@ export default function App() {
       )}
 
       {modalMessage && <MessageBox message={modalMessage.text} type={modalMessage.type} onClose={() => setModalMessage(null)} />}
+      {levelUpTier && <LevelUpModal tier={levelUpTier} onClose={() => setLevelUpTier(null)} />}
     </div>
   );
 }
