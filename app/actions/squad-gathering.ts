@@ -640,13 +640,24 @@ export async function reviewGathering(
     };
 }
 
-// ── 管理員：列出所有已排定 / 進行中 sessions（給 CommandantTab 排期管理） ──
+// ── 管理員 / 大隊長：列出所有已排定 / 進行中 sessions（給 CommandantTab 排期管理） ──
 export async function listGatheringSessions(
     teamNameFilter?: string,
 ): Promise<{ success: boolean; error?: string; sessions?: SquadGatheringSession[] }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    let callerId: string;
+    try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const { data: caller } = await supabase
+            .from('CharacterStats')
+            .select('IsCommandant')
+            .eq('UserID', callerId)
+            .maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
+    }
 
     let q = supabase
         .from('SquadGatheringSessions')
