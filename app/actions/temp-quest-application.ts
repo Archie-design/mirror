@@ -2,7 +2,7 @@
 
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
@@ -182,13 +182,19 @@ export async function reviewTempQuestByCaptain(
     return { success: true };
 }
 
-// ── 管理員：取得所有初審通過待終審的申請 ─────────────────────────────────────
+// ── 管理員 / 大隊長：取得所有初審通過待終審的申請 ────────────────────────────
 export async function listTempQuestAppsForAdmin(): Promise<{
     success: boolean; apps: TempQuestApplication[]; error?: string;
 }> {
-    if (!(await verifyAdminSession())) return { success: false, apps: [], error: '無權限執行此操作' };
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        let callerId: string;
+        try { callerId = await requireUser(); } catch { return { success: false, apps: [], error: '請先登入' }; }
+        const { data: caller } = await supabase
+            .from('CharacterStats').select('IsCommandant').eq('UserID', callerId).maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, apps: [], error: '無權限執行此操作' };
+    }
     const { data, error } = await supabase
         .from('TempQuestApplications')
         .select('*')
@@ -199,16 +205,23 @@ export async function listTempQuestAppsForAdmin(): Promise<{
     return { success: true, apps: (data ?? []) as TempQuestApplication[] };
 }
 
-// ── 管理員：終審（通過 → 入帳；駁回 → rejected）────────────────────────────
+// ── 管理員 / 大隊長：終審（通過 → 入帳；駁回 → rejected）──────────────────
 export async function reviewTempQuestByAdmin(
     appId: string,
     action: 'approve' | 'reject',
     notes: string = '',
     reviewerName: string = 'admin',
 ): Promise<{ success: boolean; warning?: string; error?: string }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        let callerId: string;
+        try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+        const { data: caller } = await supabase
+            .from('CharacterStats').select('IsCommandant, Name').eq('UserID', callerId).maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
+        if (reviewerName === 'admin') reviewerName = caller.Name ?? callerId;
+    }
 
     const { data: app } = await supabase
         .from('TempQuestApplications')

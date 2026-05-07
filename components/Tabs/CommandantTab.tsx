@@ -8,9 +8,10 @@ const SquadGrowthChart = dynamic(
     () => import('@/components/Charts/SquadGrowthChart').then(m => ({ default: m.SquadGrowthChart })),
     { ssr: false, loading: () => <div className="h-72 flex items-center justify-center"><Loader2 className="animate-spin text-rose-500" /></div> }
 );
-import { CharacterStats, BonusApplication, SquadMemberStats } from '@/types';
+import { CharacterStats, BonusApplication, SquadMemberStats, TempQuestApplication } from '@/types';
 import { exportMembersWithSummary } from '@/app/actions/admin';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
+import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import {
     scheduleSquadGathering,
     cancelSquadGathering,
@@ -51,6 +52,120 @@ function isActive(lastCheckIn?: string): boolean {
     return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
 }
 
+
+// ── 臨時加碼任務終審 ──────────────────────────────────────────────────────────
+function TempQuestFinalReviewSection({
+    reviewerName,
+    onShowMessage,
+}: {
+    reviewerName: string;
+    onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+}) {
+    const [apps, setApps] = useState<TempQuestApplication[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [notes, setNotes] = useState<Record<string, string>>({});
+    const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await listTempQuestAppsForAdmin();
+        if (res.success) setApps(res.apps);
+        setLoading(false);
+    }, []);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleReview = async (appId: string, action: 'approve' | 'reject') => {
+        setReviewingId(appId);
+        const res = await reviewTempQuestByAdmin(appId, action, notes[appId] || '', reviewerName);
+        setReviewingId(null);
+        if (res.success) {
+            onShowMessage(
+                action === 'approve' ? '✅ 已核准入帳，積分已發放!' : '已駁回此申請。',
+                action === 'approve' ? 'success' : 'info',
+            );
+            if (res.warning) onShowMessage(res.warning, 'info');
+            reload();
+        } else {
+            onShowMessage(res.error ?? '操作失敗', 'error');
+        }
+    };
+
+    if (loading) return (
+        <div className="bg-white border-2 border-amber-100 rounded-3xl p-5 shadow-md">
+            <div className="flex items-center gap-2 text-amber-500 font-black text-sm">
+                <ScrollText size={14} /> 臨時加碼任務終審
+            </div>
+            <div className="flex justify-center py-6"><Loader2 size={18} className="animate-spin text-amber-400" /></div>
+        </div>
+    );
+
+    return (
+        <div className="bg-white border-2 border-amber-100 rounded-3xl p-5 space-y-3 shadow-md">
+            <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+                <ScrollText size={15} className="text-amber-500" /> 臨時加碼任務終審
+            </h3>
+            {apps.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">暫無待終審申請</p>
+            ) : (
+                <div className="space-y-4">
+                    {apps.map(app => (
+                        <div key={app.id} className="bg-gray-50 rounded-2xl p-4 space-y-3 border border-gray-200">
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-black text-gray-900 text-base">{app.user_name}</p>
+                                    <p className="text-sm text-gray-500 mt-0.5">
+                                        {app.team_name && <span>{app.team_name} · </span>}
+                                        <span className="text-amber-600 font-bold">{app.quest_id}</span>
+                                        {' · '}{app.quest_date}
+                                    </p>
+                                </div>
+                                <span className="shrink-0 text-xs font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">初審✓</span>
+                            </div>
+                            {app.screenshot_url && (
+                                <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer">
+                                    <img src={app.screenshot_url} alt="截圖" className="w-full max-h-48 object-cover rounded-xl border border-gray-200" />
+                                </a>
+                            )}
+                            {app.squad_review_notes && (
+                                <p className="text-xs text-gray-500 bg-white rounded-xl px-3 py-2 border border-gray-200">
+                                    隊長備註：{app.squad_review_notes}
+                                </p>
+                            )}
+                            {app.note && (
+                                <p className="text-xs text-gray-500 bg-white rounded-xl px-3 py-2 border border-gray-200">
+                                    學員備註：{app.note}
+                                </p>
+                            )}
+                            <textarea
+                                placeholder="終審備註（選填）"
+                                value={notes[app.id] || ''}
+                                onChange={e => setNotes(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                rows={2}
+                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-amber-400 resize-none"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, 'reject')}
+                                    className="flex-1 py-2 bg-red-50 text-red-500 font-black rounded-xl text-sm border border-red-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    <XCircle size={13} /> 駁回
+                                </button>
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, 'approve')}
+                                    className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl text-sm shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    <CheckCircle2 size={13} /> {reviewingId === app.id ? '處理中…' : '核准入帳'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ── 安排 / 管理實體凝聚排期 ──────────────────────────────────────────────────
 function GatheringScheduler({
@@ -478,6 +593,9 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
 
             {/* 實體凝聚終審 */}
             <GatheringPendingReviews reviewerId={userData.UserID} onShowMessage={onShowMessage} />
+
+            {/* 臨時加碼任務終審 */}
+            <TempQuestFinalReviewSection reviewerName={userData.Name ?? userData.UserID} onShowMessage={onShowMessage} />
 
             {/* Application list */}
             {apps.length === 0 ? (

@@ -137,9 +137,16 @@ export async function reviewBonusByAdmin(
     notes: string = '',
     reviewerName: string = 'admin'
 ) {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        let callerId: string;
+        try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+        const { data: caller } = await supabase
+            .from('CharacterStats').select('IsCommandant, Name').eq('UserID', callerId).maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
+        if (reviewerName === 'admin') reviewerName = caller.Name ?? callerId;
+    }
 
     const { data: app } = await supabase
         .from('BonusApplications')
@@ -205,15 +212,22 @@ export async function bulkReviewBonusByAdmin(
     error?: string;
     results?: { appId: string; ok: boolean; warning?: string; error?: string }[];
 }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        let callerId: string;
+        try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+        const { data: caller } = await supabase
+            .from('CharacterStats').select('IsCommandant, Name').eq('UserID', callerId).maybeSingle();
+        if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
+        if (reviewerName === 'admin') reviewerName = caller.Name ?? callerId;
+    }
     if (!Array.isArray(appIds) || appIds.length === 0) {
         return { success: false, error: '未指定待審項目' };
     }
     if (appIds.length > 200) {
         return { success: false, error: '單次最多處理 200 筆，請分批送審' };
     }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: apps } = await supabase
         .from('BonusApplications')
