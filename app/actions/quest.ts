@@ -49,8 +49,26 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
         return { success: false, error: '找不到打卡記錄' };
 
     const log = targetLogs[0];
-    if (getLogicalDateStr(log.Timestamp) !== logicalTodayStr)
-        return { success: false, error: '因果已定，僅限回溯今日紀錄' };
+
+    // 週任務（wk 前綴）：允許回溯本週內（週一台北時間 00:00 起）的記錄
+    const isWeeklyQuest = questId.startsWith('wk');
+    if (isWeeklyQuest) {
+        const nowTW = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+        const dayOfWeek = nowTW.getDay(); // 0=Sun
+        const daysFromMonday = (dayOfWeek + 6) % 7;
+        const mondayTW = new Date(nowTW);
+        mondayTW.setHours(0, 0, 0, 0);
+        mondayTW.setDate(mondayTW.getDate() - daysFromMonday);
+        // 轉為 UTC 比對
+        const mondayUTC = new Date(mondayTW.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const logDate = new Date(log.Timestamp);
+        if (logDate < mondayUTC) {
+            return { success: false, error: '因果已定，僅限回溯本週紀錄' };
+        }
+    } else {
+        if (getLogicalDateStr(log.Timestamp) !== logicalTodayStr)
+            return { success: false, error: '因果已定，僅限回溯今日紀錄' };
+    }
 
     const rewardToDeduct: number = log.RewardPoints ?? 0;
 
