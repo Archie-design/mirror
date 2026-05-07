@@ -61,6 +61,25 @@ export interface TemporaryQuest extends Quest {
   created_at?: string;
 }
 
+export interface TempQuestApplication {
+  id: string;
+  quest_id: string;
+  quest_date: string;
+  user_id: string;
+  user_name: string;
+  team_name?: string;
+  screenshot_url?: string;
+  note?: string;
+  status: 'pending' | 'squad_approved' | 'approved' | 'rejected';
+  squad_review_by?: string;
+  squad_review_at?: string;
+  squad_review_notes?: string;
+  final_review_by?: string;
+  final_review_at?: string;
+  final_review_notes?: string;
+  created_at?: string;
+}
+
 export interface CourseEvent {
   id: string;          // 唯一識別碼，用於 localStorage key 與 CourseRegistrations
   name: string;

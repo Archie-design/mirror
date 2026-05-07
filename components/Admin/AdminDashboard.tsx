@@ -1,6 +1,6 @@
 import React from 'react';
 import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw, Download, Activity, ChevronDown, ChevronUp, AlertCircle, Coins } from 'lucide-react';
-import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent } from '@/types';
+import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent, TempQuestApplication } from '@/types';
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
@@ -8,6 +8,7 @@ import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberA
 import type { BulkAdjustResult } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
+import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -718,6 +719,12 @@ export function AdminDashboard({
     // F5 Bonus application stats
     const [bonusStats, setBonusStats] = React.useState<{ quest_id: string; pending: number; squad_approved: number; approved: number; rejected: number; total: number }[] | null>(null);
 
+    // 臨時任務終審
+    const [tempQuestApps, setTempQuestApps] = React.useState<TempQuestApplication[]>([]);
+    const [reviewingTempId, setReviewingTempId] = React.useState<string | null>(null);
+    const [tempReviewNotes, setTempReviewNotes] = React.useState<Record<string, string>>({});
+    const [tempReviewErr, setTempReviewErr] = React.useState<string | null>(null);
+
     // F4 Gathering overview
     type GatheringSession = { id: string; team_name: string; gathering_date: string; status: string; approved_reward_per_person: number | null; approved_attendee_count: number | null; approved_has_commandant: boolean | null };
     type OnlineApp = { id: string; user_name: string; team_name: string; week_monday: string; status: string; squad_review_notes: string | null };
@@ -747,8 +754,21 @@ export function AdminDashboard({
             listAllGatheringsForAdmin().then(r => {
                 if (r.success) setGatheringData({ offline: r.offline as GatheringSession[], online: r.online as OnlineApp[] });
             });
+            listTempQuestAppsForAdmin().then(r => { if (r.success) setTempQuestApps(r.apps); });
         }
     }, [activeAdminTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleTempQuestReview = async (appId: string, approve: boolean) => {
+        setReviewingTempId(appId);
+        setTempReviewErr(null);
+        const res = await reviewTempQuestByAdmin(appId, approve ? 'approve' : 'reject', tempReviewNotes[appId] || '');
+        if (!res.success) setTempReviewErr(res.error ?? '審核失敗');
+        else if (res.warning) setTempReviewErr(res.warning);
+        const refreshed = await listTempQuestAppsForAdmin();
+        if (refreshed.success) setTempQuestApps(refreshed.apps);
+        setTempReviewNotes(prev => { const n = { ...prev }; delete n[appId]; return n; });
+        setReviewingTempId(null);
+    };
 
     const handleSnapshotTrigger = async (type: 'weekly' | 'monthly') => {
         setTriggerMsg(null);
@@ -1303,6 +1323,60 @@ export function AdminDashboard({
                                     );
                                 })
                             )}
+                        </div>
+                    </section>
+
+                    {/* ── 臨時任務終審 ── */}
+                    <section className="space-y-6">
+                        <div className="flex items-center gap-2 text-blue-400 font-black text-sm uppercase tracking-widest">🎬 臨時加碼任務終審</div>
+                        <div className="bg-slate-900 border-2 border-blue-500/20 p-8 rounded-4xl shadow-xl space-y-4">
+                            {tempQuestApps.length === 0 ? (
+                                <p className="text-sm text-slate-500 text-center py-4">目前無待終審的臨時任務申請</p>
+                            ) : (
+                                tempQuestApps.map(app => (
+                                    <div key={app.id} className="bg-slate-800 rounded-2xl p-5 space-y-3">
+                                        <div className="flex justify-between items-start flex-wrap gap-2">
+                                            <div>
+                                                <p className="font-black text-white">{app.user_name}</p>
+                                                <p className="text-xs text-slate-400">
+                                                    {app.team_name} · 任務：<span className="text-blue-300 font-bold">{app.quest_id}</span> · 日期：{app.quest_date}
+                                                </p>
+                                                {app.squad_review_notes && (
+                                                    <p className="text-xs text-indigo-400 mt-1">隊長備註：{app.squad_review_notes}</p>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-black px-2 py-1 rounded-lg text-blue-400 bg-blue-400/10">待終審</span>
+                                        </div>
+                                        {app.note && <p className="text-xs text-slate-400 italic">「{app.note}」</p>}
+                                        {app.screenshot_url && (
+                                            <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                                                <img src={app.screenshot_url} alt="佐證截圖" loading="lazy"
+                                                    className="max-h-48 rounded-xl border border-slate-700 hover:opacity-90 transition-opacity" />
+                                            </a>
+                                        )}
+                                        <textarea
+                                            placeholder="終審備註（選填）"
+                                            value={tempReviewNotes[app.id] || ''}
+                                            onChange={e => setTempReviewNotes(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                            rows={2}
+                                            className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white text-xs outline-none focus:border-blue-500 resize-none"
+                                        />
+                                        <div className="flex gap-3">
+                                            <button
+                                                disabled={reviewingTempId === app.id}
+                                                onClick={() => handleTempQuestReview(app.id, false)}
+                                                className="flex-1 py-2 bg-red-600/20 text-red-400 font-black rounded-xl text-sm border border-red-600/30 active:scale-95 transition-all disabled:opacity-50"
+                                            >❌ 駁回</button>
+                                            <button
+                                                disabled={reviewingTempId === app.id}
+                                                onClick={() => handleTempQuestReview(app.id, true)}
+                                                className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl text-sm shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                                            >✅ 核准入帳</button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            {tempReviewErr && <p className="text-sm text-red-400 text-center">{tempReviewErr}</p>}
                         </div>
                     </section>
 

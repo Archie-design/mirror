@@ -8,7 +8,7 @@ const SquadGrowthChart = dynamic(
     { ssr: false, loading: () => <div className="h-72 flex items-center justify-center"><Loader2 className="animate-spin text-teal-500" /></div> }
 );
 import { SQUAD_ROLES } from '@/lib/constants';
-import { TeamSettings, BonusApplication, SquadMemberStats } from '@/types';
+import { TeamSettings, BonusApplication, SquadMemberStats, TempQuestApplication } from '@/types';
 import { getSquadGrids, uncompleteCellByCapt } from '@/app/actions/nine-grid';
 import {
     getTeamGatheringContext,
@@ -21,6 +21,10 @@ import {
     reviewOnlineGathering,
     type OnlineGatheringApp,
 } from '@/app/actions/online-gathering';
+import {
+    listTempQuestAppsForCaptain,
+    reviewTempQuestByCaptain,
+} from '@/app/actions/temp-quest-application';
 import { getLogicalDateStr } from '@/lib/utils/time';
 import type { UserNineGrid } from '@/types';
 
@@ -472,6 +476,92 @@ function SquadOnlineGatheringReviewSection({ captainId }: { captainId: string })
     );
 }
 
+function TempQuestReviewSection({ captainId }: { captainId: string }) {
+    const [apps, setApps] = useState<TempQuestApplication[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [reviewingId, setReviewingId] = useState<string | null>(null);
+    const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+    const [err, setErr] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await listTempQuestAppsForCaptain(captainId);
+        if (res.success) setApps(res.apps ?? []);
+        setLoading(false);
+    }, [captainId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleReview = async (appId: string, approve: boolean) => {
+        setReviewingId(appId);
+        setErr(null);
+        const res = await reviewTempQuestByCaptain(appId, captainId, approve, notesMap[appId] || '');
+        if (!res.success) setErr(res.error ?? '審核失敗');
+        await reload();
+        setNotesMap(prev => { const n = { ...prev }; delete n[appId]; return n; });
+        setReviewingId(null);
+    };
+
+    if (!loading && apps.length === 0) return null;
+
+    return (
+        <section className="bg-white border-2 border-blue-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                🎬 臨時加碼任務審核（初審）
+            </h3>
+            {loading ? (
+                <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-blue-500" /></div>
+            ) : (
+                <div className="space-y-3">
+                    {apps.map(app => (
+                        <div key={app.id} className="bg-gray-50 rounded-2xl p-4 space-y-3 border border-gray-200">
+                            <div className="flex justify-between items-start flex-wrap gap-2">
+                                <div>
+                                    <p className="font-black text-gray-900">{app.user_name}</p>
+                                    <p className="text-xs text-gray-500">日期：{app.quest_date}</p>
+                                </div>
+                                <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">待初審</span>
+                            </div>
+                            {app.note && (
+                                <p className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-2 italic">「{app.note}」</p>
+                            )}
+                            {app.screenshot_url && (
+                                <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                                    <img src={app.screenshot_url} alt="佐證截圖" loading="lazy"
+                                        className="max-h-40 rounded-xl border border-gray-200 hover:opacity-90 transition-opacity" />
+                                </a>
+                            )}
+                            <textarea
+                                placeholder="備註（選填，退回時建議說明原因）"
+                                value={notesMap[app.id] || ''}
+                                onChange={e => setNotesMap(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                rows={2}
+                                className="w-full bg-white border border-gray-200 rounded-xl p-2 text-gray-900 text-sm outline-none focus:border-blue-400 resize-none"
+                            />
+                            <div className="flex gap-3">
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, false)}
+                                    className="flex-1 py-2 bg-red-50 text-red-500 font-black rounded-xl border border-red-200 active:scale-95 disabled:opacity-50"
+                                >❌ 退回</button>
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, true)}
+                                    className="flex-[2] py-2 bg-blue-600 text-white font-black rounded-xl shadow-lg active:scale-95 disabled:opacity-50"
+                                >
+                                    {reviewingId === app.id
+                                        ? <Loader2 size={14} className="animate-spin inline" />
+                                        : '✅ 通過，送終審'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
+                </div>
+            )}
+        </section>
+    );
+}
+
 export function CaptainTab({
     teamName, teamSettings, pendingBonusApps, onReviewBonus,
     squadMembersForRoles = [], onSetSquadRole,
@@ -550,6 +640,9 @@ export function CaptainTab({
 
             {/* ── 🌐 本週線上凝聚審核 ── */}
             <SquadOnlineGatheringReviewSection captainId={captainId} />
+
+            {/* ── 🎬 臨時加碼任務初審 ── */}
+            <TempQuestReviewSection captainId={captainId} />
 
             {/* ── 🌐 小隊九宮格總覽 ── */}
             <SquadNineGridSection captainId={captainId} />

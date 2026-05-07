@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { StarWandIcon, RubySlipperIcon, EmeraldCastleIcon, FilmReelIcon, Glasses3DIcon, MegaphoneIcon } from '@/components/ui/FilmIcons';
 
-import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, TeamSettings } from '@/types';
+import { CharacterStats, DailyLog, Quest, SystemSettings, TemporaryQuest, BonusApplication, AdminLog, TeamSettings, TempQuestApplication } from '@/types';
 import { useLogicalDate } from '@/lib/hooks/useLogicalDate';
 import { loginAdmin, logoutAdmin, verifyAdminSession } from '@/app/actions/admin-auth';
 
@@ -33,6 +33,7 @@ import { getBootstrapData } from '@/app/actions/bootstrap';
 import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/team';
 import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
+import { getMyTempQuestApplications } from '@/app/actions/temp-quest-application';
 import { NineGridTab } from '@/components/Tabs/NineGridTab';
 import { getMemberGrid, initMemberGrid, updateUserFortunes } from '@/app/actions/nine-grid';
 import { loginWithPhone, registerAccount, logoutUser } from '@/app/actions/auth';
@@ -108,6 +109,7 @@ export default function App() {
 
   const [pendingFinalReviewApps, setPendingFinalReviewApps] = useState<BonusApplication[]>([]);
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
+  const [myTempQuestApps, setMyTempQuestApps] = useState<TempQuestApplication[]>([]);
 
   const [squadMembers, setSquadMembers] = useState<SquadMemberStats[]>([]);
   const [squadMembersLoaded, setSquadMembersLoaded] = useState(false);
@@ -615,6 +617,8 @@ export default function App() {
       refreshBonusApps(stats),
       getBonusApplications({ userId: stats.UserID, questIdPrefix: 'o' })
         .then(r => { if (r.success) setMyBonusApps(r.applications); }),
+      getMyTempQuestApplications(stats.UserID)
+        .then(apps => setMyTempQuestApps(apps)),
     ]).catch(() => {});
   }, [refreshBonusApps]);
 
@@ -887,6 +891,11 @@ export default function App() {
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
             userId={userData.UserID}
+            tempQuestApplications={myTempQuestApps}
+            onTempQuestAppUpdated={async () => {
+              const apps = await getMyTempQuestApplications(userData.UserID);
+              setMyTempQuestApps(apps);
+            }}
           />
         )}
         {activeTab === 'ninegrid' && userData && (

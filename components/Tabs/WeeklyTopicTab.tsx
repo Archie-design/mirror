@@ -5,7 +5,7 @@ import {
     Phone, Users, Zap,
     Map, Star, Crown, Loader2, QrCode, CheckCircle2,
 } from 'lucide-react';
-import { Quest, DailyLog, TemporaryQuest } from '@/types';
+import { Quest, DailyLog, TemporaryQuest, TempQuestApplication } from '@/types';
 import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { getLogicalDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
 import { WeekCalendarRow } from '@/components/WeekCalendarRow';
@@ -15,6 +15,8 @@ import {
     getMyOnlineGatheringThisWeek,
     type OnlineGatheringApp,
 } from '@/app/actions/online-gathering';
+import { submitTempQuestApplication, cancelTempQuestApplication } from '@/app/actions/temp-quest-application';
+import { compressImage } from '@/lib/utils/compress-image';
 
 interface WeeklyTopicTabProps {
     logs: DailyLog[];
@@ -25,6 +27,19 @@ interface WeeklyTopicTabProps {
     questRewardOverrides?: Record<string, number>;
     disabledQuests?: string[];
     userId: string;
+    tempQuestApplications?: TempQuestApplication[];
+    onTempQuestAppUpdated?: () => Promise<void>;
+}
+
+interface TempQuestFormState {
+    questId: string;
+    questDate: string;
+    file: File | null;
+    previewUrl: string | null;
+    note: string;
+    uploading: boolean;
+    submitting: boolean;
+    error: string | null;
 }
 
 // ── 小組凝聚（線上）一級審核制卡片 ──────────────────────────────────────────
@@ -231,7 +246,11 @@ export function WeeklyTopicTab({
     questRewardOverrides,
     disabledQuests,
     userId,
+    tempQuestApplications = [],
+    onTempQuestAppUpdated,
 }: WeeklyTopicTabProps) {
+    const [tempForm, setTempForm] = useState<TempQuestFormState | null>(null);
+    const [cancelling, setCancelling] = useState<string | null>(null);
     // ── 當前電影主題週期 ──
     const themePeriod = getCurrentThemePeriod();
 
@@ -347,40 +366,247 @@ export function WeeklyTopicTab({
                 </section>
             )}
 
-            {/* ── 臨時加碼任務 ── */}
+            {/* ── 臨時加碼任務（二級審核制）── */}
             {temporaryQuests.length > 0 && (
                 <section className="space-y-3">
                     <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">⏳ 臨時加碼任務</h2>
                     {temporaryQuests.map(tq => {
-                        const isMax = logs.filter(l => l.QuestID.startsWith(tq.id)).length >= 1;
+                        // 活躍申請（非已駁回）
+                        const activeApp = tempQuestApplications.find(
+                            a => a.quest_id === tq.id && a.status !== 'rejected'
+                        );
+                        // 已核准（有 DailyLog）
+                        const isApproved = activeApp?.status === 'approved' ||
+                            logs.some(l => l.QuestID.startsWith(tq.id));
+                        // 是否鎖定（有活躍申請，或已核准）
+                        const isLocked = !!activeApp || isApproved;
+
+                        const isFormOpenForThis = tempForm?.questId === tq.id;
+
+                        const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+                            const raw = e.target.files?.[0];
+                            if (!raw) return;
+                            if (!raw.type.startsWith('image/')) {
+                                setTempForm(prev => prev ? { ...prev, error: '請上傳 JPG、PNG 或 WebP 圖片' } : null);
+                                return;
+                            }
+                            try {
+                                const compressed = await compressImage(raw);
+                                const file = new File([compressed], 'screenshot.jpg', { type: 'image/jpeg' });
+                                const previewUrl = URL.createObjectURL(file);
+                                setTempForm(prev => prev ? { ...prev, file, previewUrl, error: null } : null);
+                            } catch {
+                                setTempForm(prev => prev ? { ...prev, error: '圖片處理失敗，請重試' } : null);
+                            }
+                        };
+
+                        const handleSubmit = async () => {
+                            if (!tempForm) return;
+                            setTempForm(prev => prev ? { ...prev, submitting: true, error: null } : null);
+
+                            let screenshotUrl: string | undefined;
+                            if (tempForm.file) {
+                                setTempForm(prev => prev ? { ...prev, uploading: true } : null);
+                                const fd = new FormData();
+                                fd.append('file', tempForm.file);
+                                fd.append('userId', userId);
+                                fd.append('folder', 'temp_quest');
+                                try {
+                                    const r = await fetch('/api/upload/bonus-screenshot', { method: 'POST', body: fd });
+                                    const j = await r.json();
+                                    if (!j.success) throw new Error(j.error ?? '上傳失敗');
+                                    screenshotUrl = j.url;
+                                } catch (err: unknown) {
+                                    const msg = err instanceof Error ? err.message : '上傳失敗';
+                                    setTempForm(prev => prev ? { ...prev, uploading: false, submitting: false, error: '截圖上傳失敗：' + msg } : null);
+                                    return;
+                                }
+                                setTempForm(prev => prev ? { ...prev, uploading: false } : null);
+                            }
+
+                            const res = await submitTempQuestApplication(
+                                userId, tempForm.questId, tempForm.questDate,
+                                screenshotUrl, tempForm.note || undefined,
+                            );
+                            if (!res.success) {
+                                setTempForm(prev => prev ? { ...prev, submitting: false, error: res.error ?? '提交失敗' } : null);
+                                return;
+                            }
+                            if (tempForm.previewUrl) URL.revokeObjectURL(tempForm.previewUrl);
+                            setTempForm(null);
+                            await onTempQuestAppUpdated?.();
+                        };
+
+                        const handleCancel = async (appId: string) => {
+                            setCancelling(appId);
+                            await cancelTempQuestApplication(userId, appId);
+                            setCancelling(null);
+                            await onTempQuestAppUpdated?.();
+                        };
+
                         return (
-                            <div key={tq.id} className={`p-5 rounded-3xl bg-white border border-blue-200 relative overflow-hidden shadow-sm ${isMax ? 'opacity-50' : ''}`}>
+                            <div key={tq.id} className="rounded-3xl bg-white border border-blue-200 relative overflow-hidden shadow-sm">
                                 <div className="absolute top-0 right-0 bg-blue-100 text-blue-600 px-3 py-1 rounded-bl-xl text-sm font-black uppercase tracking-widest">官方加碼</div>
-                                <div className="flex items-center gap-3 mb-4 mt-2">
-                                    <span className="text-3xl">🎬</span>
-                                    <div className="flex-1">
-                                        <p className="font-bold text-[#1A2A1A] text-base">{tq.title}</p>
-                                        {tq.sub && <p className="text-sm text-blue-600">{tq.sub}</p>}
-                                        {tq.desc && <p className="text-sm text-gray-500 mt-0.5">{tq.desc}</p>}
+                                <div className="p-5">
+                                    <div className="flex items-center gap-3 mb-4 mt-2">
+                                        <span className="text-3xl">🎬</span>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-[#1A2A1A] text-base">{tq.title}</p>
+                                            {tq.sub && <p className="text-sm text-blue-600">{tq.sub}</p>}
+                                            {tq.desc && <p className="text-sm text-gray-500 mt-0.5">{tq.desc}</p>}
+                                        </div>
+                                        <p className="font-black text-blue-600">+{tq.reward.toLocaleString()}</p>
                                     </div>
-                                    <p className="font-black text-blue-600">+{tq.reward.toLocaleString()}</p>
+
+                                    {/* 狀態說明 */}
+                                    {activeApp && activeApp.status !== 'approved' && (
+                                        <div className="mb-3 flex items-center justify-between gap-2">
+                                            {activeApp.status === 'pending' && (
+                                                <>
+                                                    <span className="text-xs font-black text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">⏳ 審核中（{activeApp.quest_date}）</span>
+                                                    <button
+                                                        disabled={cancelling === activeApp.id}
+                                                        onClick={() => handleCancel(activeApp.id)}
+                                                        className="text-xs text-gray-400 hover:text-red-500 font-bold disabled:opacity-50"
+                                                    >
+                                                        {cancelling === activeApp.id ? '取消中…' : '撤回申請'}
+                                                    </button>
+                                                </>
+                                            )}
+                                            {activeApp.status === 'squad_approved' && (
+                                                <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">✓ 初審通過，待終審（{activeApp.quest_date}）</span>
+                                            )}
+                                        </div>
+                                    )}
+                                    {isApproved && (
+                                        <div className="mb-3">
+                                            <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">✅ 已核准入帳（{activeApp?.quest_date}）</span>
+                                        </div>
+                                    )}
+
+                                    {/* 日期按鈕 */}
+                                    <div className="flex justify-between items-center">
+                                        {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
+                                            const d = new Date(currentWeeklyMonday);
+                                            d.setDate(d.getDate() + idx);
+                                            const dateStr = getLogicalDateStr(d);
+                                            const isThisDayApp = activeApp?.quest_date === dateStr;
+                                            const isThisDayApproved = isThisDayApp && activeApp?.status === 'approved';
+                                            const isThisDayPending = isThisDayApp && activeApp?.status === 'pending';
+                                            const isThisDaySquadApproved = isThisDayApp && activeApp?.status === 'squad_approved';
+                                            const isDoneViaDailyLog = logs.some(l => l.QuestID === `${tq.id}|${dateStr}`);
+                                            const isAvailable = !isLocked && !isFormOpenForThis;
+                                            const isThisFormDay = isFormOpenForThis && tempForm?.questDate === dateStr;
+
+                                            let btnClass = 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-blue-50';
+                                            let label: React.ReactNode = day;
+                                            if (isDoneViaDailyLog || isThisDayApproved) {
+                                                btnClass = 'bg-emerald-500 text-white shadow-md';
+                                                label = '✓';
+                                            } else if (isThisDayPending) {
+                                                btnClass = 'bg-amber-400 text-white';
+                                                label = '⏳';
+                                            } else if (isThisDaySquadApproved) {
+                                                btnClass = 'bg-blue-500 text-white';
+                                                label = '✓';
+                                            } else if (isThisFormDay) {
+                                                btnClass = 'bg-blue-600 text-white ring-2 ring-blue-300';
+                                            } else if (isLocked) {
+                                                btnClass = 'bg-gray-100 text-gray-300 cursor-not-allowed';
+                                            }
+
+                                            return (
+                                                <div key={idx} className="flex flex-col items-center gap-1.5">
+                                                    <span className="text-[11px] text-gray-400 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
+                                                    <button
+                                                        disabled={!isAvailable && !isThisFormDay}
+                                                        onClick={() => {
+                                                            if (!isAvailable) return;
+                                                            if (isThisFormDay) {
+                                                                if (tempForm?.previewUrl) URL.revokeObjectURL(tempForm.previewUrl);
+                                                                setTempForm(null);
+                                                                return;
+                                                            }
+                                                            if (tempForm?.previewUrl) URL.revokeObjectURL(tempForm.previewUrl);
+                                                            setTempForm({ questId: tq.id, questDate: dateStr, file: null, previewUrl: null, note: '', uploading: false, submitting: false, error: null });
+                                                        }}
+                                                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${btnClass}`}
+                                                    >{label}</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
-                                        const d = new Date(currentWeeklyMonday);
-                                        d.setDate(d.getDate() + idx);
-                                        const qId = `${tq.id}|${getLogicalDateStr(d)}`;
-                                        const isDone = logs.some(l => l.QuestID === qId);
-                                        return (
-                                            <div key={idx} className="flex flex-col items-center gap-1.5">
-                                                <span className="text-sm text-gray-500 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
-                                                <button onClick={() => isDone ? onUndo({ ...tq, id: qId }) : (!isMax && onCheckIn({ ...tq, id: qId }))}
-                                                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${isDone ? 'bg-[#C0392B] text-white' : 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-[#B2DFC0]'}`}
-                                                >{day}</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+
+                                {/* 展開式提交表單 */}
+                                {isFormOpenForThis && tempForm && (
+                                    <div className="border-t border-blue-100 p-5 bg-blue-50 space-y-4">
+                                        <p className="text-sm font-black text-blue-700">提交佐證 — {tempForm.questDate}</p>
+
+                                        {/* 截圖上傳 */}
+                                        <label className="block">
+                                            <span className="text-xs font-bold text-gray-500 mb-1 block">上傳截圖（選填，建議附上）</span>
+                                            {tempForm.previewUrl ? (
+                                                <div className="relative inline-block">
+                                                    <img src={tempForm.previewUrl} alt="預覽" className="max-h-36 rounded-xl border border-blue-200 object-cover" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (tempForm.previewUrl) URL.revokeObjectURL(tempForm.previewUrl);
+                                                            setTempForm(prev => prev ? { ...prev, file: null, previewUrl: null } : null);
+                                                        }}
+                                                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-black"
+                                                    >✕</button>
+                                                </div>
+                                            ) : (
+                                                <div className="relative">
+                                                    <input
+                                                        type="file"
+                                                        accept="image/jpeg,image/png,image/webp"
+                                                        capture="environment"
+                                                        onChange={handleFileSelect}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                    />
+                                                    <div className="border-2 border-dashed border-blue-300 rounded-2xl p-4 text-center text-sm text-blue-400 font-bold bg-white">
+                                                        📷 點此選擇或拍照上傳
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </label>
+
+                                        {/* 備註 */}
+                                        <textarea
+                                            placeholder="備註（選填）"
+                                            value={tempForm.note}
+                                            onChange={e => setTempForm(prev => prev ? { ...prev, note: e.target.value } : null)}
+                                            rows={2}
+                                            className="w-full border border-blue-200 rounded-xl p-3 text-sm outline-none focus:border-blue-400 resize-none bg-white"
+                                        />
+
+                                        {tempForm.error && (
+                                            <p className="text-xs text-red-500 font-bold">{tempForm.error}</p>
+                                        )}
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (tempForm.previewUrl) URL.revokeObjectURL(tempForm.previewUrl);
+                                                    setTempForm(null);
+                                                }}
+                                                className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-500 font-black text-sm"
+                                            >取消</button>
+                                            <button
+                                                type="button"
+                                                disabled={tempForm.submitting || tempForm.uploading}
+                                                onClick={handleSubmit}
+                                                className="flex-[2] py-2.5 rounded-2xl bg-blue-600 text-white font-black text-sm shadow-lg active:scale-95 disabled:opacity-50"
+                                            >
+                                                {tempForm.uploading ? '上傳中…' : tempForm.submitting ? '提交中…' : '送出申請'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
