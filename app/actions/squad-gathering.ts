@@ -353,9 +353,14 @@ export async function scanGatheringQR(
 
     if (!user) return { success: false, error: '找不到使用者' };
 
+    const isMemberOfTeam = user.TeamName === session.team_name;
     const isCommandant = !!user.IsCommandant;
-    if (isCommandant) {
-        // 大隊長：驗證掃碼的小隊隸屬於大隊長所屬大隊（用 CharacterStats.SquadName 代表大隊）
+
+    if (!isMemberOfTeam) {
+        // 非本小隊成員：僅限大隊長，且必須與小隊隸屬同一大隊
+        if (!isCommandant) {
+            return { success: false, error: '僅限本小隊成員或大隊長可掃此 QR' };
+        }
         const { data: teamMember } = await supabase
             .from('CharacterStats')
             .select('SquadName')
@@ -367,8 +372,6 @@ export async function scanGatheringQR(
         if (!teamBattalion || teamBattalion !== user.SquadName) {
             return { success: false, error: '僅能掃本大隊所轄小隊的 QR' };
         }
-    } else if (user.TeamName !== session.team_name) {
-        return { success: false, error: '僅限本小隊成員或大隊長可掃此 QR' };
     }
 
     const { error } = await supabase
