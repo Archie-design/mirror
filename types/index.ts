@@ -88,6 +88,7 @@ export interface CourseEvent {
   time: string;        // e.g. '19:00–21:40'
   location: string;
   enabled: boolean;    // false = 關閉報名（按鈕 disabled）
+  registrationLink?: string; // 若設定，報名後顯示此連結（取代 QR 碼）
 }
 
 export interface AnnouncementItem {

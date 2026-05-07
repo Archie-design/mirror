@@ -21,7 +21,13 @@ interface CourseTabProps {
 }
 
 export default function CourseTab({ volunteerPassword, courseEvents }: CourseTabProps) {
-    const events = (courseEvents && courseEvents.length > 0) ? courseEvents : DEFAULT_COURSE_EVENTS;
+    const baseEvents = (courseEvents && courseEvents.length > 0) ? courseEvents : DEFAULT_COURSE_EVENTS;
+    // DB-stored events may lack registrationLink; backfill from DEFAULT_COURSE_EVENTS for matching ids
+    const events = baseEvents.map(e => {
+        if (e.registrationLink) return e;
+        const def = DEFAULT_COURSE_EVENTS.find(d => d.id === e.id);
+        return def?.registrationLink ? { ...e, registrationLink: def.registrationLink } : e;
+    });
 
     const [tabView, setTabView] = useState<TabView>('student');
     const [studentView, setStudentView] = useState<StudentView>('select');
@@ -225,14 +231,33 @@ export default function CourseTab({ volunteerPassword, courseEvents }: CourseTab
 
                 <div className="bg-white border-2 border-[#B2DFC0] rounded-3xl p-6 space-y-4 text-center shadow-md">
                     <p className="text-base font-black text-[#1A2A1A]">{reg?.userName}</p>
-                    <div className="flex justify-center">
-                        <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-[#D4ECD9]">
-                            {reg?.registrationId && <QRCode value={reg.registrationId} size={200} />}
+                    {selectedEvent.registrationLink ? (
+                        <div className="space-y-3">
+                            <p className="text-xs text-[#5A7A5A]">身份驗證完成，點下方連結即可進入</p>
+                            <a
+                                href={selectedEvent.registrationLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block w-full py-3.5 px-4 bg-[#1A6B4A] text-white font-black text-sm rounded-2xl shadow-lg active:scale-95 transition-all"
+                            >
+                                {selectedEvent.registrationLink}
+                            </a>
+                            <p className="text-[10px] text-[#8FAF8F] leading-relaxed">
+                                請截圖或書籤保存此頁面
+                            </p>
                         </div>
-                    </div>
-                    <p className="text-[10px] text-[#8FAF8F] leading-relaxed">
-                        請截圖保存此入場憑證<br />場次當天出示給場務夥伴掃描
-                    </p>
+                    ) : (
+                        <>
+                            <div className="flex justify-center">
+                                <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-[#D4ECD9]">
+                                    {reg?.registrationId && <QRCode value={reg.registrationId} size={200} />}
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-[#8FAF8F] leading-relaxed">
+                                請截圖保存此入場憑證<br />場次當天出示給場務夥伴掃描
+                            </p>
+                        </>
+                    )}
                 </div>
 
                 <div className="bg-[#F5FAF7] border border-[#B2DFC0] rounded-2xl px-5 py-4 space-y-2 text-sm text-[#5A7A5A]">

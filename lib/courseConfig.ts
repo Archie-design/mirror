@@ -10,6 +10,7 @@ export const DEFAULT_COURSE_EVENTS: CourseEvent[] = [
         time: '19:00–21:40',
         location: 'Ticc 國際會議中心 201室',
         enabled: true,
+        registrationLink: 'https://cchengroad.com/',
     },
     {
         id: 'class_c',
