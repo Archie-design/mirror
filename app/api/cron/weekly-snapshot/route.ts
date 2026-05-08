@@ -55,7 +55,22 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { weekMonday, start, end } = getLastWeekRange();
+    let { weekMonday, start, end } = getLastWeekRange();
+
+    // ── 賽季週感知處理 ───────────────────────────────────────────────
+    // 賽季第 1 週為 2026-05-10 ~ 2026-05-17（8 天）。
+    // - 5/11 cron（上週 = 5/4-5/10）：5/10 屬於賽季第 1 週，待 5/18 cron 一起處理 → 跳過
+    // - 5/18 cron（上週 = 5/11-5/17）：把 5/10 一併納入，並以 5/10 作為 week_monday 鍵
+    if (weekMonday === '2026-05-04') {
+        return NextResponse.json({ success: true, skipped: true, reason: 'pre-season-week-1-pending' });
+    }
+    if (weekMonday === '2026-05-11') {
+        weekMonday = '2026-05-10';
+        // 邏輯日 5/10 起始於 5/10 12:00 +08（與既有 noon 邊界一致）
+        start = '2026-05-10T12:00:00+08:00';
+        // end 維持 2026-05-18T12:00:00+08:00（不變）
+    }
+
     console.log('[cron/weekly-snapshot] taking snapshot for week_monday =', weekMonday, '(range:', start, '~', end, ')');
 
     const supabase = createClient(supabaseUrl, supabaseKey);

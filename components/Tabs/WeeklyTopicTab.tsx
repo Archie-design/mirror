@@ -21,6 +21,7 @@ import { compressImage } from '@/lib/utils/compress-image';
 interface WeeklyTopicTabProps {
     logs: DailyLog[];
     currentWeeklyMonday: Date;
+    seasonWeekStart: Date;
     temporaryQuests: TemporaryQuest[];
     onCheckIn: (q: Quest) => void;
     onUndo: (q: Quest) => void;
@@ -240,6 +241,7 @@ function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: st
 export function WeeklyTopicTab({
     logs,
     currentWeeklyMonday,
+    seasonWeekStart,
     temporaryQuests,
     onCheckIn,
     onUndo,
@@ -263,7 +265,7 @@ export function WeeklyTopicTab({
             .filter(q => !disabledSet.has(q.id))
             .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
         const countThisWeek = (qId: string) =>
-            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= currentWeeklyMonday).length;
+            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= seasonWeekStart).length;
         return {
             wk1Quest: weeklyQuests.find(q => q.id === 'wk1'),
             wk2Quest: weeklyQuests.find(q => q.id === 'wk2'),
@@ -272,7 +274,7 @@ export function WeeklyTopicTab({
             wk1Count: countThisWeek('wk1'),
             wk2Count: countThisWeek('wk2'),
         };
-    }, [logs, currentWeeklyMonday, questRewardOverrides, disabledQuests]);
+    }, [logs, seasonWeekStart, questRewardOverrides, disabledQuests]);
 
     const makeWeekHandler = (questId: string, quest: Quest) => ({
         onCheckIn: (_qid: string, day: Date) => {

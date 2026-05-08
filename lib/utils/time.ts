@@ -41,6 +41,23 @@ export const getWeeklyMonday = (date: Date = new Date()): Date => {
     return d;
 };
 
+// ── 賽季週分桶 ─────────────────────────────────────────────────────────────
+// 第 1 週特別跨 8 天（2026-05-10 週日 ~ 2026-05-17 週日），第 2 週起回到標準週一錨點。
+// 用於每週任務上限、排行榜本週積分、週快照等「賽季週」邊界。
+// UI 日期按鈕仍以 getWeeklyMonday 為錨（週一起算 7 天），不受影響。
+export const SEASON_W1_START = '2026-05-10';
+export const SEASON_W2_MONDAY = '2026-05-18';
+
+export function getSeasonWeekStart(date: Date = new Date()): Date {
+    const dStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(date);
+    if (dStr >= SEASON_W1_START && dStr < SEASON_W2_MONDAY) {
+        return new Date('2026-05-10T00:00:00+08:00');
+    }
+    return getWeeklyMonday(date);
+}
+
 // ── 活動旅程階段 ────────────────────────────────────────────────────────────
 
 export type ThemePeriodType = 'before' | 'regular' | 'graduation' | 'after';
@@ -69,13 +86,13 @@ export function getCurrentThemePeriod(date: Date = new Date()): ThemePeriod {
     if (dateStr > '2026-07-12') {
         return { title: '感謝參與', emoji: '🏆', type: 'after', taskType: null, weeks: '活動已結束', desc: '感謝所有學員踏上屬於自己的黃磚路！' };
     }
-    if (dateStr >= '2026-05-10' && dateStr <= '2026-05-16') {
+    if (dateStr >= '2026-05-10' && dateStr <= '2026-05-17') {
         return { title: '開學日・踏上黃磚路', emoji: '👟', type: 'regular', taskType: 't1t2', weeks: '第 1 週', desc: '一切都是陌生的，不舒服正是真正開始走路的感覺' };
     }
     if (dateStr >= '2026-07-06') {
         return { title: '畢業典禮・回望旅程', emoji: '✨', type: 'graduation', taskType: 't1t2', weeks: '第 9 週', desc: '停下來回望，看見自己走過的路。黃磚路盡頭沒有大法師，只有一面鏡子' };
     }
-    // 2026-05-17 ~ 2026-07-05（第 2–8 週）
+    // 2026-05-18 ~ 2026-07-05（第 2–8 週）
     return { title: '課後課・旅伴同行', emoji: '🌿', type: 'regular', taskType: 't1t2', weeks: '第 2–8 週', desc: '夥伴成為彼此的鏡子，給出鼓勵的同時已先相信自己值得' };
 }
 

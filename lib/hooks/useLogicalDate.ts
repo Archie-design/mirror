@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getLogicalDateStr, getWeeklyMonday } from '@/lib/utils/time';
+import { getLogicalDateStr, getWeeklyMonday, getSeasonWeekStart } from '@/lib/utils/time';
 
 /**
  * 每分鐘觸發一次 tick，讓依賴「今天 / 本週一」的計算跨午夜時自動刷新。
@@ -36,6 +36,7 @@ export function useLogicalDate() {
     /* eslint-disable react-hooks/exhaustive-deps */
     const logicalTodayStr = useMemo(() => getLogicalDateStr(), [tick]);
     const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), [tick]);
+    const seasonWeekStart = useMemo(() => getSeasonWeekStart(), [tick]);
     /* eslint-enable react-hooks/exhaustive-deps */
-    return { logicalTodayStr, currentWeeklyMonday };
+    return { logicalTodayStr, currentWeeklyMonday, seasonWeekStart };
 }

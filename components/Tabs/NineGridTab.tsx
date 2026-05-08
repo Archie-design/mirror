@@ -55,6 +55,7 @@ interface NineGridTabProps {
     onRefresh: () => void;
     logs: DailyLog[];
     currentWeeklyMonday: Date;
+    seasonWeekStart: Date;
     onCheckIn: (q: Quest) => void;
     onUndo: (q: Quest) => void;
     questRewardOverrides?: Record<string, number>;
@@ -63,7 +64,7 @@ interface NineGridTabProps {
 
 export function NineGridTab({
     userId, userName, userData, grid, onFortuneSave, onRefresh,
-    logs, currentWeeklyMonday, onCheckIn, onUndo,
+    logs, currentWeeklyMonday, seasonWeekStart, onCheckIn, onUndo,
     questRewardOverrides, disabledQuests,
 }: NineGridTabProps) {
     const [fortunes, setFortunes] = useState<Record<string, number>>(() => {
@@ -90,14 +91,14 @@ export function NineGridTab({
             wk4LargeCount: 0,
         };
         const hasCell = grid.cells.some(
-            c => c.completed && c.completed_at && new Date(c.completed_at) >= currentWeeklyMonday
+            c => c.completed && c.completed_at && new Date(c.completed_at) >= seasonWeekStart
         );
         const disabledSet = new Set(disabledQuests || []);
         const allWk4 = WEEKLY_QUEST_CONFIG
             .filter(q => (q.id === 'wk4_small' || q.id === 'wk4_large') && !disabledSet.has(q.id))
             .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
         const countThisWeek = (qId: string) =>
-            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= currentWeeklyMonday).length;
+            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= seasonWeekStart).length;
         return {
             hasCompletedCellThisWeek: hasCell,
             wk4SmallQuest: allWk4.find(q => q.id === 'wk4_small'),
@@ -105,7 +106,7 @@ export function NineGridTab({
             wk4SmallCount: countThisWeek('wk4_small'),
             wk4LargeCount: countThisWeek('wk4_large'),
         };
-    }, [grid, logs, currentWeeklyMonday, questRewardOverrides, disabledQuests]);
+    }, [grid, logs, seasonWeekStart, questRewardOverrides, disabledQuests]);
 
     if (grid) {
         const detail = COMPANION_DETAILS[grid.companion_type];

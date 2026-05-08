@@ -135,7 +135,7 @@ export default function App() {
   };
 
   // 每分鐘自動刷新「今天 / 本週一」的邏輯日期（跨午夜不需手動 reload）
-  const { logicalTodayStr, currentWeeklyMonday } = useLogicalDate();
+  const { logicalTodayStr, currentWeeklyMonday, seasonWeekStart } = useLogicalDate();
 
 
   const isTopicDone = useMemo(() =>
@@ -894,6 +894,7 @@ export default function App() {
           <WeeklyTopicTab
             logs={logs}
             currentWeeklyMonday={currentWeeklyMonday}
+            seasonWeekStart={seasonWeekStart}
             temporaryQuests={temporaryQuests.filter(t => t.active)}
             onCheckIn={handleCheckInAction}
             onUndo={setUndoTarget}
@@ -937,6 +938,7 @@ export default function App() {
             }}
             logs={logs}
             currentWeeklyMonday={currentWeeklyMonday}
+            seasonWeekStart={seasonWeekStart}
             onCheckIn={handleCheckInAction}
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}

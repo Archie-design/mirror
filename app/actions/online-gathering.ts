@@ -4,7 +4,7 @@ import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireSelf, authErrorResponse } from '@/lib/auth';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getWeeklyMonday, getLogicalDateStr } from '@/lib/utils/time';
+import { getSeasonWeekStart, getLogicalDateStr } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 
 // wk3_online 小組凝聚（線上）一級審核流程
@@ -21,9 +21,10 @@ function getServiceClient() {
     return createClient(supabaseUrl, supabaseKey);
 }
 
-// 計算本週一的 YYYY-MM-DD（Asia/Taipei），用於 week_monday 欄位
+// 計算本賽季週起始的 YYYY-MM-DD（Asia/Taipei），用於 week_monday 欄位
+// 第 1 週（5/10–5/17）回傳 2026-05-10；第 2 週起回傳該週週一
 function currentWeekMondayStr(): string {
-    return getLogicalDateStr(getWeeklyMonday());
+    return getLogicalDateStr(getSeasonWeekStart());
 }
 
 export type OnlineGatheringApp = {
