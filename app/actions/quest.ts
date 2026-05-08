@@ -70,11 +70,25 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
             return { success: false, error: '因果已定，僅限回溯今日紀錄' };
     }
 
-    const rewardToDeduct: number = log.RewardPoints ?? 0;
+    let rewardToDeduct: number = log.RewardPoints ?? 0;
 
     const { error: deleteError } = await supabase
         .from('DailyLogs').delete().eq('id', log.id);
     if (deleteError) return { success: false, error: deleteError.message };
+
+    // 連動：撤銷 p1 時，同邏輯日的 p1_dawn 加成也要撤銷（前置不再成立）
+    if (questId === 'p1') {
+        const { data: dawnLogs } = await supabase
+            .from('DailyLogs')
+            .select('*')
+            .eq('UserID', userId)
+            .eq('QuestID', 'p1_dawn');
+        const sameDayDawn = (dawnLogs ?? []).find(l => getLogicalDateStr(l.Timestamp) === logicalTodayStr);
+        if (sameDayDawn) {
+            await supabase.from('DailyLogs').delete().eq('id', sameDayDawn.id);
+            rewardToDeduct += sameDayDawn.RewardPoints ?? 0;
+        }
+    }
 
     const { data: user, error: userError } = await supabase
         .from('CharacterStats').select('Score').eq('UserID', userId).single();
