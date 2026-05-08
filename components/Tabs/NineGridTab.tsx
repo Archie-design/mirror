@@ -123,11 +123,12 @@ export function NineGridTab({
             },
         });
 
-        const renderShareCard = (quest: Quest, count: number, icon: React.ReactNode) => {
+        const renderShareCard = (quest: Quest, count: number, icon: React.ReactNode, lockedByOther: boolean) => {
             const isCapped = count >= 1;
-            const isDisabled = isCapped || !hasCompletedCellThisWeek;
+            const isDimmed = isCapped || lockedByOther;
+            const isDisabled = isCapped || lockedByOther || !hasCompletedCellThisWeek;
             return (
-                <div className={`p-5 rounded-3xl border space-y-4 shadow-sm ${isCapped ? 'opacity-60 bg-white border-[#B2DFC0]' : 'bg-white border-[#B2DFC0]'}`}>
+                <div className={`p-5 rounded-3xl border space-y-4 shadow-sm bg-white border-[#B2DFC0] ${isDimmed ? 'opacity-60' : ''}`}>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0">{icon}</div>
@@ -138,7 +139,10 @@ export function NineGridTab({
                         </div>
                         <span className={`text-sm font-bold ${isCapped ? 'text-[#C0392B]' : 'text-gray-500'}`}>{count} / 1</span>
                     </div>
-                    {!hasCompletedCellThisWeek && !isCapped && (
+                    {lockedByOther && !isCapped && (
+                        <p className="text-xs text-gray-500 font-bold px-1">本週已選擇另一場分享，二擇一</p>
+                    )}
+                    {!lockedByOther && !hasCompletedCellThisWeek && !isCapped && (
                         <p className="text-xs text-amber-600 font-bold px-1">請先完成本週至少一個格子</p>
                     )}
                     <WeekCalendarRow
@@ -167,8 +171,8 @@ export function NineGridTab({
                     <section className="space-y-3 pt-2">
                         <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">人生大戲分享</h2>
                         <div className="space-y-3">
-                            {wk4SmallQuest && renderShareCard(wk4SmallQuest, wk4SmallCount, <Mic size={22} />)}
-                            {wk4LargeQuest && renderShareCard(wk4LargeQuest, wk4LargeCount, <Award size={22} />)}
+                            {wk4SmallQuest && renderShareCard(wk4SmallQuest, wk4SmallCount, <Mic size={22} />, wk4LargeCount >= 1)}
+                            {wk4LargeQuest && renderShareCard(wk4LargeQuest, wk4LargeCount, <Award size={22} />, wk4SmallCount >= 1)}
                         </div>
                     </section>
                 )}
