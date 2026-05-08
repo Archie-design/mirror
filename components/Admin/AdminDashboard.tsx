@@ -4,7 +4,7 @@ import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, Bonus
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
 import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFIG, WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, bulkAdjustScores, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus } from '@/app/actions/admin';
+import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, bulkAdjustScores, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus, updateMemberPhone } from '@/app/actions/admin';
 import type { BulkAdjustResult } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
@@ -61,6 +61,7 @@ function MemberManagementSection() {
     const [editingId, setEditingId] = React.useState<string | null>(null);
     const [editSquad, setEditSquad] = React.useState('');
     const [editTeam, setEditTeam] = React.useState('');
+    const [editPhone, setEditPhone] = React.useState('');
     const [editRole, setEditRole] = React.useState<'captain' | 'commandant' | 'none'>('none');
     const [saving, setSaving] = React.useState(false);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -157,6 +158,7 @@ function MemberManagementSection() {
         setEditSquad(m.SquadName || '');
         setEditTeam(m.TeamName || '');
         setEditRole(m.IsCommandant ? 'commandant' : m.IsCaptain ? 'captain' : 'none');
+        setEditPhone(m.UserID);
         setMsg('');
     };
 
@@ -176,13 +178,33 @@ function MemberManagementSection() {
         setSaving(true); setMsg('');
         const squadChanged = editSquad !== (m.SquadName || '') || editTeam !== (m.TeamName || '');
         const roleChanged = editRole !== (m.IsCommandant ? 'commandant' : m.IsCaptain ? 'captain' : 'none');
+        const normalizedPhone = editPhone.replace(/\D/g, '').replace(/^0/, '');
+        const phoneChanged = normalizedPhone.length === 9 && normalizedPhone !== m.UserID;
+
+        // 後續以 effectiveUserId 串接 transferMember/setMemberRole（電話改完後 UserID 已變）
+        let effectiveUserId = m.UserID;
+
+        if (phoneChanged) {
+            const ok = window.confirm(
+                `⚠️ 將「${m.Name}」的 UserID 從 ${m.UserID} 改為 ${normalizedPhone}\n` +
+                `所有打卡、申請、九宮格紀錄會自動轉移。\n\n確認繼續？`
+            );
+            if (!ok) { setSaving(false); return; }
+            const res = await updateMemberPhone(m.UserID, normalizedPhone);
+            if (!res.success) { setMsg(res.error || '電話更新失敗'); setSaving(false); return; }
+            effectiveUserId = res.newUserId ?? normalizedPhone;
+        } else if (editPhone && editPhone !== m.UserID && normalizedPhone.length !== 9) {
+            setMsg('電話格式不正確（需 9 碼或 09xxxxxxxx）');
+            setSaving(false);
+            return;
+        }
 
         if (squadChanged) {
-            const res = await transferMember(m.UserID, editSquad || null, editTeam || null);
+            const res = await transferMember(effectiveUserId, editSquad || null, editTeam || null);
             if (!res.success) { setMsg(res.error || '轉隊失敗'); setSaving(false); return; }
         }
         if (roleChanged) {
-            const res = await setMemberRole(m.UserID, editRole);
+            const res = await setMemberRole(effectiveUserId, editRole);
             if (!res.success) { setMsg(res.error || '角色更新失敗'); setSaving(false); return; }
         }
         setSaving(false);
@@ -451,7 +473,13 @@ function MemberManagementSection() {
                             )}
 
                             {isEditing && (
-                                <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+                                <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
+                                    <div>
+                                        <label className="text-[10px] text-emerald-200/50 block mb-1 uppercase tracking-widest">電話</label>
+                                        <input value={editPhone} onChange={e => setEditPhone(e.target.value)}
+                                            placeholder="09xxxxxxxx" inputMode="numeric" maxLength={10}
+                                            className="w-full bg-[#061410] border border-emerald-900/60 rounded-lg px-2 py-1.5 text-emerald-100 text-xs outline-none focus:border-[#F5C842]/50 tabular-nums" />
+                                    </div>
                                     <div>
                                         <label className="text-[10px] text-emerald-200/50 block mb-1 uppercase tracking-widest">大隊</label>
                                         <input list="dl-squads" value={editSquad} onChange={e => setEditSquad(e.target.value)}

@@ -255,6 +255,69 @@ export async function transferMember(
     return { success: true };
 }
 
+// ── 成員管理：修改電話號碼（= UserID） ─────────────────────────
+// 連鎖更新 13 張引用此 UserID 的表。AdminActivityLog.target_id 不更新（保留歷史）。
+export async function updateMemberPhone(
+    oldUserId: string,
+    newPhoneRaw: string,
+    actorName: string = 'admin'
+) {
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    const newPhone = standardizePhone(newPhoneRaw);
+    if (newPhone.length !== 9) return { success: false, error: '電話格式不正確（需 9 碼）' };
+    if (newPhone === oldUserId) return { success: false, error: '新電話與原電話相同' };
+
+    const supabase = createClient(_supabaseUrl, _supabaseKey);
+
+    const { data: csCollide } = await supabase.from('CharacterStats').select('UserID').eq('UserID', newPhone).maybeSingle();
+    if (csCollide) return { success: false, error: '此電話已被另一位成員使用' };
+    const { data: rsCollide } = await supabase.from('Rosters').select('phone').eq('phone', newPhone).maybeSingle();
+    if (rsCollide) return { success: false, error: '此電話已存在於名冊' };
+
+    const { data: before } = await supabase.from('CharacterStats')
+        .select('Name, SquadName, TeamName')
+        .eq('UserID', oldUserId)
+        .maybeSingle();
+
+    const client = await connectDb();
+    try {
+        await client.query('BEGIN');
+
+        await client.query(`UPDATE "BonusApplications"           SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "CourseRegistrations"         SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "CourseAttendance"            SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "SquadGatheringCheckins"      SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "SquadGatheringAttendances"   SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "OnlineGatheringApplications" SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "TempQuestApplications"       SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "FinePayments"                SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "WeeklyRankSnapshot"          SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "MonthlyRankSnapshot"         SET user_id   = $1 WHERE user_id   = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "UserNineGrid"                SET member_id = $1 WHERE member_id = $2`, [newPhone, oldUserId]);
+
+        await client.query(`UPDATE "CharacterStats" SET "UserID" = $1 WHERE "UserID" = $2`, [newPhone, oldUserId]);
+        await client.query(`UPDATE "Rosters" SET phone = $1 WHERE phone = $2`, [newPhone, oldUserId]);
+
+        await client.query('COMMIT');
+
+        await logAdminAction('member_phone_change', actorName, newPhone, before?.Name, {
+            from: oldUserId,
+            to: newPhone,
+            squad: before?.SquadName,
+            team: before?.TeamName,
+        });
+        return { success: true, newUserId: newPhone };
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        const msg = error instanceof Error ? error.message : String(error);
+        await logAdminAction('member_phone_change', actorName, oldUserId, before?.Name, { error: msg, attempted: newPhone }, 'error');
+        return { success: false, error: msg };
+    } finally {
+        await client.end().catch(() => {});
+    }
+}
+
 // ── 成員管理：從名單中移除成員 ───────────────────────────────
 // 用於開營一週內無條件退出：刪除學員的所有相關資料（CharacterStats、申請、報到、繳費、九宮格、Rosters 名冊等）
 // DailyLogs 透過 ON DELETE CASCADE 自動清除
