@@ -78,6 +78,8 @@ export interface TempQuestApplication {
   final_review_at?: string;
   final_review_notes?: string;
   created_at?: string;
+  /** 由 server action 從 temporaryquests 取得的任務標題；前端顯示 quest_id 之前先看這個 */
+  quest_title?: string;
 }
 
 export interface CourseEvent {

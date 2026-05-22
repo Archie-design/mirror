@@ -21,6 +21,7 @@ import {
     type SquadGatheringSession,
     type PendingGatheringReview,
 } from '@/app/actions/squad-gathering';
+import { getLogicalDateStr } from '@/lib/utils/time';
 
 const ONE_TIME_QUEST_LABELS: Record<string, string> = {
     o1: '超越巔峰',
@@ -33,6 +34,8 @@ const ONE_TIME_QUEST_LABELS: Record<string, string> = {
     o5: '報高階（訂金）',
     o6: '報高階（完款）',
     o7: '傳愛',
+    o8: '圓夢計畫',
+    o9: '心成活動',
 };
 
 interface CommandantTabProps {
@@ -44,12 +47,10 @@ interface CommandantTabProps {
 }
 
 function isActive(lastCheckIn?: string): boolean {
+    // lastCheckIn 為「最後一筆打卡的邏輯日」（getLogicalDateStr 計算）
+    // 邏輯日一天沒打卡即沉寂：只比對今日邏輯日
     if (!lastCheckIn) return false;
-    const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
-    const todayStr = nowTW.toISOString().slice(0, 10);
-    const yest = new Date(nowTW);
-    yest.setUTCDate(yest.getUTCDate() - 1);
-    return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
+    return lastCheckIn === getLogicalDateStr();
 }
 
 
@@ -115,7 +116,7 @@ function TempQuestFinalReviewSection({
                                     <p className="font-black text-gray-900 text-base">{app.user_name}</p>
                                     <p className="text-sm text-gray-500 mt-0.5">
                                         {app.team_name && <span>{app.team_name} · </span>}
-                                        <span className="text-amber-600 font-bold">{app.quest_id}</span>
+                                        <span className="text-amber-600 font-bold">{app.quest_title ?? app.quest_id}</span>
                                         {' · '}{app.quest_date}
                                     </p>
                                 </div>

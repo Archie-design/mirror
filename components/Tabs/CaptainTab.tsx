@@ -90,12 +90,10 @@ function RolePicker({ member, onSet }: {
 
 
 function isActive(lastCheckIn?: string): boolean {
+    // lastCheckIn 為「最後一筆打卡的邏輯日」（getLogicalDateStr 計算）
+    // 邏輯日一天沒打卡即沉寂：只比對今日邏輯日
     if (!lastCheckIn) return false;
-    const nowTW = new Date(Date.now() + 8 * 3600 * 1000);
-    const todayStr = nowTW.toISOString().slice(0, 10);
-    const yest = new Date(nowTW);
-    yest.setUTCDate(yest.getUTCDate() - 1);
-    return lastCheckIn === todayStr || lastCheckIn === yest.toISOString().slice(0, 10);
+    return lastCheckIn === getLogicalDateStr();
 }
 
 // ── 小隊九宮格總覽 ──────────────────────────────────────────────────────────
@@ -517,7 +515,9 @@ function TempQuestReviewSection({ captainId }: { captainId: string }) {
                             <div className="flex justify-between items-start flex-wrap gap-2">
                                 <div>
                                     <p className="font-black text-gray-900">{app.user_name}</p>
-                                    <p className="text-xs text-gray-500">日期：{app.quest_date}</p>
+                                    <p className="text-xs text-gray-500">
+                                        任務：<span className="text-amber-600 font-bold">{app.quest_title ?? app.quest_id}</span> · 日期：{app.quest_date}
+                                    </p>
                                 </div>
                                 <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">待初審</span>
                             </div>

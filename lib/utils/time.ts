@@ -31,6 +31,21 @@ export const getLogicalDateStr = (dateInput?: Date | string): string => {
 };
 
 /**
+ * 取得台灣時區日曆日字串 (YYYY-MM-DD)
+ * 與 getLogicalDateStr 不同：這裡單純取台灣日曆日，不做中午切換。
+ * 用於「最後活動日」「活躍/沉寂」這類需以日曆日為單位的場景。
+ */
+export const getTaipeiDateStr = (dateInput?: Date | string): string => {
+    const date = dateInput ? new Date(dateInput) : new Date();
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+};
+
+/**
  * 取得本週一 00:00:00 的時間
  */
 export const getWeeklyMonday = (date: Date = new Date()): Date => {

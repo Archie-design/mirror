@@ -12,7 +12,7 @@ import { getCommandantTeamNames } from '@/lib/auth-scope';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// ── 一次性任務獎勵對照表（o1–o7）────────────────────────────────────────────
+// ── 一次性任務獎勵對照表（o1–o9）────────────────────────────────────────────
 const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
     o1:   { reward: 10000, title: '超越巔峰' },
     o2_1: { reward: 3000,  title: '戲劇進修－生命數字' },
@@ -24,10 +24,13 @@ const BONUS_QUEST_CONFIG: Record<string, { reward: number; title: string }> = {
     o5:   { reward: 5000,  title: '報高階（訂金）' },
     o6:   { reward: 10000, title: '報高階（完款）' },
     o7:   { reward: 5000,  title: '傳愛' },
+    o8:   { reward: 10000, title: '圓夢計畫' },
+    o9:   { reward: 1000,  title: '心成活動' },
 };
 
-// 戲劇進修類：一級審核（小隊長核准即最終，直接入帳）
-const DRAMA_TRAINING_QUEST_IDS = new Set(['o2_1', 'o2_2', 'o2_3', 'o2_4']);
+// 一級審核：小隊長核准即最終，直接入帳（無需大隊長終審）
+// o2_1–o2_4 戲劇進修；o9 心成活動
+const DRAMA_TRAINING_QUEST_IDS = new Set(['o2_1', 'o2_2', 'o2_3', 'o2_4', 'o9']);
 
 // ── 小隊長：初審────────────────────────────────────────────────────────────
 // o2_1–o2_4 戲劇進修（一級審核）：初審通過直接入帳
@@ -343,7 +346,9 @@ export async function bulkReviewBonusByAdmin(
 }
 
 // ── 學員：提交一次性任務申請 ──────────────────────────────────────────────────
-const MULTI_SUBMIT_QUEST_IDS = new Set(['o5', 'o6', 'o7']);
+// 可多次申請的任務（不擋重複提交）
+// o5 領袖階訂金（多階）、o6 領袖階完款、o7 傳愛、o9 心成活動
+const MULTI_SUBMIT_QUEST_IDS = new Set(['o5', 'o6', 'o7', 'o9']);
 
 export async function submitBonusApplication(
     userId: string,
@@ -358,13 +363,14 @@ export async function submitBonusApplication(
 ): Promise<{ success: boolean; error?: string }> {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
 
-    // 截止日：o7 為 2026-07-11 結束，其餘為 2026-07-01 結束
+    // 截止日：o7 傳愛、o9 心成活動為 2026-07-11 結束，其餘為 2026-07-01 結束
     // 使用 >= 比對截止瞬間（Taipei 隔日 00:00）以避免 1ms 邊界窗口
-    const deadline = questId === 'o7'
+    const lateDeadlineQuests = new Set(['o7', 'o9']);
+    const deadline = lateDeadlineQuests.has(questId)
         ? new Date('2026-07-12T00:00:00+08:00')
         : new Date('2026-07-02T00:00:00+08:00');
     if (new Date() >= deadline) {
-        const label = questId === 'o7' ? '2026-07-11' : '2026-07-01';
+        const label = lateDeadlineQuests.has(questId) ? '2026-07-11' : '2026-07-01';
         return { success: false, error: `一次性任務已截止（${label}）` };
     }
     if (!interviewTarget.trim()) return { success: false, error: '申請說明不可為空' };

@@ -129,7 +129,7 @@ export function AdminPendingReviewSection({
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="min-w-0">
                                                 <p className="font-black text-white text-sm">{app.user_name}</p>
-                                                <p className="text-xs text-slate-400">{app.team_name ?? '無小隊'} · {app.quest_id} · {app.quest_date}</p>
+                                                <p className="text-xs text-slate-400">{app.team_name ?? '無小隊'} · <span className="text-amber-300 font-bold">{app.quest_title ?? app.quest_id}</span> · {app.quest_date}</p>
                                                 {app.note && <p className="text-xs text-slate-400 italic mt-0.5">學員備註：{app.note}</p>}
                                             </div>
                                         </div>

@@ -1276,7 +1276,7 @@ export function AdminDashboard({
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
                                         {bonusStats.map(s => {
-                                            const LABELS: Record<string, string> = { o1: '超越巔峰', o2_1: '戲劇-數字', o2_2: '戲劇-蛻變', o2_3: '戲劇-複訓', o2_4: '戲劇-告別', o3: '聯誼1年', o4: '聯誼2年', o5: '報高階訂', o6: '報高階款', o7: '傳愛' };
+                                            const LABELS: Record<string, string> = { o1: '超越巔峰', o2_1: '戲劇-數字', o2_2: '戲劇-蛻變', o2_3: '戲劇-複訓', o2_4: '戲劇-告別', o3: '聯誼1年', o4: '聯誼2年', o5: '報高階訂', o6: '報高階款', o7: '傳愛', o8: '圓夢計畫', o9: '心成活動' };
                                             return (
                                                 <tr key={s.quest_id} className="hover:bg-white/5">
                                                     <td className="px-4 py-2 text-slate-200 font-bold">{LABELS[s.quest_id] ?? s.quest_id}</td>
@@ -1310,6 +1310,8 @@ export function AdminDashboard({
                                         o5: '報高階（訂金）',
                                         o6: '報高階（完款）',
                                         o7: '傳愛',
+                                        o8: '圓夢計畫',
+                                        o9: '心成活動',
                                     };
                                     const questLabel = ONE_TIME_LABELS[app.quest_id] || app.quest_id;
                                     return (
@@ -1379,7 +1381,7 @@ export function AdminDashboard({
                                             <div>
                                                 <p className="font-black text-white">{app.user_name}</p>
                                                 <p className="text-xs text-slate-400">
-                                                    {app.team_name} · 任務：<span className="text-blue-300 font-bold">{app.quest_id}</span> · 日期：{app.quest_date}
+                                                    {app.team_name} · 任務：<span className="text-blue-300 font-bold">{app.quest_title ?? app.quest_id}</span> · 日期：{app.quest_date}
                                                 </p>
                                                 {app.squad_review_notes && (
                                                     <p className="text-xs text-indigo-400 mt-1">隊長備註：{app.squad_review_notes}</p>

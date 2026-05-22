@@ -2,14 +2,16 @@ import React from 'react';
 import { Star } from 'lucide-react';
 import { CharacterStats, BonusApplication } from '@/types';
 import { BonusQuestsSection } from '@/components/Tabs/BonusQuestsSection';
+import { HeartActivityCard } from '@/components/Tabs/HeartActivityCard';
 
 interface StatsTabProps {
     userData: CharacterStats;
     myBonusApps: BonusApplication[];
-    onBonusRefresh: () => void;
+    onBonusRefresh: () => Promise<void> | void;
 }
 
 export function StatsTab({ userData, myBonusApps, onBonusRefresh }: StatsTabProps) {
+    const refresh = async () => { await onBonusRefresh(); };
     return (
         <div className="space-y-8 animate-in zoom-in-95 duration-500 mx-auto text-center">
             <div className="grid grid-cols-1 gap-4">
@@ -33,6 +35,16 @@ export function StatsTab({ userData, myBonusApps, onBonusRefresh }: StatsTabProp
                 myApplications={myBonusApps}
                 onRefresh={onBonusRefresh}
             />
+
+            {/* ── 心成活動（一級審核 + 可申請多次） ── */}
+            <section className="space-y-3 text-left">
+                <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1 text-center">💛 心成活動</h2>
+                <HeartActivityCard
+                    userData={userData}
+                    myApps={myBonusApps}
+                    onRefresh={refresh}
+                />
+            </section>
         </div>
     );
 }

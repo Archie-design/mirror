@@ -14,6 +14,21 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 const ACTIVE_STATUSES = ['pending', 'squad_approved', 'approved'] as const;
 
+// 從 temporaryquests 批次取得 title，填入 apps 的 quest_title 欄位
+async function attachQuestTitles(
+    apps: TempQuestApplication[],
+): Promise<TempQuestApplication[]> {
+    if (apps.length === 0) return apps;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const ids = Array.from(new Set(apps.map(a => a.quest_id)));
+    const { data } = await supabase.from('temporaryquests').select('id, title').in('id', ids);
+    const titleMap = new Map<string, string>();
+    for (const row of (data ?? []) as { id: string; title: string }[]) {
+        titleMap.set(row.id, row.title);
+    }
+    return apps.map(a => ({ ...a, quest_title: titleMap.get(a.quest_id) ?? undefined }));
+}
+
 // ── 學員：提交申請 ────────────────────────────────────────────────────────────
 export async function submitTempQuestApplication(
     userId: string,
@@ -155,7 +170,8 @@ export async function listTempQuestAppsForCaptain(
 
     const { data, error } = await query;
     if (error) return { success: false, apps: [], error: error.message };
-    return { success: true, apps: (data ?? []) as TempQuestApplication[] };
+    const apps = await attachQuestTitles((data ?? []) as TempQuestApplication[]);
+    return { success: true, apps };
 }
 
 // ── 小隊長：初審 ──────────────────────────────────────────────────────────────
@@ -251,7 +267,8 @@ export async function listTempQuestAppsForAdmin(): Promise<{
 
     const { data, error } = await query;
     if (error) return { success: false, apps: [], error: error.message };
-    return { success: true, apps: (data ?? []) as TempQuestApplication[] };
+    const apps = await attachQuestTitles((data ?? []) as TempQuestApplication[]);
+    return { success: true, apps };
 }
 
 // ── 管理員 / 大隊長：終審（通過 → 入帳；駁回 → rejected）──────────────────
@@ -356,5 +373,6 @@ export async function listPendingTempQuestsForAdmin(): Promise<{
         .order('created_at', { ascending: true });
 
     if (error) return { success: false, apps: [], error: error.message };
-    return { success: true, apps: (data ?? []) as TempQuestApplication[] };
+    const apps = await attachQuestTitles((data ?? []) as TempQuestApplication[]);
+    return { success: true, apps };
 }
