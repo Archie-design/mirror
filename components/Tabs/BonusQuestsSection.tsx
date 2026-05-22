@@ -212,15 +212,27 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                                     </div>
                                     <p className="text-xs text-gray-400 mt-0.5">{quest.desc}</p>
                                     {apps.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                            {apps.map(a => (
-                                                <div key={a.id} className="flex items-center gap-1">
-                                                    <StatusBadge status={a.status} />
-                                                    {a.interview_target && (
-                                                        <span className="text-[10px] text-gray-400 truncate max-w-[100px]">{a.interview_target}</span>
-                                                    )}
-                                                </div>
-                                            ))}
+                                        <div className="space-y-1.5 mt-1.5">
+                                            {apps.map(a => {
+                                                const rejectionNote = a.status === 'rejected'
+                                                    ? (a.final_review_notes || a.squad_review_notes)
+                                                    : null;
+                                                return (
+                                                    <div key={a.id} className="space-y-0.5">
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            <StatusBadge status={a.status} />
+                                                            {a.interview_target && (
+                                                                <span className="text-[10px] text-gray-400 truncate max-w-[100px]">{a.interview_target}</span>
+                                                            )}
+                                                        </div>
+                                                        {rejectionNote && (
+                                                            <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1">
+                                                                駁回原因：{rejectionNote}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

@@ -6,7 +6,7 @@ import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getSeasonWeekStart } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -595,7 +595,9 @@ export async function reviewGathering(
         .eq('session_id', sessionId);
 
     const attendees = (attRows ?? []);
-    if (attendees.length === 0) return { success: false, error: '此凝聚無出席紀錄，無法核准' };
+    if (attendees.length < 3) {
+        return { success: false, error: '出席人數需至少 3 人（含大隊長），目前 ' + attendees.length + ' 人' };
+    }
 
     const { count: teamMemberCount } = await supabase
         .from('CharacterStats')
@@ -635,9 +637,35 @@ export async function reviewGathering(
     const questId = `wk3_offline|${sessionId}`;
     const questTitle = '小組凝聚（實體）';
     const failedUsers: string[] = [];
+    const cappedUsers: { userId: string; granted: number }[] = [];
+
+    // 每週每人 wk3_offline 累積上限：5000
+    const WEEKLY_CAP = 5000;
+    const weekStart = getSeasonWeekStart();
+    const userIds = attendees.map(a => a.user_id);
+    const { data: existingLogs } = await supabase
+        .from('DailyLogs')
+        .select('UserID, RewardPoints')
+        .in('UserID', userIds)
+        .like('QuestID', 'wk3_offline|%')
+        .gte('Timestamp', weekStart.toISOString());
+
+    const weekTotalByUser = new Map<string, number>();
+    for (const log of (existingLogs ?? []) as { UserID: string; RewardPoints: number | null }[]) {
+        weekTotalByUser.set(log.UserID, (weekTotalByUser.get(log.UserID) ?? 0) + (log.RewardPoints ?? 0));
+    }
+
     for (const a of attendees) {
-        const r = await processCheckInCore(a.user_id, questId, questTitle, reward);
+        const already = weekTotalByUser.get(a.user_id) ?? 0;
+        const remaining = Math.max(0, WEEKLY_CAP - already);
+        const grantReward = Math.min(reward, remaining);
+        if (grantReward <= 0) {
+            cappedUsers.push({ userId: a.user_id, granted: 0 });
+            continue;
+        }
+        const r = await processCheckInCore(a.user_id, questId, questTitle, grantReward);
         if (!r.success) failedUsers.push(a.user_id);
+        else if (grantReward < reward) cappedUsers.push({ userId: a.user_id, granted: grantReward });
     }
 
     await logAdminAction('approve_squad_gathering', reviewerId, sessionId, session.team_name, {
@@ -647,6 +675,7 @@ export async function reviewGathering(
         attendeeCount: attendees.length,
         hasCommandant,
         failedUsers,
+        cappedUsers,  // 因每週 5000 上限被截分的學員（含被截為 0 的）
     }, failedUsers.length > 0 ? 'error' : 'success');
 
     return {

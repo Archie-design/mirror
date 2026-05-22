@@ -208,12 +208,22 @@ export function HeartActivityCard({
                     <p className="text-xs font-bold text-gray-500">過往申請</p>
                     {o9Apps.slice(0, 5).map(a => {
                         const s = STATUS_LABEL[a.status] ?? { label: a.status, cls: 'bg-gray-100 text-gray-600' };
+                        const rejectionNote = a.status === 'rejected'
+                            ? (a.final_review_notes || a.squad_review_notes)
+                            : null;
                         return (
-                            <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
-                                <span className="text-gray-700 truncate flex-1">
-                                    {a.interview_date} · {a.interview_target}
-                                </span>
-                                <span className={`shrink-0 px-2 py-0.5 rounded-lg font-bold ${s.cls}`}>{s.label}</span>
+                            <div key={a.id} className="space-y-1">
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                    <span className="text-gray-700 truncate flex-1">
+                                        {a.interview_date} · {a.interview_target}
+                                    </span>
+                                    <span className={`shrink-0 px-2 py-0.5 rounded-lg font-bold ${s.cls}`}>{s.label}</span>
+                                </div>
+                                {rejectionNote && (
+                                    <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1">
+                                        駁回原因：{rejectionNote}
+                                    </p>
+                                )}
                             </div>
                         );
                     })}

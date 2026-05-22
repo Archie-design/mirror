@@ -124,7 +124,7 @@ export function NineGridTemplateEditor({ adminName }: { adminName: string }) {
             </div>
 
             <p className="text-[10px] text-slate-600">
-                * 修改模板不會影響已初始化的學員個人九宮格，僅對尚未選擇旅伴的學員生效。
+                * 儲存後會同步更新所有已選此旅伴的學員（保留打卡進度），無需重新初始化。
             </p>
         </div>
     );

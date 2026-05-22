@@ -41,9 +41,34 @@ export async function updateTemplate(
 
     if (error) return { success: false, error: '模板更新失敗：' + error.message };
 
+    // 傳播到已選此旅伴的學員，保留各自的 completed / completed_at
+    const { data: existingGrids } = await supabase
+        .from('UserNineGrid')
+        .select('member_id, cells')
+        .eq('companion_type', companionType);
+
+    let propagated = 0;
+    let propagateErrors = 0;
+    for (const grid of (existingGrids ?? []) as { member_id: string; cells: UserNineGridCell[] }[]) {
+        const updatedCells: UserNineGridCell[] = cells.map((tpl, i) => ({
+            label: tpl.label,
+            description: tpl.description,
+            completed: grid.cells[i]?.completed ?? false,
+            completed_at: grid.cells[i]?.completed_at ?? null,
+        }));
+        const { error: upErr } = await supabase
+            .from('UserNineGrid')
+            .update({ cells: updatedCells, cell_score: cellScore })
+            .eq('member_id', grid.member_id);
+        if (upErr) propagateErrors++;
+        else propagated++;
+    }
+
     await logAdminAction('update_nine_grid_template', adminName, companionType, companionType, {
         cellScore,
         cellCount: cells.length,
+        propagated,
+        propagateErrors,
     });
 
     return { success: true };
