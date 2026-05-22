@@ -371,7 +371,7 @@ function GatheringPendingReviews({
                                 <p className="text-xs flex items-center gap-1">
                                     <Crown size={11} className={item.attendees.some(a => a.isCommandant) ? 'text-amber-500' : 'text-gray-400'} />
                                     <span className={item.attendees.some(a => a.isCommandant) ? 'text-amber-600 font-bold' : 'text-gray-500'}>
-                                        {item.attendees.some(a => a.isCommandant) ? '大隊長到場（+100）' : '大隊長未到場'}
+                                        {item.attendees.some(a => a.isCommandant) ? '大隊長到場（+1000）' : '大隊長未到場'}
                                     </span>
                                 </p>
                                 <div className="pt-1 border-t border-gray-100 grid grid-cols-2 gap-1">

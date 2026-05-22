@@ -227,9 +227,9 @@ function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: st
                     <p className="font-bold text-[#1A2A1A] text-base">{quest.title}</p>
                     <p className="text-sm text-gray-500">
                         基礎 +{quest.reward}
-                        <span className="text-amber-600"> · 全到 +100</span>
+                        <span className="text-amber-600"> · 全到 +1000</span>
                         <Crown size={11} className="inline ml-1 text-amber-500" />
-                        <span className="text-amber-600"> 大隊長 +100</span>
+                        <span className="text-amber-600"> 大隊長 +1000</span>
                     </p>
                 </div>
             </div>

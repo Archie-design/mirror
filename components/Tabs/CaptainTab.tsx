@@ -334,7 +334,7 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
                         <div className="flex items-center gap-2 text-xs">
                             <Crown size={14} className={hasCommandant ? 'text-amber-500' : 'text-gray-400'} />
                             <span className={hasCommandant ? 'text-amber-600 font-bold' : 'text-gray-500'}>
-                                {hasCommandant ? '大隊長已到場（每人 +100）' : '大隊長尚未到場'}
+                                {hasCommandant ? '大隊長已到場（每人 +1000）' : '大隊長尚未到場'}
                             </span>
                         </div>
                         {attendees.length > 0 && (
