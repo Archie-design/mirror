@@ -7,6 +7,7 @@ import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
 import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
+import { getCommandantTeamNames } from '@/lib/auth-scope';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -37,17 +38,32 @@ export async function reviewBonusBySquadLeader(
     approve: boolean,
     notes: string = ''
 ) {
-    try { await requireSelf(reviewerId); } catch (e) { return authErrorResponse(e)!; }
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
 
-    const { data: reviewer } = await supabase
-        .from('CharacterStats')
-        .select('IsCaptain, TeamName, Name')
-        .eq('UserID', reviewerId)
-        .single();
+    let reviewer: { IsCaptain: boolean | null; IsCommandant: boolean | null; TeamName: string | null; Name: string | null } | null = null;
+    if (!isAdmin) {
+        try { await requireSelf(reviewerId); } catch (e) { return authErrorResponse(e)!; }
 
-    if (!reviewer?.IsCaptain) return { success: false, error: '僅限小隊長進行初審' };
+        const { data } = await supabase
+            .from('CharacterStats')
+            .select('IsCaptain, IsCommandant, TeamName, Name')
+            .eq('UserID', reviewerId)
+            .single();
+        reviewer = data;
+
+        if (!reviewer?.IsCaptain && !reviewer?.IsCommandant) {
+            return { success: false, error: '僅限小隊長或大隊長進行初審' };
+        }
+    } else {
+        // admin 路徑：用 reviewerId 查 Name 紀錄（若無則 fallback 'admin'）
+        const { data } = await supabase
+            .from('CharacterStats')
+            .select('Name')
+            .eq('UserID', reviewerId)
+            .maybeSingle();
+        reviewer = { IsCaptain: null, IsCommandant: null, TeamName: null, Name: data?.Name ?? 'admin' };
+    }
 
     const { data: app } = await supabase
         .from('BonusApplications')
@@ -57,7 +73,21 @@ export async function reviewBonusBySquadLeader(
 
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'pending') return { success: false, error: '此申請已被審核，無法重複操作' };
-    if (app.squad_name !== reviewer.TeamName) return { success: false, error: '只能審核本小隊的申請' };
+
+    // 範圍驗證（admin 不受限；大隊長可審自己的申請）：小隊長限本小隊；大隊長兜底限本大隊所轄小隊
+    if (!isAdmin) {
+        const isCommandantSelfReview = reviewer!.IsCommandant && app.user_id === reviewerId;
+        if (!isCommandantSelfReview) {
+            if (reviewer!.IsCommandant && !reviewer!.IsCaptain) {
+                const scope = await getCommandantTeamNames(supabase, reviewerId);
+                if (!scope || !scope.teamNames.includes(app.squad_name ?? '')) {
+                    return { success: false, error: '無權限審核非本大隊申請' };
+                }
+            } else if (reviewer!.IsCaptain && app.squad_name !== reviewer!.TeamName) {
+                return { success: false, error: '只能審核本小隊的申請' };
+            }
+        }
+    }
 
     if (!approve) {
         const { error } = await supabase
@@ -100,14 +130,14 @@ export async function reviewBonusBySquadLeader(
         );
 
         if (!checkInRes.success) {
-            await logAdminAction('drama_training_squad_approve', reviewer.Name, appId, app.user_name, {
+            await logAdminAction('drama_training_squad_approve', reviewer?.Name ?? 'admin', appId, app.user_name, {
                 questId: app.quest_id,
                 checkInError: checkInRes.error,
             }, 'error');
             return { success: true, warning: '審核已核准，但入帳失敗：' + checkInRes.error };
         }
 
-        await logAdminAction('drama_training_squad_approve', reviewer.Name, appId, app.user_name, {
+        await logAdminAction('drama_training_squad_approve', reviewer?.Name ?? 'admin', appId, app.user_name, {
             questId: app.quest_id,
             reward: bonusInfo.reward,
         });

@@ -4,6 +4,7 @@ import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
+import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { getLogicalDateStr } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
@@ -177,15 +178,14 @@ export async function scheduleSquadGathering(
     let adminId: string;
     try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
 
-    // 允許大隊長或管理員排定凝聚
+    // 允許大隊長（限本大隊）或管理員排定凝聚
     const isAdmin = await verifyAdminSession();
     if (!isAdmin) {
-        const { data: caller } = await supabase
-            .from('CharacterStats')
-            .select('IsCommandant')
-            .eq('UserID', adminId)
-            .maybeSingle();
-        if (!caller?.IsCommandant) return { success: false, error: '僅限大隊長或管理員操作' };
+        const scope = await getCommandantTeamNames(supabase, adminId);
+        if (!scope) return { success: false, error: '僅限大隊長或管理員操作' };
+        if (!scope.teamNames.includes(teamName)) {
+            return { success: false, error: '無權限排定非本大隊小隊' };
+        }
     }
 
     const { data, error } = await supabase
@@ -220,15 +220,12 @@ export async function cancelSquadGathering(
     let adminId: string;
     try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
 
-    // 允許大隊長或管理員取消凝聚
+    // 允許大隊長（限本大隊）或管理員取消凝聚
     const isAdmin = await verifyAdminSession();
+    let commandantScope: { squadName: string; teamNames: string[] } | null = null;
     if (!isAdmin) {
-        const { data: caller } = await supabase
-            .from('CharacterStats')
-            .select('IsCommandant')
-            .eq('UserID', adminId)
-            .maybeSingle();
-        if (!caller?.IsCommandant) return { success: false, error: '僅限大隊長或管理員操作' };
+        commandantScope = await getCommandantTeamNames(supabase, adminId);
+        if (!commandantScope) return { success: false, error: '僅限大隊長或管理員操作' };
     }
 
     const { data: session } = await supabase
@@ -239,6 +236,9 @@ export async function cancelSquadGathering(
 
     if (!session) return { success: false, error: '找不到凝聚紀錄' };
     if (session.status !== 'scheduled') return { success: false, error: '僅限尚未送審的凝聚可取消' };
+    if (commandantScope && !commandantScope.teamNames.includes(session.team_name)) {
+        return { success: false, error: '無權限取消非本大隊小隊的凝聚' };
+    }
 
     const { error } = await supabase
         .from('SquadGatheringSessions')
@@ -460,15 +460,29 @@ export type PendingGatheringReview = {
 export async function listPendingGatherings(): Promise<{
     success: boolean; error?: string; items?: PendingGatheringReview[];
 }> {
-    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
+    let teamScope: string[] | null = null;
 
-    const { data: rows, error } = await supabase
+    if (!isAdmin) {
+        let callerId: string;
+        try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+        const scope = await getCommandantTeamNames(supabase, callerId);
+        if (!scope) return { success: false, error: '無權限執行此操作' };
+        teamScope = scope.teamNames;
+    }
+
+    let query = supabase
         .from('SquadGatheringSessions')
         .select('*')
         .eq('status', 'pending_review')
         .order('captain_submitted_at', { ascending: true });
+    if (teamScope !== null) {
+        if (teamScope.length === 0) return { success: true, items: [] };
+        query = query.in('team_name', teamScope);
+    }
+
+    const { data: rows, error } = await query;
 
     if (error) return { success: false, error: error.message };
 
@@ -540,12 +554,8 @@ export async function reviewGathering(
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: reviewer } = await supabase
-        .from('CharacterStats')
-        .select('IsCommandant')
-        .eq('UserID', reviewerId)
-        .maybeSingle();
-    if (!reviewer?.IsCommandant) return { success: false, error: '僅限大隊長終審' };
+    const reviewerScope = await getCommandantTeamNames(supabase, reviewerId);
+    if (!reviewerScope) return { success: false, error: '僅限大隊長終審' };
 
     const { data: session } = await supabase
         .from('SquadGatheringSessions')
@@ -556,6 +566,9 @@ export async function reviewGathering(
     if (!session) return { success: false, error: '找不到凝聚紀錄' };
     if (session.status !== 'pending_review') {
         return { success: false, error: '此凝聚不在待審狀態' };
+    }
+    if (!reviewerScope.teamNames.includes(session.team_name)) {
+        return { success: false, error: '無權限審核非本大隊小隊的凝聚' };
     }
 
     if (!approve) {
@@ -653,13 +666,14 @@ export async function listGatheringSessions(
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const isAdmin = await verifyAdminSession();
+    let teamScope: string[] | null = null;
     if (!isAdmin) {
-        const { data: caller } = await supabase
-            .from('CharacterStats')
-            .select('IsCommandant')
-            .eq('UserID', callerId)
-            .maybeSingle();
-        if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
+        const scope = await getCommandantTeamNames(supabase, callerId);
+        if (!scope) return { success: false, error: '無權限執行此操作' };
+        teamScope = scope.teamNames;
+        if (teamNameFilter && !teamScope.includes(teamNameFilter)) {
+            return { success: false, error: '無權限查詢該小隊' };
+        }
     }
 
     let q = supabase
@@ -667,7 +681,12 @@ export async function listGatheringSessions(
         .select('*')
         .order('gathering_date', { ascending: false })
         .limit(50);
-    if (teamNameFilter) q = q.eq('team_name', teamNameFilter);
+    if (teamNameFilter) {
+        q = q.eq('team_name', teamNameFilter);
+    } else if (teamScope !== null) {
+        if (teamScope.length === 0) return { success: true, sessions: [] };
+        q = q.in('team_name', teamScope);
+    }
 
     const { data, error } = await q;
     if (error) return { success: false, error: error.message };

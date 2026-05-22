@@ -3,8 +3,10 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { getSeasonWeekStart, getLogicalDateStr } from '@/lib/utils/time';
+import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { logAdminAction } from '@/app/actions/admin';
 
 // wk3_online 小組凝聚（線上）一級審核流程
@@ -141,20 +143,31 @@ export async function listPendingOnlineGatheringsForCaptain(
 
     const { data: captain } = await supabase
         .from('CharacterStats')
-        .select('IsCaptain, TeamName')
+        .select('IsCaptain, IsCommandant, TeamName')
         .eq('UserID', captainId)
         .single();
 
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長查看' };
-    if (!captain.TeamName) return { success: true, apps: [] };
+    if (!captain?.IsCaptain && !captain?.IsCommandant) {
+        return { success: false, error: '僅限小隊長或大隊長查看' };
+    }
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('OnlineGatheringApplications')
         .select('*')
-        .eq('team_name', captain.TeamName)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
 
+    if (captain.IsCommandant) {
+        const scope = await getCommandantTeamNames(supabase, captainId);
+        if (!scope) return { success: false, error: '大隊長範圍不明（缺 SquadName）' };
+        if (scope.teamNames.length === 0) return { success: true, apps: [] };
+        query = query.in('team_name', scope.teamNames);
+    } else {
+        if (!captain.TeamName) return { success: true, apps: [] };
+        query = query.eq('team_name', captain.TeamName);
+    }
+
+    const { data, error } = await query;
     if (error) return { success: false, error: error.message };
     return { success: true, apps: (data || []).map(mapRow) };
 }
@@ -166,17 +179,31 @@ export async function reviewOnlineGathering(
     approve: boolean,
     notes: string = ''
 ): Promise<{ success: boolean; error?: string; warning?: string; newStatus?: string }> {
-    try { await requireSelf(reviewerId); } catch (e) { return authErrorResponse(e)!; }
-
     const supabase = getServiceClient();
+    const isAdmin = await verifyAdminSession();
 
-    const { data: reviewer } = await supabase
-        .from('CharacterStats')
-        .select('IsCaptain, TeamName, Name')
-        .eq('UserID', reviewerId)
-        .single();
+    let reviewer: { IsCaptain: boolean | null; IsCommandant: boolean | null; TeamName: string | null; Name: string | null } | null = null;
+    if (!isAdmin) {
+        try { await requireSelf(reviewerId); } catch (e) { return authErrorResponse(e)!; }
 
-    if (!reviewer?.IsCaptain) return { success: false, error: '僅限小隊長進行審核' };
+        const { data } = await supabase
+            .from('CharacterStats')
+            .select('IsCaptain, IsCommandant, TeamName, Name')
+            .eq('UserID', reviewerId)
+            .single();
+        reviewer = data;
+
+        if (!reviewer?.IsCaptain && !reviewer?.IsCommandant) {
+            return { success: false, error: '僅限小隊長或大隊長進行審核' };
+        }
+    } else {
+        const { data } = await supabase
+            .from('CharacterStats')
+            .select('Name')
+            .eq('UserID', reviewerId)
+            .maybeSingle();
+        reviewer = { IsCaptain: null, IsCommandant: null, TeamName: null, Name: data?.Name ?? 'admin' };
+    }
 
     const { data: app } = await supabase
         .from('OnlineGatheringApplications')
@@ -186,9 +213,20 @@ export async function reviewOnlineGathering(
 
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'pending') return { success: false, error: '此申請已被審核，無法重複操作' };
-    if (app.team_name !== reviewer.TeamName) return { success: false, error: '只能審核本小隊的申請' };
 
-    const reviewerName = reviewer.Name ?? reviewerId;
+    // 範圍驗證（admin 不受限）
+    if (!isAdmin) {
+        if (reviewer!.IsCommandant && !reviewer!.IsCaptain) {
+            const scope = await getCommandantTeamNames(supabase, reviewerId);
+            if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+                return { success: false, error: '無權限審核非本大隊申請' };
+            }
+        } else if (reviewer!.IsCaptain && app.team_name !== reviewer!.TeamName) {
+            return { success: false, error: '只能審核本小隊的申請' };
+        }
+    }
+
+    const reviewerName = reviewer?.Name ?? reviewerId;
     const nowIso = new Date().toISOString();
 
     if (!approve) {
@@ -249,4 +287,23 @@ export async function reviewOnlineGathering(
     });
 
     return { success: true, newStatus: 'approved' };
+}
+
+// ── 管理員：列出全系統 pending 申請（admin 兜底初審用） ────────────────────────
+export async function listPendingOnlineGatheringsForAdmin(): Promise<{
+    success: boolean; apps?: OnlineGatheringApp[]; error?: string;
+}> {
+    if (!(await verifyAdminSession())) {
+        return { success: false, error: '無權限執行此操作' };
+    }
+
+    const supabase = getServiceClient();
+    const { data, error } = await supabase
+        .from('OnlineGatheringApplications')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, apps: (data || []).map(mapRow) };
 }

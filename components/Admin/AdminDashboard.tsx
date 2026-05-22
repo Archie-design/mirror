@@ -9,6 +9,7 @@ import type { BulkAdjustResult } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
+import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -710,6 +711,7 @@ interface AdminDashboardProps {
     temporaryQuests: TemporaryQuest[];
     pendingFinalReviewApps: BonusApplication[];
     adminLogs: AdminLog[];
+    adminUserId?: string;
     onAddTempQuest: (title: string, sub: string, desc: string, reward: number) => void;
     onToggleTempQuest: (id: string, active: boolean) => void;
     onDeleteTempQuest: (id: string) => void;
@@ -723,7 +725,7 @@ interface AdminDashboardProps {
 export function AdminDashboard({
     adminAuth, onAuth, systemSettings, updateGlobalSetting,
     leaderboard, temporaryQuests,
-    pendingFinalReviewApps, adminLogs,
+    pendingFinalReviewApps, adminLogs, adminUserId,
     onAddTempQuest, onToggleTempQuest, onDeleteTempQuest,
     onImportRoster, onFinalReviewBonus, onAddAnnouncement, onDeleteAnnouncement, onClose
 }: AdminDashboardProps) {
@@ -1246,6 +1248,16 @@ export function AdminDashboard({
                 {/* ── Tab: 審核 ── */}
                 {activeAdminTab === 'review' && (
                 <div className="space-y-8">
+                    {/* Admin 兜底初審區塊 — 處理沒人初審的 pending 申請 */}
+                    <AdminPendingReviewSection
+                        adminUserId={adminUserId ?? 'admin'}
+                        onShowMessage={(msg, type) => {
+                            // 暫用 alert，與既有 AdminDashboard 訊息機制統一可後續改造
+                            if (type === 'error') console.error(msg);
+                            else console.log(msg);
+                        }}
+                    />
+
                     {/* F5 一次性任務申請統計 */}
                     <section className="space-y-4">
                         <div className="flex items-center gap-2 text-violet-400 font-black text-sm uppercase tracking-widest"><BarChart3 size={14} /> 一次性任務申請統計</div>

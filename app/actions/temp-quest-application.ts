@@ -4,6 +4,7 @@ import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
+import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
 import type { TempQuestApplication } from '@/types';
@@ -122,19 +123,37 @@ export async function listTempQuestAppsForCaptain(
 
     const { data: captain } = await supabase
         .from('CharacterStats')
-        .select('IsCaptain, TeamName')
+        .select('IsCaptain, IsCommandant, TeamName')
         .eq('UserID', captainId)
         .maybeSingle();
 
-    if (!captain?.IsCaptain) return { success: false, apps: [], error: '僅限小隊長操作' };
+    if (!captain?.IsCaptain && !captain?.IsCommandant) {
+        return { success: false, apps: [], error: '僅限小隊長或大隊長操作' };
+    }
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('TempQuestApplications')
         .select('*')
-        .eq('team_name', captain.TeamName)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
 
+    if (captain.IsCommandant) {
+        // 大隊長：兜底初審該大隊所轄所有小隊 + 自己的申請（即使無 team_name）
+        const scope = await getCommandantTeamNames(supabase, captainId);
+        if (!scope) return { success: false, apps: [], error: '大隊長範圍不明（缺 SquadName）' };
+        if (scope.teamNames.length === 0) {
+            query = query.eq('user_id', captainId);  // 沒有所轄小隊也至少看自己的
+        } else {
+            // PostgREST or filter: team_name in (...) OR user_id = self
+            const teamList = scope.teamNames.map(n => `"${n.replace(/"/g, '""')}"`).join(',');
+            query = query.or(`team_name.in.(${teamList}),user_id.eq.${captainId}`);
+        }
+    } else {
+        // 小隊長：限本小隊
+        query = query.eq('team_name', captain.TeamName);
+    }
+
+    const { data, error } = await query;
     if (error) return { success: false, apps: [], error: error.message };
     return { success: true, apps: (data ?? []) as TempQuestApplication[] };
 }
@@ -146,26 +165,48 @@ export async function reviewTempQuestByCaptain(
     approve: boolean,
     notes: string = '',
 ): Promise<{ success: boolean; error?: string }> {
-    try { await requireSelf(captainId); } catch (e) { return authErrorResponse(e)!; }
-
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const isAdmin = await verifyAdminSession();
 
-    const { data: captain } = await supabase
-        .from('CharacterStats')
-        .select('IsCaptain, Name')
-        .eq('UserID', captainId)
-        .maybeSingle();
+    let captain: { IsCaptain: boolean | null; IsCommandant: boolean | null; TeamName: string | null; Name: string | null } | null = null;
+    if (!isAdmin) {
+        try { await requireSelf(captainId); } catch (e) { return authErrorResponse(e)!; }
 
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長操作' };
+        const { data } = await supabase
+            .from('CharacterStats')
+            .select('IsCaptain, IsCommandant, TeamName, Name')
+            .eq('UserID', captainId)
+            .maybeSingle();
+        captain = data;
+
+        if (!captain?.IsCaptain && !captain?.IsCommandant) {
+            return { success: false, error: '僅限小隊長或大隊長操作' };
+        }
+    }
 
     const { data: app } = await supabase
         .from('TempQuestApplications')
-        .select('id, status, team_name')
+        .select('id, status, team_name, user_id')
         .eq('id', appId)
         .maybeSingle();
 
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'pending') return { success: false, error: '此申請已不在待審狀態' };
+
+    // 範圍驗證（admin 不受限；大隊長可審自己的申請）
+    if (!isAdmin) {
+        const isCommandantSelfReview = captain!.IsCommandant && app.user_id === captainId;
+        if (!isCommandantSelfReview) {
+            if (captain!.IsCommandant && !captain!.IsCaptain) {
+                const scope = await getCommandantTeamNames(supabase, captainId);
+                if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+                    return { success: false, error: '無權限審核非本大隊申請' };
+                }
+            } else if (captain!.IsCaptain && app.team_name !== captain!.TeamName) {
+                return { success: false, error: '無權限審核非本小隊申請' };
+            }
+        }
+    }
 
     const newStatus = approve ? 'squad_approved' : 'rejected';
     const { error } = await supabase
@@ -188,19 +229,27 @@ export async function listTempQuestAppsForAdmin(): Promise<{
 }> {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const isAdmin = await verifyAdminSession();
+    let teamScope: string[] | null = null;
+
     if (!isAdmin) {
         let callerId: string;
         try { callerId = await requireUser(); } catch { return { success: false, apps: [], error: '請先登入' }; }
-        const { data: caller } = await supabase
-            .from('CharacterStats').select('IsCommandant').eq('UserID', callerId).maybeSingle();
-        if (!caller?.IsCommandant) return { success: false, apps: [], error: '無權限執行此操作' };
+        const scope = await getCommandantTeamNames(supabase, callerId);
+        if (!scope) return { success: false, apps: [], error: '無權限執行此操作' };
+        teamScope = scope.teamNames;
     }
-    const { data, error } = await supabase
+
+    let query = supabase
         .from('TempQuestApplications')
         .select('*')
         .eq('status', 'squad_approved')
         .order('created_at', { ascending: true });
+    if (teamScope !== null) {
+        if (teamScope.length === 0) return { success: true, apps: [] };
+        query = query.in('team_name', teamScope);
+    }
 
+    const { data, error } = await query;
     if (error) return { success: false, apps: [], error: error.message };
     return { success: true, apps: (data ?? []) as TempQuestApplication[] };
 }
@@ -214,13 +263,13 @@ export async function reviewTempQuestByAdmin(
 ): Promise<{ success: boolean; warning?: string; error?: string }> {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const isAdmin = await verifyAdminSession();
+    let commandantId: string | null = null;
     if (!isAdmin) {
-        let callerId: string;
-        try { callerId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+        try { commandantId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
         const { data: caller } = await supabase
-            .from('CharacterStats').select('IsCommandant, Name').eq('UserID', callerId).maybeSingle();
+            .from('CharacterStats').select('IsCommandant, Name').eq('UserID', commandantId).maybeSingle();
         if (!caller?.IsCommandant) return { success: false, error: '無權限執行此操作' };
-        if (reviewerName === 'admin') reviewerName = caller.Name ?? callerId;
+        if (reviewerName === 'admin') reviewerName = caller.Name ?? commandantId;
     }
 
     const { data: app } = await supabase
@@ -231,6 +280,14 @@ export async function reviewTempQuestByAdmin(
 
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'squad_approved') return { success: false, error: '此申請尚未通過小隊長初審' };
+
+    // 大隊長範圍驗證：app.team_name 必須屬於該大隊長所轄大隊
+    if (!isAdmin && commandantId) {
+        const scope = await getCommandantTeamNames(supabase, commandantId);
+        if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+            return { success: false, error: '無權限審核非本大隊申請' };
+        }
+    }
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
     const { error: updateErr } = await supabase
@@ -281,4 +338,23 @@ export async function reviewTempQuestByAdmin(
     }
 
     return { success: true };
+}
+
+// ── 管理員：列出全系統 pending 申請（admin 兜底初審用） ────────────────────────
+export async function listPendingTempQuestsForAdmin(): Promise<{
+    success: boolean; apps: TempQuestApplication[]; error?: string;
+}> {
+    if (!(await verifyAdminSession())) {
+        return { success: false, apps: [], error: '無權限執行此操作' };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase
+        .from('TempQuestApplications')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+
+    if (error) return { success: false, apps: [], error: error.message };
+    return { success: true, apps: (data ?? []) as TempQuestApplication[] };
 }

@@ -124,7 +124,7 @@ export default function App() {
 
   const showCaptainTab = userData?.IsGM
     ? (gmViewMode === 'all' || gmViewMode === 'captain')
-    : !!userData?.IsCaptain;
+    : (!!userData?.IsCaptain || !!userData?.IsCommandant);
   const showCommandantTab = userData?.IsGM
     ? (gmViewMode === 'all' || gmViewMode === 'commandant')
     : !!userData?.IsCommandant;
@@ -209,14 +209,18 @@ export default function App() {
     const alreadyLoaded = activeTab === 'captain' && squadMembersLoaded;
     setActiveTab('captain');
     if (alreadyLoaded) return;
-    if ((userData?.IsCaptain || userData?.IsGM) && userData?.UserID) {
+    if ((userData?.IsCaptain || userData?.IsCommandant || userData?.IsGM) && userData?.UserID) {
       setSquadMembersLoaded(false);
       getSquadMembersStats(userData.UserID).then(res => {
         if (res.success && res.members) setSquadMembers(res.members);
         setSquadMembersLoaded(true);
       });
-      if (userData.TeamName) {
+      // 小隊長：限本小隊；大隊長：用 getBonusApplications 預設 commandant scope
+      if (userData.IsCaptain && userData.TeamName) {
         getBonusApplications({ squadName: userData.TeamName, status: 'pending' })
+          .then(r => { if (r.success) setPendingBonusApps(r.applications); });
+      } else if (userData.IsCommandant) {
+        getBonusApplications({ status: 'pending' })
           .then(r => { if (r.success) setPendingBonusApps(r.applications); });
       }
     }
@@ -1037,6 +1041,7 @@ export default function App() {
           temporaryQuests={temporaryQuests}
           pendingFinalReviewApps={pendingFinalReviewApps}
           adminLogs={adminLogs}
+          adminUserId={userData?.UserID}
           onAddTempQuest={handleAddTempQuest}
           onToggleTempQuest={handleToggleTempQuest}
           onDeleteTempQuest={handleDeleteTempQuest}

@@ -188,6 +188,8 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
         for (const p of displayEntries) {
             const cs = leaderboard.find(l => l.UserID === p.userId);
             if (cs?.IsCommandant) { commandants.push(p); continue; }
+            // 排除無小隊/大隊歸屬的成員（如獨立 admin / 工作人員）— 個人榜照常顯示，僅小隊榜隱藏
+            if (!p.squadName) continue;
             const key = p.teamName || `__solo_${p.userId}`;
             if (!map.has(key)) {
                 map.set(key, {
@@ -230,6 +232,8 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
     const periodSquadRank = useMemo<SquadRow[]>(() => {
         const map = new Map<string, SquadRow>();
         for (const p of displayEntries) {
+            // 排除無小隊/大隊歸屬的成員（如獨立 admin / 工作人員）
+            if (!p.squadName) continue;
             const key = p.teamName || `__solo_${p.userId}`;
             if (!map.has(key)) {
                 map.set(key, {
