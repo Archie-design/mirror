@@ -246,9 +246,9 @@ export async function listTempQuestAppsForAdmin(): Promise<{
     const supabase = createClient(supabaseUrl, supabaseKey);
     const isAdmin = await verifyAdminSession();
     let teamScope: string[] | null = null;
+    let callerId: string | null = null;
 
     if (!isAdmin) {
-        let callerId: string;
         try { callerId = await requireUser(); } catch { return { success: false, apps: [], error: '請先登入' }; }
         const scope = await getCommandantTeamNames(supabase, callerId);
         if (!scope) return { success: false, apps: [], error: '無權限執行此操作' };
@@ -260,9 +260,14 @@ export async function listTempQuestAppsForAdmin(): Promise<{
         .select('*')
         .eq('status', 'squad_approved')
         .order('created_at', { ascending: true });
-    if (teamScope !== null) {
-        if (teamScope.length === 0) return { success: true, apps: [] };
-        query = query.in('team_name', teamScope);
+    if (teamScope !== null && callerId !== null) {
+        // 大隊長：本大隊所轄小隊 + 自己送的（大隊長多數 TeamName=null，否則自送 squad_approved 會被 in() 排除）
+        if (teamScope.length === 0) {
+            query = query.eq('user_id', callerId);
+        } else {
+            const teamList = teamScope.map(n => `"${n.replace(/"/g, '""')}"`).join(',');
+            query = query.or(`team_name.in.(${teamList}),user_id.eq.${callerId}`);
+        }
     }
 
     const { data, error } = await query;
@@ -299,10 +304,14 @@ export async function reviewTempQuestByAdmin(
     if (app.status !== 'squad_approved') return { success: false, error: '此申請尚未通過小隊長初審' };
 
     // 大隊長範圍驗證：app.team_name 必須屬於該大隊長所轄大隊
+    // 自送 bypass：大隊長 TeamName 多為 null，自送紀錄 team_name 也 null，特例放行
     if (!isAdmin && commandantId) {
-        const scope = await getCommandantTeamNames(supabase, commandantId);
-        if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
-            return { success: false, error: '無權限審核非本大隊申請' };
+        const isSelfReview = app.user_id === commandantId;
+        if (!isSelfReview) {
+            const scope = await getCommandantTeamNames(supabase, commandantId);
+            if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+                return { success: false, error: '無權限審核非本大隊申請' };
+            }
         }
     }
 
