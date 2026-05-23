@@ -97,7 +97,7 @@ Primary gameplay currency:
 |-------|---------|
 | `GET /api/auth/line` | Initiates LINE Login OAuth (`?action=login` or `?action=bind&uid=USER_ID`) |
 | `GET /api/auth/line/callback` | OAuth callback — creates/binds account, sets session cookie |
-| `GET /api/cron/weekly-snapshot` | Vercel Cron (Sun 16:30 UTC = Mon 00:30 TW) — writes previous-week leaderboard snapshot; requires `CRON_SECRET` bearer token |
+| `GET /api/cron/weekly-snapshot` | Vercel Cron (Sun 04:30 UTC = Sun 12:30 TW) — writes previous-week leaderboard snapshot (賽季週採週日→週六); requires `CRON_SECRET` bearer token |
 | `GET /api/cron/monthly-snapshot` | Vercel Cron (1st 16:30 UTC = 1st 00:30 TW) — writes previous-month leaderboard snapshot; requires `CRON_SECRET` bearer token |
 
 LINE-related env vars (Login only): `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`

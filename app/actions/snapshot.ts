@@ -123,18 +123,20 @@ function fmtDate(d: Date): string {
 }
 
 function getLastWeekRange(): { weekMonday: string; start: string; end: string } {
+    // 賽季週採「週日 → 週六」，邊界以週日中午 12:00 +08 為界。
+    // 註：回傳欄名 weekMonday 保留歷史名稱，實際存週日日期。
     const twStr = getTaiwanDateStr();
     const [y, m, d] = twStr.split('-').map(n => parseInt(n, 10));
     const twToday = new Date(Date.UTC(y, m - 1, d));
-    const weekday = twToday.getUTCDay() || 7;
-    const thisMonday = new Date(twToday);
-    thisMonday.setUTCDate(twToday.getUTCDate() - (weekday - 1));
-    const lastMonday = new Date(thisMonday);
-    lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+    const weekday = twToday.getUTCDay(); // 0 = Sun
+    const thisSunday = new Date(twToday);
+    thisSunday.setUTCDate(twToday.getUTCDate() - weekday);
+    const lastSunday = new Date(thisSunday);
+    lastSunday.setUTCDate(thisSunday.getUTCDate() - 7);
     return {
-        weekMonday: fmtDate(lastMonday),
-        start: `${fmtDate(lastMonday)}T12:00:00+08:00`,
-        end:   `${fmtDate(thisMonday)}T12:00:00+08:00`,
+        weekMonday: fmtDate(lastSunday),
+        start: `${fmtDate(lastSunday)}T12:00:00+08:00`,
+        end:   `${fmtDate(thisSunday)}T12:00:00+08:00`,
     };
 }
 

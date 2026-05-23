@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/weekly-snapshot",
-      "schedule": "30 4 * * 1"
+      "schedule": "30 4 * * 0"
     },
     {
       "path": "/api/cron/monthly-snapshot",

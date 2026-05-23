@@ -37,7 +37,7 @@ export interface BattalionRankEntry {
 }
 
 export interface SquadGrowthDatum {
-    weekMonday: string;             // YYYY-MM-DD
+    weekMonday: string;             // YYYY-MM-DD（欄名保留，實際為週日日期）
     teamScores: Record<string, number>;  // teamName → 該週分數
 }
 
@@ -47,18 +47,18 @@ function fmtDate(d: Date): string {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-/** 以台灣時區回傳本週週一 YYYY-MM-DD（UTC anchor） */
-function getCurrentWeekMondayDate(): Date {
+/** 以台灣時區回傳本週週日 YYYY-MM-DD（UTC anchor）。賽季週以週日 → 週六為一週。 */
+function getCurrentWeekSundayDate(): Date {
     const now = new Date();
     const twDateStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(now);
     const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
     const today = new Date(Date.UTC(y, m - 1, d));
-    const weekday = today.getUTCDay() || 7;
-    const monday = new Date(today);
-    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
-    return monday;
+    const weekday = today.getUTCDay(); // 0 = Sun
+    const sunday = new Date(today);
+    sunday.setUTCDate(today.getUTCDate() - weekday);
+    return sunday;
 }
 
 function getCurrentMonthStartDate(): Date {
@@ -102,15 +102,16 @@ export async function getCurrentWeekLeaderboard(): Promise<{ success: boolean; e
         const r = authErrorResponse(e); if (r) return r; throw e;
     }
     try {
-        const monday = getCurrentWeekMondayDate();
-        const nextMonday = new Date(monday);
-        nextMonday.setUTCDate(monday.getUTCDate() + 7);
-        const start = `${fmtDate(monday)}T12:00:00+08:00`;
-        const end = `${fmtDate(nextMonday)}T12:00:00+08:00`;
+        const weekStart = getCurrentWeekSundayDate();
+        const nextWeekStart = new Date(weekStart);
+        nextWeekStart.setUTCDate(weekStart.getUTCDate() + 7);
+        const start = `${fmtDate(weekStart)}T12:00:00+08:00`;
+        const end = `${fmtDate(nextWeekStart)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
         return {
             success: true,
-            weekMonday: fmtDate(monday),
+            // 欄名 weekMonday 保留歷史名稱，實際存週日日期
+            weekMonday: fmtDate(weekStart),
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
     } catch (error) {
@@ -125,15 +126,15 @@ export async function getPreviousWeekLeaderboard(): Promise<{ success: boolean; 
         const r = authErrorResponse(e); if (r) return r; throw e;
     }
     try {
-        const monday = getCurrentWeekMondayDate();
-        const prevMonday = new Date(monday);
-        prevMonday.setUTCDate(monday.getUTCDate() - 7);
-        const start = `${fmtDate(prevMonday)}T12:00:00+08:00`;
-        const end   = `${fmtDate(monday)}T12:00:00+08:00`;
+        const weekStart = getCurrentWeekSundayDate();
+        const prevWeekStart = new Date(weekStart);
+        prevWeekStart.setUTCDate(weekStart.getUTCDate() - 7);
+        const start = `${fmtDate(prevWeekStart)}T12:00:00+08:00`;
+        const end   = `${fmtDate(weekStart)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
         return {
             success: true,
-            weekMonday: fmtDate(prevMonday),
+            weekMonday: fmtDate(prevWeekStart),
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
     } catch (error) {
