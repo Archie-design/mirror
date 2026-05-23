@@ -222,31 +222,64 @@ function logicalRangeToIso(fromLogical: string, toLogical: string): { startISO: 
     return { startISO, endISO: `${toNextStr}T12:00:00+08:00` };
 }
 
-export async function exportCommandantDailyLogsCsv(
-    commandantUserId: string,
-    teamName?: string | null,
-    startDate?: string | null,  // YYYY-MM-DD 邏輯日
-    endDate?: string | null,    // YYYY-MM-DD 邏輯日（含當日）
+// 取得呼叫者（小隊長 / 大隊長）可看的小隊範圍
+// 大隊長：本大隊內所有小隊；小隊長：僅本小隊
+async function getLeaderTeamScope(
+    supabase: SupabaseClient,
+    callerId: string,
+): Promise<{ role: 'commandant' | 'captain'; teamNames: string[]; squadName: string | null } | null> {
+    const { data: caller } = await supabase
+        .from('CharacterStats')
+        .select('IsCommandant, IsCaptain, SquadName, TeamName')
+        .eq('UserID', callerId)
+        .maybeSingle();
+    if (!caller) return null;
+    if (caller.IsCommandant && caller.SquadName) {
+        const { data: teams } = await supabase
+            .from('CharacterStats')
+            .select('TeamName')
+            .eq('SquadName', caller.SquadName)
+            .not('TeamName', 'is', null);
+        const teamNames = Array.from(new Set((teams ?? []).map(t => t.TeamName).filter(Boolean) as string[]));
+        return { role: 'commandant', teamNames, squadName: caller.SquadName };
+    }
+    if (caller.IsCaptain && caller.TeamName) {
+        return { role: 'captain', teamNames: [caller.TeamName], squadName: caller.SquadName };
+    }
+    return null;
+}
+
+export async function exportTeamDailyLogsCsv(
+    callerUserId: string,
+    teamName?: string | null,    // 大隊長可指定特定小隊；小隊長忽略此參數（固定本小隊）
+    startDate?: string | null,   // YYYY-MM-DD 邏輯日
+    endDate?: string | null,     // YYYY-MM-DD 邏輯日（含當日）
 ): Promise<{ success: boolean; csv?: string; filename?: string; error?: string }> {
-    try { await requireSelf(commandantUserId); } catch (e) { return authErrorResponse(e)!; }
+    try { await requireSelf(callerUserId); } catch (e) { return authErrorResponse(e)!; }
 
     const supabase = createClient(supabaseUrl, supabaseActionKey);
 
     // 1. scope 驗證
-    const scope = await getCommandantTeamNames(supabase, commandantUserId);
-    if (!scope) return { success: false, error: '僅限大隊長使用' };
-    if (teamName && !scope.teamNames.includes(teamName)) {
+    const scope = await getLeaderTeamScope(supabase, callerUserId);
+    if (!scope) return { success: false, error: '僅限小隊長或大隊長使用' };
+    // 小隊長：teamName 參數忽略
+    const effectiveTeam = scope.role === 'captain' ? scope.teamNames[0] : (teamName || null);
+    if (effectiveTeam && !scope.teamNames.includes(effectiveTeam)) {
         return { success: false, error: '無權匯出此小隊' };
     }
 
     // 2. 取得目標成員
-    const memberQuery = supabase
+    let memberQuery = supabase
         .from('CharacterStats')
-        .select('UserID, Name, TeamName')
-        .eq('SquadName', scope.squadName);
-    const { data: members, error: memErr } = teamName
-        ? await memberQuery.eq('TeamName', teamName)
-        : await memberQuery;
+        .select('UserID, Name, TeamName');
+    if (scope.role === 'commandant' && scope.squadName) {
+        memberQuery = memberQuery.eq('SquadName', scope.squadName);
+        if (effectiveTeam) memberQuery = memberQuery.eq('TeamName', effectiveTeam);
+    } else {
+        // 小隊長：限本小隊
+        memberQuery = memberQuery.eq('TeamName', scope.teamNames[0]);
+    }
+    const { data: members, error: memErr } = await memberQuery;
     if (memErr) return { success: false, error: memErr.message };
     const memberRows = (members ?? []) as MemberRow[];
     if (memberRows.length === 0) return { success: false, error: '找不到隊員' };
@@ -302,7 +335,8 @@ export async function exportCommandantDailyLogsCsv(
 
     const BOM = '﻿';
     const csv = BOM + formatCsvRows(rows);
-    const scopeLabel = teamName ? teamName.replace(/\s/g, '') : scope.squadName.replace(/\s/g, '');
+    const labelSource = effectiveTeam || scope.squadName || scope.teamNames[0] || 'team';
+    const scopeLabel = labelSource.replace(/\s/g, '');
     const filename = `daily_logs_${scopeLabel}_${fromLogical}_${toLogical}.csv`;
     return { success: true, csv, filename };
 }
@@ -355,20 +389,20 @@ export interface MemberDailyDetail {
     bucket: DailyBucket;
 }
 
-export async function getCommandantMemberDailyDetails(
-    commandantUserId: string,
+export async function getMemberDailyDetails(
+    callerUserId: string,
     targetUserId: string,
     startDate?: string | null,
     endDate?: string | null,
 ): Promise<{ success: boolean; member?: { userId: string; name: string; teamName: string | null }; days?: MemberDailyDetail[]; error?: string }> {
-    try { await requireSelf(commandantUserId); } catch (e) { return authErrorResponse(e)!; }
+    try { await requireSelf(callerUserId); } catch (e) { return authErrorResponse(e)!; }
 
     const supabase = createClient(supabaseUrl, supabaseActionKey);
 
-    const scope = await getCommandantTeamNames(supabase, commandantUserId);
-    if (!scope) return { success: false, error: '僅限大隊長使用' };
+    const scope = await getLeaderTeamScope(supabase, callerUserId);
+    if (!scope) return { success: false, error: '僅限小隊長或大隊長使用' };
 
-    // 確認目標隊員在大隊範圍內
+    // 確認目標隊員在 scope 內
     const { data: target, error: tErr } = await supabase
         .from('CharacterStats')
         .select('UserID, Name, TeamName, SquadName')
@@ -376,7 +410,13 @@ export async function getCommandantMemberDailyDetails(
         .maybeSingle();
     if (tErr) return { success: false, error: tErr.message };
     if (!target) return { success: false, error: '找不到該隊員' };
-    if (target.SquadName !== scope.squadName) return { success: false, error: '無權查詢此隊員（非本大隊）' };
+    if (scope.role === 'commandant') {
+        if (target.SquadName !== scope.squadName) return { success: false, error: '無權查詢此隊員（非本大隊）' };
+    } else {
+        if (!target.TeamName || !scope.teamNames.includes(target.TeamName)) {
+            return { success: false, error: '無權查詢此隊員（非本小隊）' };
+        }
+    }
 
     const SEASON_START = '2026-05-10';
     const todayLogical = getLogicalDateStr();

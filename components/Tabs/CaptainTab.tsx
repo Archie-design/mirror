@@ -25,6 +25,9 @@ import {
     listTempQuestAppsForCaptain,
     reviewTempQuestByCaptain,
 } from '@/app/actions/temp-quest-application';
+import { exportTeamDailyLogsCsv, getMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
+import { downloadCsv } from '@/lib/utils/csv-download';
+import { ScrollText, CheckCircle2 } from 'lucide-react';
 import { getLogicalDateStr } from '@/lib/utils/time';
 import type { UserNineGrid } from '@/types';
 
@@ -562,6 +565,188 @@ function TempQuestReviewSection({ captainId }: { captainId: string }) {
     );
 }
 
+// 個人定課查詢結果：單日 card
+function MemberDayCard({ day }: { day: MemberDailyDetail }) {
+    const rows: Array<{ label: string; items: string[] }> = [
+        { label: '每日定課',     items: day.bucket.daily },
+        { label: '打拳',         items: day.bucket.boxing },
+        { label: '其他加權任務', items: day.bucket.pOther },
+        { label: '吃素',         items: day.bucket.diet },
+        { label: '週主題',       items: day.bucket.topicWeek },
+        { label: '天使通話',     items: day.bucket.angel },
+        { label: '凝聚',         items: day.bucket.gather },
+        { label: '九宮格',       items: day.bucket.nine },
+        { label: '一次性任務',   items: day.bucket.once },
+        { label: '臨時加碼',     items: day.bucket.temp },
+    ].filter(r => r.items.length > 0);
+
+    return (
+        <div className="bg-white border border-indigo-100 rounded-2xl p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-black text-gray-800">{day.logicalDate}</span>
+                <span className="text-xs font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-200">
+                    +{day.bucket.total.toLocaleString()} 分
+                </span>
+            </div>
+            {rows.length === 0 ? (
+                <p className="text-xs text-gray-400">當日無紀錄</p>
+            ) : (
+                <div className="space-y-1">
+                    {rows.map(r => (
+                        <div key={r.label} className="flex items-start gap-2 text-xs">
+                            <CheckCircle2 size={12} className="mt-0.5 text-emerald-500 shrink-0" />
+                            <div className="flex-1">
+                                <span className="font-bold text-gray-700">{r.label}</span>
+                                <span className="text-gray-500 ml-2">{r.items.join('、')}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// 小隊長：本隊每日定課明細匯出 + 個人定課查詢
+function CaptainDailyLogsSection({ captainId, members }: {
+    captainId: string;
+    members: SquadMemberStats[];
+}) {
+    const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+    const [logsExporting, setLogsExporting] = useState(false);
+    const [logsStart, setLogsStart] = useState('2026-05-10');
+    const [logsEnd, setLogsEnd] = useState(getLogicalDateStr());
+
+    const [lookupMemberId, setLookupMemberId] = useState('');
+    const [lookupStart, setLookupStart] = useState('2026-05-10');
+    const [lookupEnd, setLookupEnd] = useState(getLogicalDateStr());
+    const [lookupLoading, setLookupLoading] = useState(false);
+    const [lookupResult, setLookupResult] = useState<{
+        member: { userId: string; name: string; teamName: string | null };
+        days: MemberDailyDetail[];
+    } | null>(null);
+
+    const showMsg = (text: string, ok: boolean) => {
+        setMsg({ text, ok });
+        setTimeout(() => setMsg(null), 4000);
+    };
+
+    const handleExport = async () => {
+        if (logsStart > logsEnd) { showMsg('日期區間錯誤：起 > 訖', false); return; }
+        setLogsExporting(true);
+        const res = await exportTeamDailyLogsCsv(captainId, null, logsStart, logsEnd);
+        setLogsExporting(false);
+        if (!res.success || !res.csv) { showMsg(res.error || '匯出失敗', false); return; }
+        downloadCsv(res.csv, res.filename || `daily_logs_${logsStart}_${logsEnd}.csv`);
+    };
+
+    const handleLookup = async () => {
+        if (!lookupMemberId) { showMsg('請選擇隊員', false); return; }
+        if (lookupStart > lookupEnd) { showMsg('日期區間錯誤：起 > 訖', false); return; }
+        setLookupLoading(true);
+        const res = await getMemberDailyDetails(captainId, lookupMemberId, lookupStart, lookupEnd);
+        setLookupLoading(false);
+        if (!res.success || !res.member || !res.days) {
+            setLookupResult(null);
+            showMsg(res.error || '查詢失敗', false);
+            return;
+        }
+        setLookupResult({ member: res.member, days: res.days });
+    };
+
+    return (
+        <section className="bg-white border-2 border-indigo-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                <ScrollText size={18} className="text-indigo-500" /> 小隊定課查詢
+            </h3>
+
+            {msg && (
+                <p className={`text-xs font-bold ${msg.ok ? 'text-emerald-600' : 'text-rose-600'}`}>{msg.text}</p>
+            )}
+
+            {/* 匯出每日定課明細 */}
+            <div>
+                <p className="text-xs font-black text-indigo-600 mb-2 tracking-widest">每日定課明細匯出（本小隊）</p>
+                <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col text-xs text-gray-600 font-bold">
+                        起
+                        <input type="date" value={logsStart} onChange={e => setLogsStart(e.target.value)}
+                            className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                    </label>
+                    <label className="flex flex-col text-xs text-gray-600 font-bold">
+                        訖
+                        <input type="date" value={logsEnd} onChange={e => setLogsEnd(e.target.value)}
+                            className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                    </label>
+                    <button
+                        onClick={handleExport}
+                        disabled={logsExporting}
+                        className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-indigo-500 text-white hover:bg-indigo-600 active:scale-95 transition-all text-sm font-black min-h-[44px] disabled:opacity-50"
+                    >
+                        <ScrollText size={14} />{logsExporting ? '匯出中…' : '下載明細'}
+                    </button>
+                </div>
+            </div>
+
+            {/* 查詢個人定課 */}
+            <div className="pt-3 border-t border-gray-100">
+                <p className="text-xs font-black text-indigo-600 mb-2 tracking-widest">查詢個人定課</p>
+                <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col text-xs text-gray-600 font-bold">
+                        隊員
+                        <select
+                            value={lookupMemberId}
+                            onChange={e => setLookupMemberId(e.target.value)}
+                            className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm min-w-[8rem]"
+                        >
+                            <option value="">請選擇</option>
+                            {members.map(m => (
+                                <option key={m.UserID} value={m.UserID}>{m.Name}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="flex flex-col text-xs text-gray-600 font-bold">
+                        起
+                        <input type="date" value={lookupStart} onChange={e => setLookupStart(e.target.value)}
+                            className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                    </label>
+                    <label className="flex flex-col text-xs text-gray-600 font-bold">
+                        訖
+                        <input type="date" value={lookupEnd} onChange={e => setLookupEnd(e.target.value)}
+                            className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                    </label>
+                    <button
+                        onClick={handleLookup}
+                        disabled={lookupLoading}
+                        className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-indigo-500 text-white hover:bg-indigo-600 active:scale-95 transition-all text-sm font-black min-h-[44px] disabled:opacity-50"
+                    >
+                        {lookupLoading ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+                        {lookupLoading ? '查詢中…' : '查詢'}
+                    </button>
+                </div>
+
+                {lookupResult && (
+                    <div className="mt-4 space-y-3">
+                        <div className="text-sm font-black text-gray-800">
+                            {lookupResult.member.name}
+                            <span className="text-gray-500 font-normal ml-2 text-xs">
+                                {lookupResult.member.teamName ?? '未編組'} · {lookupResult.member.userId}
+                            </span>
+                        </div>
+                        {lookupResult.days.length === 0 ? (
+                            <p className="text-sm text-gray-500">此區間無紀錄</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {lookupResult.days.map(d => <MemberDayCard key={d.logicalDate} day={d} />)}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+}
+
 export function CaptainTab({
     teamName, teamSettings, pendingBonusApps, onReviewBonus,
     squadMembersForRoles = [], onSetSquadRole,
@@ -629,6 +814,9 @@ export function CaptainTab({
                     </div>
                 )}
             </section>
+
+            {/* ── 📋 小隊定課查詢 ── */}
+            <CaptainDailyLogsSection captainId={captainId} members={squadMembers} />
 
             {/* ── 📈 小隊成長曲線 ── */}
             <section className="bg-white border-2 border-emerald-100 p-4 rounded-4xl shadow-md">

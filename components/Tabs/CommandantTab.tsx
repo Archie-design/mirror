@@ -10,7 +10,7 @@ const SquadGrowthChart = dynamic(
 );
 import { CharacterStats, BonusApplication, SquadMemberStats, TempQuestApplication } from '@/types';
 import { exportMembersWithSummary } from '@/app/actions/admin';
-import { exportCommandantDailyLogsCsv, getCommandantMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
+import { exportTeamDailyLogsCsv, getMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
 import { downloadCsv } from '@/lib/utils/csv-download';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
@@ -494,7 +494,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
         if (!userData.UserID) return;
         if (logsStart > logsEnd) { onShowMessage('日期區間錯誤：起 > 訖', 'error'); return; }
         setLogsExporting(true);
-        const res = await exportCommandantDailyLogsCsv(
+        const res = await exportTeamDailyLogsCsv(
             userData.UserID,
             logsTeam || null,
             logsStart,
@@ -510,7 +510,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
         if (!lookupMemberId) { onShowMessage('請選擇隊員', 'error'); return; }
         if (lookupStart > lookupEnd) { onShowMessage('日期區間錯誤：起 > 訖', 'error'); return; }
         setLookupLoading(true);
-        const res = await getCommandantMemberDailyDetails(
+        const res = await getMemberDailyDetails(
             userData.UserID,
             lookupMemberId,
             lookupStart,
