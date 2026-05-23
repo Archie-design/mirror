@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Cron 執行時間：每週日 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）週日 12:30
-// 賽季週採「週日 → 週六」7 天，cron 於週日中午 12:00 後執行可定格「上週日 12:00 → 這週日 12:00」完整資料。
-// vercel.json schedule: "30 4 * * 0"（UTC）= 每週日 04:30 UTC = 台灣時間週日 12:30
+// Cron 執行時間：每週一 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）週一 12:30
+// 賽季週採「週一 → 週日」7 天（W1 特例除外），cron 於週一中午 12:00 後執行
+// 可定格「上週一 12:00 → 這週一 12:00」完整資料（過了 noon cutoff）。
+// vercel.json schedule: "30 4 * * 1"（UTC）= 每週一 04:30 UTC = 台灣時間週一 12:30
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -18,28 +19,26 @@ interface AggregateRow {
 }
 
 function getLastWeekRange(): { weekMonday: string; start: string; end: string } {
-    // 取得「上週日 12:00 Asia/Taipei」與「這週日 12:00 Asia/Taipei」
-    // 賽季週採「週日 → 週六」，邊界取邏輯日中午 12:00 +08。
-    // 註：回傳欄名 weekMonday 保留歷史名稱，實際存週日日期。
+    // 取得「上週一 12:00 Asia/Taipei」與「這週一 12:00 Asia/Taipei」
+    // 賽季週採「週一 → 週日」(W1 特例由 backfill 腳本處理，cron 不再特例)。
     const now = new Date();
     const twDateStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(now);
     const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
     const twToday = new Date(Date.UTC(y, m - 1, d));
-    const weekday = twToday.getUTCDay(); // 0 = Sun, 6 = Sat
-    // 這週日（若 cron 於週日當天觸發，weekday=0，不退）
-    const thisSunday = new Date(twToday);
-    thisSunday.setUTCDate(twToday.getUTCDate() - weekday);
-    // 上週日
-    const lastSunday = new Date(thisSunday);
-    lastSunday.setUTCDate(thisSunday.getUTCDate() - 7);
+    // ISO weekday: 1 = Mon, 7 = Sun
+    const weekday = twToday.getUTCDay() || 7;
+    const thisMonday = new Date(twToday);
+    thisMonday.setUTCDate(twToday.getUTCDate() - (weekday - 1));
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
 
     const fmt = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     return {
-        weekMonday: fmt(lastSunday),
-        start: `${fmt(lastSunday)}T12:00:00+08:00`,
-        end:   `${fmt(thisSunday)}T12:00:00+08:00`,
+        weekMonday: fmt(lastMonday),
+        start: `${fmt(lastMonday)}T12:00:00+08:00`,
+        end:   `${fmt(thisMonday)}T12:00:00+08:00`,
     };
 }
 
@@ -55,9 +54,10 @@ export async function GET(request: Request) {
 
     const { weekMonday, start, end } = getLastWeekRange();
 
-    // 賽季週採「週日 → 週六」，W1 = 5/10–5/16 自然落在標準週上，無需特例。
-    // 5/24 (週日) 為第一次新規則 cron，寫入 W2 (5/17–5/23)。
-    // W1 (5/10–5/16) 由一次性腳本 scripts/backfill_w1_snapshot.ts 補寫。
+    // 賽季週採「W1 5/10–5/17 8 天特例 + W2+ 週一-週日」。
+    // W1 由 scripts/backfill_w1_snapshot.ts 手動補寫；
+    // 第一次自動 cron 為 5/25(一) 12:30 → 寫入 W2 (5/18–5/24)。
+    // cron 不再加 W1 特例（5/11、5/18 cron 已過時）。
 
     console.log('[cron/weekly-snapshot] taking snapshot for week_monday =', weekMonday, '(range:', start, '~', end, ')');
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getLogicalDateStr, getWeeklySunday, getSeasonWeekStart } from '@/lib/utils/time';
+import { getLogicalDateStr, getWeeklyMonday, getSeasonWeekStart } from '@/lib/utils/time';
 
 /**
  * 每分鐘觸發一次 tick，讓依賴「今天 / 本週一」的計算跨午夜時自動刷新。
@@ -32,11 +32,13 @@ export function useLogicalDate() {
             if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis);
         };
     }, []);
-    // tick 作為 useMemo 觸發器：每分鐘 setTick 後重新計算邏輯日 / 本週起算日（週日）
+    // tick 作為 useMemo 觸發器：每分鐘 setTick 後重新計算
+    // - currentWeeklyMonday：純週一錨，給日曆 UI（WeekCalendarRow 等）顯示 7 格
+    // - seasonWeekStart：賽季週錨（W1 特例 + W2+ 週一），給每週限制計數
     /* eslint-disable react-hooks/exhaustive-deps */
     const logicalTodayStr = useMemo(() => getLogicalDateStr(), [tick]);
-    const currentWeekStart = useMemo(() => getWeeklySunday(), [tick]);
+    const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), [tick]);
     const seasonWeekStart = useMemo(() => getSeasonWeekStart(), [tick]);
     /* eslint-enable react-hooks/exhaustive-deps */
-    return { logicalTodayStr, currentWeekStart, seasonWeekStart };
+    return { logicalTodayStr, currentWeeklyMonday, seasonWeekStart };
 }

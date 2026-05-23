@@ -1,12 +1,11 @@
 /**
- * 一次性：補寫賽季 W1 (2026-05-10 ~ 2026-05-16) WeeklyRankSnapshot。
+ * 一次性：補寫賽季 W1 (2026-05-10 ~ 2026-05-17, 8 天) WeeklyRankSnapshot。
  *
- * 背景：原規則 W1 = 5/10-5/17 (8天)，cron 在 5/18 把 5/10-5/17 寫成一筆 week_monday='2026-05-10'。
- *       現規則改為「週日 → 週六」7 天，W1 = 5/10-5/16，5/17 起為 W2。
- *       cron schedule 改為週日 12:30，第一次寫入 = 5/24（寫入 W2 5/17-5/23）。
- *       本腳本補寫 W1 5/10-5/16 snapshot：
- *         1. 若 DB 已有 week_monday='2026-05-10' 紀錄（5/18 舊 cron 寫入的 8 天版本）→ 先刪除
- *         2. 重新聚合 5/10 12:00 ~ 5/17 12:00 區間（7 天）並寫入
+ * 背景：賽季 W1 為 5/10(日)–5/17(日) 8 天特例（W2+ 回歸週一–週日）。
+ *       cron 排程為週一 12:30 TW，下次自動觸發為 5/25(一) → 寫入 W2 (5/18–5/24)。
+ *       本腳本補寫 W1 8 天 snapshot：
+ *         1. 若 DB 已有 week_monday='2026-05-10' 紀錄（先前 7 天版本）→ 先刪除
+ *         2. 重新聚合 5/10 12:00 ~ 5/18 12:00 區間（8 天，含 5/17 一整天）並寫入
  *
  * 用法：
  *   Dry-run：npx ts-node scripts/backfill_w1_snapshot.ts
@@ -25,9 +24,9 @@ const supabase = createClient(
 
 const DRY_RUN = !process.argv.includes('--apply');
 
-const WEEK_MONDAY = '2026-05-10';  // 欄位沿用，內容為週日日期
+const WEEK_MONDAY = '2026-05-10';
 const START = '2026-05-10T12:00:00+08:00';
-const END   = '2026-05-17T12:00:00+08:00';
+const END   = '2026-05-18T12:00:00+08:00';  // 含 5/17 整個邏輯日
 
 interface AggregateRow {
     user_id: string;
@@ -41,7 +40,7 @@ interface AggregateRow {
 async function main() {
     console.log(`=== W1 snapshot backfill ===`);
     console.log(`Mode: ${DRY_RUN ? 'DRY-RUN（不寫入）' : 'APPLY'}`);
-    console.log(`Range: ${START} ~ ${END}（7 天）\n`);
+    console.log(`Range: ${START} ~ ${END}（8 天，W1 特例含 5/17）\n`);
 
     // 1. 查既有 week_monday='2026-05-10' 紀錄
     const { data: existing, error: existErr } = await supabase

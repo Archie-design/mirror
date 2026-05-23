@@ -7,6 +7,7 @@ import { DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG, DAWN_QUEST, DIET_QUEST_CONFI
 import { listAllMembers, transferMember, setMemberRole, deleteMember, getMemberActivityStats, exportMemberScoresCsv, exportMembersWithSummary, getBonusApplicationStats, listAllGatheringsForAdmin, getMemberCheckInHistory, deleteCheckInRecord, adjustMemberScore, bulkAdjustScores, listTestAccounts, purgeTestAccounts, resetSeasonData, setMemberAdminStatus, updateMemberPhone } from '@/app/actions/admin';
 import type { BulkAdjustResult } from '@/app/actions/admin';
 import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEditor';
+import { AdminLeaderboardSection } from '@/components/Admin/AdminLeaderboardSection';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
@@ -1527,22 +1528,8 @@ export function AdminDashboard({
                 {/* ── Tab: 系統 ── */}
                 {activeAdminTab === 'system' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><Users size={16} /> 旅人榜預覽</div>
-                        <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden divide-y divide-slate-800 shadow-xl max-h-[400px] overflow-y-auto">
-                            {leaderboard.map((p, i) => (
-                                <div key={p.UserID} className="flex items-center gap-4 p-4 hover:bg-white/5 transition-colors">
-                                    <span className="text-xs font-black text-slate-600 w-4 text-center">{i + 1}</span>
-                                    <div className="flex-1 text-left">
-                                        <p className="font-bold text-white text-sm">{p.Name}</p>
-                                        <p className="text-[10px] text-slate-500 italic">{p.SquadName || '—'}{p.SquadRole ? ` · ${p.SquadRole}` : ''}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs font-black text-orange-500">{(p.Score ?? 0).toLocaleString()} 分</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                    <section className="space-y-4">
+                        <AdminLeaderboardSection leaderboard={leaderboard} />
                     </section>
 
                     <section className="space-y-6">

@@ -1,19 +1,9 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Crown, Users, User, Building2, Calendar, TrendingUp, Loader2 } from 'lucide-react';
+import { Crown, Users, User, Building2, Calendar, Loader2 } from 'lucide-react';
 import { CharacterStats } from '@/types';
-import {
-    getCurrentWeekLeaderboard,
-    getPreviousWeekLeaderboard,
-    getPastWeekLeaderboard,
-    getCurrentMonthLeaderboard,
-    getPreviousMonthLeaderboard,
-    getPastMonthLeaderboard,
-    listAvailableWeeks,
-    listAvailableMonths,
-    PersonalRankEntry,
-} from '@/app/actions/rank';
+import { getCurrentWeekLeaderboard, PersonalRankEntry } from '@/app/actions/rank';
 
 interface RankTabProps {
     leaderboard: CharacterStats[];
@@ -21,7 +11,6 @@ interface RankTabProps {
     currentUser?: CharacterStats;  // 當前使用者完整資料（用於 RBAC 細項展開判斷）
 }
 
-type Period = 'week' | 'month' | 'cumulative';
 type Scope = 'personal' | 'squad' | 'battalion';
 
 const RANK_BADGE: Record<number, string> = {
@@ -35,145 +24,60 @@ function avatarColor(name?: string | null) {
     return AVATAR_COLORS[((name?.charCodeAt(0)) ?? 0) % AVATAR_COLORS.length];
 }
 
+// 學員端旅人榜：只顯示「本週」個人 / 小隊 / 大隊三種排行。
+// 累積、月榜、過往等查詢全部移到大法師密室「旅人榜」子區塊。
+// 小隊平均：大隊長個人分數計入本大隊每個小隊的分母（與業務認知一致）。
 export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProps) {
-    const [period, setPeriod] = useState<Period>('cumulative');
     const [scope, setScope] = useState<Scope>('personal');
-    const [periodOffset, setPeriodOffset] = useState(0);
     const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
 
-    // 期間資料（週/月榜，從 server 載入；cumulative 直接用 props.leaderboard）
-    const [periodEntries, setPeriodEntries] = useState<PersonalRankEntry[]>([]);
-    const [periodLoading, setPeriodLoading] = useState(false);
-    const [periodError, setPeriodError] = useState<string | null>(null);
-    const [availableWeeks, setAvailableWeeks] = useState<string[]>([]);
-    const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-    // 當前顯示期間的具體起算日（YYYY-MM-DD）；累積榜時為 null
-    const [displayedAnchor, setDisplayedAnchor] = useState<string | null>(null);
+    const [weekEntries, setWeekEntries] = useState<PersonalRankEntry[]>([]);
+    const [weekAnchor, setWeekAnchor] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    // 期間切換時：拉資料
     useEffect(() => {
-        if (period === 'cumulative') { setDisplayedAnchor(null); return; }
         let cancelled = false;
         (async () => {
-            setPeriodLoading(true);
-            setPeriodError(null);
-            try {
-                if (period === 'week') {
-                    if (periodOffset === 0) {
-                        const r = await getCurrentWeekLeaderboard();
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(r.weekMonday ?? null);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    } else if (periodOffset === -1) {
-                        const r = await getPreviousWeekLeaderboard();
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(r.weekMonday ?? null);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    } else {
-                        const target = availableWeeks[periodOffset - 1];
-                        if (!target) { if (!cancelled) { setPeriodEntries([]); setDisplayedAnchor(null); } return; }
-                        const r = await getPastWeekLeaderboard(target);
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(target);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    }
-                } else if (period === 'month') {
-                    if (periodOffset === 0) {
-                        const r = await getCurrentMonthLeaderboard();
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(r.monthStart ?? null);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    } else if (periodOffset === -1) {
-                        const r = await getPreviousMonthLeaderboard();
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(r.monthStart ?? null);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    } else {
-                        const target = availableMonths[periodOffset - 1];
-                        if (!target) { if (!cancelled) { setPeriodEntries([]); setDisplayedAnchor(null); } return; }
-                        const r = await getPastMonthLeaderboard(target);
-                        if (!cancelled) {
-                            if (r.success && r.entries) {
-                                setPeriodEntries(r.entries);
-                                setDisplayedAnchor(target);
-                            } else setPeriodError(r.error || '載入失敗');
-                        }
-                    }
-                }
-            } finally {
-                if (!cancelled) setPeriodLoading(false);
+            setLoading(true);
+            setError(null);
+            const r = await getCurrentWeekLeaderboard();
+            if (cancelled) return;
+            if (r.success && r.entries) {
+                setWeekEntries(r.entries);
+                setWeekAnchor(r.weekMonday ?? null);
+            } else {
+                setError(r.error || '載入失敗');
             }
+            setLoading(false);
         })();
         return () => { cancelled = true; };
-    }, [period, periodOffset, availableWeeks, availableMonths]);
-
-    // ── 顯示用區間 label ──────────────────────────────────────────────────────
-    const periodRangeLabel = useMemo<string>(() => {
-        if (period === 'cumulative') return '活動全期';
-        if (!displayedAnchor) return '';
-        if (period === 'month') {
-            const [y, m] = displayedAnchor.split('-');
-            return `${y} 年 ${parseInt(m, 10)} 月`;
-        }
-        // week：顯示週一 ~ 週日
-        const [y, m, d] = displayedAnchor.split('-').map(n => parseInt(n, 10));
-        const start = new Date(Date.UTC(y, m - 1, d));
-        const end = new Date(start);
-        end.setUTCDate(start.getUTCDate() + 6);
-        const fmt = (dt: Date) => `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`;
-        return `${y} 年 ${fmt(start)} ~ ${fmt(end)}`;
-    }, [period, displayedAnchor]);
-
-    // 載入歷史週/月清單（一次）
-    useEffect(() => {
-        (async () => {
-            const w = await listAvailableWeeks(12);
-            if (w.success && w.weeks) setAvailableWeeks(w.weeks);
-            const m = await listAvailableMonths(12);
-            if (m.success && m.months) setAvailableMonths(m.months);
-        })();
     }, []);
 
-    // ── 切換期間時重置 offset ────────────────────────────────────────────────
-    useEffect(() => { setPeriodOffset(0); }, [period]);
+    const weekRangeLabel = useMemo<string>(() => {
+        if (!weekAnchor) return '';
+        // weekAnchor = 本賽季週起算日（W1 為 5/10，其他週為當週週一）
+        const [y, m, d] = weekAnchor.split('-').map(n => parseInt(n, 10));
+        const start = new Date(Date.UTC(y, m - 1, d));
+        const end = new Date(start);
+        // W1 8 天：5/10 ~ 5/17；其他週 7 天
+        const days = weekAnchor === '2026-05-10' ? 7 : 6;
+        end.setUTCDate(start.getUTCDate() + days);
+        const fmt = (dt: Date) => `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`;
+        return `${y} 年 ${fmt(start)} ~ ${fmt(end)}`;
+    }, [weekAnchor]);
 
-    // ── 顯示用統一資料結構 ────────────────────────────────────────────────────
-    const displayEntries = useMemo<PersonalRankEntry[]>(() => {
-        if (period === 'cumulative') {
-            return [...leaderboard]
-                .sort((a, b) => b.Score - a.Score)
-                .map(p => ({
-                    userId: p.UserID,
-                    userName: p.Name,
-                    teamName: p.TeamName ?? null,
-                    squadName: p.SquadName ?? null,
-                    periodScore: p.Score,
-                    cumulativeScore: p.Score,
-                    isCurrentUser: p.UserID === currentUserId,
-                }));
-        }
-        return periodEntries;
-    }, [period, leaderboard, periodEntries, currentUserId]);
+    // 個人榜：只列出本週有得分的人
+    const personalEntries = useMemo<PersonalRankEntry[]>(
+        () => weekEntries.map(e => ({ ...e, isCurrentUser: e.userId === currentUserId })),
+        [weekEntries, currentUserId]
+    );
 
-    // ── 小隊聚合 ────────────────────────────────────────────────────────────
+    // 小隊聚合：以 CharacterStats（leaderboard）為主軸，attach 本週分數
+    // 大隊長計入所屬大隊每個小隊（業務需求：小隊平均含大隊長）
     interface SquadRow {
-        rowKey: string;             // React key 用，保證唯一（可能是 teamName 或 __solo_<userId>）
-        teamName: string;           // 顯示用，無 team 時 fallback 為使用者名
+        rowKey: string;
+        teamName: string;
         squadName: string | null;
         totalScore: number;
         memberCount: number;
@@ -181,82 +85,54 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
         topMember: PersonalRankEntry;
     }
 
-    // 累積榜的小隊聚合：保留現有「大隊長計入大隊內每個小隊」邏輯
-    const cumulativeSquadRank = useMemo<SquadRow[]>(() => {
+    const squadRank = useMemo<SquadRow[]>(() => {
+        const weekScoreMap = new Map<string, number>(weekEntries.map(e => [e.userId, e.periodScore]));
+        const toEntry = (p: CharacterStats): PersonalRankEntry => ({
+            userId: p.UserID,
+            userName: p.Name,
+            teamName: p.TeamName ?? null,
+            squadName: p.SquadName ?? null,
+            periodScore: weekScoreMap.get(p.UserID) ?? 0,
+            cumulativeScore: p.Score ?? 0,
+            isCurrentUser: p.UserID === currentUserId,
+        });
+
         const map = new Map<string, SquadRow>();
-        const commandants: PersonalRankEntry[] = [];
-        for (const p of displayEntries) {
-            const cs = leaderboard.find(l => l.UserID === p.userId);
-            if (cs?.IsCommandant) { commandants.push(p); continue; }
-            // 排除無小隊/大隊歸屬的成員（如獨立 admin / 工作人員）— 個人榜照常顯示，僅小隊榜隱藏
-            if (!p.squadName) continue;
-            const key = p.teamName || `__solo_${p.userId}`;
+        const commandants: { entry: PersonalRankEntry; squadName: string | null }[] = [];
+        for (const p of leaderboard) {
+            const entry = toEntry(p);
+            if (p.IsCommandant) { commandants.push({ entry, squadName: p.SquadName ?? null }); continue; }
+            if (!p.SquadName || !p.TeamName) continue;
+            const key = p.TeamName;
             if (!map.has(key)) {
                 map.set(key, {
-                    rowKey: key,
-                    teamName: p.teamName || p.userName || '',
-                    squadName: p.squadName,
-                    totalScore: 0, memberCount: 0, members: [], topMember: p,
+                    rowKey: key, teamName: p.TeamName, squadName: p.SquadName,
+                    totalScore: 0, memberCount: 0, members: [], topMember: entry,
                 });
             }
-            const entry = map.get(key)!;
-            entry.totalScore += p.periodScore;
-            entry.memberCount += 1;
-            entry.members.push(p);
-            if (p.periodScore > entry.topMember.periodScore) entry.topMember = p;
+            const row = map.get(key)!;
+            row.totalScore += entry.periodScore;
+            row.memberCount += 1;
+            row.members.push(entry);
+            if (entry.periodScore > row.topMember.periodScore) row.topMember = entry;
         }
         // 大隊長計入所屬大隊每個小隊
-        const squadsByBattalion = new Map<string, SquadRow[]>();
-        for (const e of map.values()) {
-            if (!e.squadName) continue;
-            const list = squadsByBattalion.get(e.squadName) ?? [];
-            list.push(e); squadsByBattalion.set(e.squadName, list);
-        }
         for (const cmd of commandants) {
             if (!cmd.squadName) continue;
-            const squads = squadsByBattalion.get(cmd.squadName);
-            if (!squads) continue;
-            for (const sq of squads) {
-                sq.totalScore += cmd.periodScore;
-                sq.memberCount += 1;
-                sq.members.push(cmd);
-                if (cmd.periodScore > sq.topMember.periodScore) sq.topMember = cmd;
+            for (const row of map.values()) {
+                if (row.squadName !== cmd.squadName) continue;
+                row.totalScore += cmd.entry.periodScore;
+                row.memberCount += 1;
+                row.members.push(cmd.entry);
+                if (cmd.entry.periodScore > row.topMember.periodScore) row.topMember = cmd.entry;
             }
         }
         return [...map.values()]
             .filter(e => e.memberCount > 0)
             .sort((a, b) => (b.totalScore / b.memberCount) - (a.totalScore / a.memberCount));
-    }, [displayEntries, leaderboard]);
+    }, [weekEntries, leaderboard, currentUserId]);
 
-    // 週/月榜的小隊聚合：簡化版（不複製大隊長）
-    const periodSquadRank = useMemo<SquadRow[]>(() => {
-        const map = new Map<string, SquadRow>();
-        for (const p of displayEntries) {
-            // 排除無小隊/大隊歸屬的成員（如獨立 admin / 工作人員）
-            if (!p.squadName) continue;
-            const key = p.teamName || `__solo_${p.userId}`;
-            if (!map.has(key)) {
-                map.set(key, {
-                    rowKey: key,
-                    teamName: p.teamName || p.userName || '',
-                    squadName: p.squadName,
-                    totalScore: 0, memberCount: 0, members: [], topMember: p,
-                });
-            }
-            const entry = map.get(key)!;
-            entry.totalScore += p.periodScore;
-            entry.memberCount += 1;
-            entry.members.push(p);
-            if (p.periodScore > entry.topMember.periodScore) entry.topMember = p;
-        }
-        return [...map.values()]
-            .filter(e => e.memberCount > 0)
-            .sort((a, b) => (b.totalScore / b.memberCount) - (a.totalScore / a.memberCount));
-    }, [displayEntries]);
-
-    const squadRank = period === 'cumulative' ? cumulativeSquadRank : periodSquadRank;
-
-    // ── 大隊聚合 ────────────────────────────────────────────────────────────
+    // 大隊聚合：所有大隊都列，含大隊長
     interface BattalionRow {
         squadName: string;
         totalScore: number;
@@ -265,19 +141,20 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
         avgScore: number;
     }
     const battalionRank = useMemo<BattalionRow[]>(() => {
+        const weekScoreMap = new Map<string, number>(weekEntries.map(e => [e.userId, e.periodScore]));
         const map = new Map<string, BattalionRow>();
         const teamsByBat = new Map<string, Set<string>>();
-        for (const p of displayEntries) {
-            if (!p.squadName) continue;
-            if (!map.has(p.squadName)) {
-                map.set(p.squadName, { squadName: p.squadName, totalScore: 0, memberCount: 0, teamCount: 0, avgScore: 0 });
+        for (const p of leaderboard) {
+            if (!p.SquadName) continue;
+            if (!map.has(p.SquadName)) {
+                map.set(p.SquadName, { squadName: p.SquadName, totalScore: 0, memberCount: 0, teamCount: 0, avgScore: 0 });
             }
-            const entry = map.get(p.squadName)!;
-            entry.totalScore += p.periodScore;
-            entry.memberCount += 1;
-            if (p.teamName) {
-                if (!teamsByBat.has(p.squadName)) teamsByBat.set(p.squadName, new Set());
-                teamsByBat.get(p.squadName)!.add(p.teamName);
+            const row = map.get(p.SquadName)!;
+            row.totalScore += weekScoreMap.get(p.UserID) ?? 0;
+            row.memberCount += 1;
+            if (p.TeamName) {
+                if (!teamsByBat.has(p.SquadName)) teamsByBat.set(p.SquadName, new Set());
+                teamsByBat.get(p.SquadName)!.add(p.TeamName);
             }
         }
         for (const [name, teams] of teamsByBat) {
@@ -287,10 +164,9 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
         return [...map.values()].map(e => ({
             ...e, avgScore: e.memberCount > 0 ? Math.round(e.totalScore / e.memberCount) : 0,
         })).sort((a, b) => b.avgScore - a.avgScore);
-    }, [displayEntries]);
+    }, [weekEntries, leaderboard]);
 
-    // teamName → squadName 映射，從 leaderboard prop（CharacterStats 陣列）建立，
-    // 保證即使該小隊在當期零得分仍能正確查到大隊歸屬
+    // RBAC：可展開細項
     const teamSquadMap = useMemo(() => {
         const m = new Map<string, string | null>();
         for (const p of leaderboard) {
@@ -299,73 +175,20 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
         return m;
     }, [leaderboard]);
 
-    // ── RBAC：可展開細項的條件 ──────────────────────────────────────────────
     const canExpandSquad = (teamName: string) => {
         if (currentUser?.IsGM) return true;
-        if (currentUser?.IsCommandant) {
-            // 大隊長：用靜態 leaderboard map，不依賴當期是否有得分記錄
-            return teamSquadMap.get(teamName) === currentUser.SquadName;
-        }
-        if (currentUser?.IsCaptain) {
-            return currentUser.TeamName === teamName;
-        }
+        if (currentUser?.IsCommandant) return teamSquadMap.get(teamName) === currentUser.SquadName;
+        if (currentUser?.IsCaptain) return currentUser.TeamName === teamName;
         return false;
-    };
-
-    // ── 期間選單 + 區間 label ────────────────────────────────────────────────
-    const renderPeriodSelector = () => {
-        if (period === 'cumulative') {
-            return (
-                <div className="flex items-center justify-center gap-2 px-1 text-xs text-gray-500 font-bold">
-                    <Calendar size={14} className="text-gray-400" />
-                    統計區間：{periodRangeLabel}
-                </div>
-            );
-        }
-        const list = period === 'week' ? availableWeeks : availableMonths;
-        const label = period === 'week' ? '週' : '月';
-        return (
-            <div className="flex flex-wrap items-center gap-2 px-1">
-                <Calendar size={14} className="text-gray-400" />
-                <select
-                    value={periodOffset}
-                    onChange={e => setPeriodOffset(parseInt(e.target.value, 10))}
-                    className="text-sm bg-white border border-[#B2DFC0] rounded-lg px-2 py-1 font-bold"
-                >
-                    <option value={0}>本{label}</option>
-                    {list.length === 0 && <option value={-1}>上{label}</option>}
-                    {list.map((d, i) => (
-                        <option key={d} value={i + 1}>{d}（{i === 0 ? '上' + label : d}）</option>
-                    ))}
-                </select>
-                {periodRangeLabel && (
-                    <span className="text-xs text-gray-500 font-bold">統計區間：{periodRangeLabel}</span>
-                )}
-            </div>
-        );
     };
 
     return (
         <div className="space-y-4 animate-in fade-in mx-auto">
-            {/* 期間切換 */}
-            <div className="flex gap-2 bg-white border border-[#B2DFC0] rounded-2xl p-1.5">
-                {(['week', 'month', 'cumulative'] as const).map(p => {
-                    const labels: Record<Period, string> = { week: '週榜', month: '月榜', cumulative: '累積' };
-                    return (
-                        <button
-                            key={p}
-                            onClick={() => setPeriod(p)}
-                            className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl font-black text-sm transition-all ${
-                                period === p ? 'bg-[#1A6B4A] text-white shadow-md' : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            {p === 'week' && <TrendingUp size={13} />}
-                            {p === 'month' && <Calendar size={13} />}
-                            {p === 'cumulative' && <Crown size={13} />}
-                            {labels[p]}
-                        </button>
-                    );
-                })}
+            {/* 區間提示 */}
+            <div className="bg-[#F5FAF7] border border-[#B2DFC0] rounded-2xl p-3 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-[#1A6B4A]">
+                <Calendar size={14} />
+                本週統計區間：{weekRangeLabel || '載入中…'}
+                <span className="text-gray-400 ml-2">每週一 12:30 重新計算</span>
             </div>
 
             {/* 範圍切換 */}
@@ -394,31 +217,26 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                 })}
             </div>
 
-            {/* 期間下拉選單（週/月榜） */}
-            {renderPeriodSelector()}
-
-            {/* 載入中 / 錯誤狀態 */}
-            {period !== 'cumulative' && periodLoading && (
+            {loading && (
                 <div className="bg-white border border-[#B2DFC0] rounded-2xl p-10 text-center text-gray-400 italic flex items-center justify-center gap-2">
                     <Loader2 size={16} className="animate-spin" /> 載入中…
                 </div>
             )}
-            {periodError && (
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-sm text-rose-700">{periodError}</div>
+            {error && (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-sm text-rose-700">{error}</div>
             )}
 
             {/* 個人榜 */}
-            {!periodLoading && scope === 'personal' && (
+            {!loading && scope === 'personal' && (
                 <div className="bg-white border border-[#B2DFC0] rounded-[2.5rem] overflow-hidden divide-y divide-[#B2DFC0] shadow-md">
                     <div className="p-4 bg-[#F5FAF7] flex items-center gap-2 text-[#1A6B4A] font-black text-sm uppercase tracking-widest justify-center">
-                        <Crown size={14} /> {period === 'cumulative' ? '個人累積榜' : period === 'week' ? '個人週榜' : '個人月榜'}
+                        <Crown size={14} /> 個人週榜
                     </div>
-                    {displayEntries.length === 0 ? (
-                        <div className="p-10 text-gray-400 italic text-center">尚無資料</div>
+                    {personalEntries.length === 0 ? (
+                        <div className="p-10 text-gray-400 italic text-center">本週尚無紀錄</div>
                     ) : (
-                        displayEntries.slice(0, 100).map((p, i) => {
+                        personalEntries.slice(0, 100).map((p, i) => {
                             const isSelf = p.isCurrentUser;
-                            const cs = leaderboard.find(l => l.UserID === p.userId);
                             return (
                                 <div key={p.userId}
                                      className={`flex items-center gap-4 p-4 ${i < 3 ? 'bg-[#1A6B4A]/5' : ''} ${isSelf ? 'ring-1 ring-inset ring-[#C0392B]/40 bg-[#C0392B]/5' : ''}`}>
@@ -433,9 +251,6 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                                             {p.periodScore.toLocaleString()}
                                             <span className="text-sm text-gray-400 uppercase tracking-widest ml-1">分</span>
                                         </div>
-                                        {period === 'cumulative' && cs && cs.Streak > 0 && (
-                                            <div className="text-sm text-orange-400 font-bold mt-0.5">🔥 {cs.Streak} 天</div>
-                                        )}
                                     </div>
                                 </div>
                             );
@@ -445,13 +260,13 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
             )}
 
             {/* 小隊榜 */}
-            {!periodLoading && scope === 'squad' && (
+            {!loading && scope === 'squad' && (
                 <div className="bg-white border border-[#B2DFC0] rounded-[2.5rem] overflow-hidden divide-y divide-[#B2DFC0] shadow-md">
                     <div className="p-4 bg-[#F5FAF7] flex items-center gap-2 text-[#1A6B4A] font-black text-sm uppercase tracking-widest justify-center">
-                        <Users size={14} /> 小隊榜（人數平均制）
+                        <Users size={14} /> 小隊週榜（人數平均 · 含大隊長）
                     </div>
                     {squadRank.length === 0 ? (
-                        <div className="p-10 text-gray-400 italic text-center">尚無資料</div>
+                        <div className="p-10 text-gray-400 italic text-center">本週尚無紀錄</div>
                     ) : squadRank.map((sq, i) => {
                         const avg = Math.round(sq.totalScore / sq.memberCount);
                         const expandable = canExpandSquad(sq.teamName);
@@ -508,13 +323,13 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
             )}
 
             {/* 大隊榜 */}
-            {!periodLoading && scope === 'battalion' && (
+            {!loading && scope === 'battalion' && (
                 <div className="bg-white border border-[#B2DFC0] rounded-[2.5rem] overflow-hidden divide-y divide-[#B2DFC0] shadow-md">
                     <div className="p-4 bg-[#F5FAF7] flex items-center gap-2 text-[#1A6B4A] font-black text-sm uppercase tracking-widest justify-center">
-                        <Building2 size={14} /> 大隊榜
+                        <Building2 size={14} /> 大隊週榜
                     </div>
                     {battalionRank.length === 0 ? (
-                        <div className="p-10 text-gray-400 italic text-center">尚無資料</div>
+                        <div className="p-10 text-gray-400 italic text-center">本週尚無紀錄</div>
                     ) : battalionRank.map((b, i) => (
                         <div key={b.squadName} className={`flex items-center gap-4 p-4 ${i < 3 ? 'bg-[#1A6B4A]/5' : ''}`}>
                             <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-black ${RANK_BADGE[i] ?? 'text-gray-400'}`}>{i + 1}</div>
@@ -538,7 +353,6 @@ export function RankTab({ leaderboard, currentUserId, currentUser }: RankTabProp
                     ))}
                 </div>
             )}
-
         </div>
     );
 }

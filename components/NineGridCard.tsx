@@ -39,10 +39,10 @@ interface NineGridCardProps {
     userId: string;
     userName: string;
     onRefresh: () => void;
-    currentWeekStart: Date;
+    seasonWeekStart: Date;
 }
 
-export function NineGridCard({ grid, userId, userName, onRefresh, currentWeekStart }: NineGridCardProps) {
+export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStart }: NineGridCardProps) {
     const [completing, setCompleting] = React.useState<number | null>(null);
     const [undoing, setUndoing] = React.useState<number | null>(null);
     const [msg, setMsg] = React.useState('');
@@ -56,7 +56,7 @@ export function NineGridCard({ grid, userId, userName, onRefresh, currentWeekSta
 
     const thisWeekCells = new Set(
         grid.cells
-            .map((c, i) => (c.completed && c.completed_at && new Date(c.completed_at) >= currentWeekStart ? i : -1))
+            .map((c, i) => (c.completed && c.completed_at && new Date(c.completed_at) >= seasonWeekStart ? i : -1))
             .filter(i => i >= 0)
     );
     const hasCompletedThisWeek = thisWeekCells.size > 0;

@@ -20,7 +20,7 @@ import { compressImage } from '@/lib/utils/compress-image';
 
 interface WeeklyTopicTabProps {
     logs: DailyLog[];
-    currentWeekStart: Date;
+    currentWeeklyMonday: Date;
     seasonWeekStart: Date;
     temporaryQuests: TemporaryQuest[];
     onCheckIn: (q: Quest) => void;
@@ -240,7 +240,7 @@ function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: st
 
 export function WeeklyTopicTab({
     logs,
-    currentWeekStart,
+    currentWeeklyMonday,
     seasonWeekStart,
     temporaryQuests,
     onCheckIn,
@@ -315,7 +315,7 @@ export function WeeklyTopicTab({
                         questId={quest.id}
                         logs={logs}
                         disabled={isCapped}
-                        currentWeekStart={currentWeekStart}
+                        currentWeeklyMonday={currentWeeklyMonday}
                         {...makeWeekHandler(quest.id, quest)}
                     />
                 </div>
@@ -487,10 +487,10 @@ export function WeeklyTopicTab({
                                         </div>
                                     )}
 
-                                    {/* 日期按鈕（賽季週採週日 → 週六）*/}
+                                    {/* 日期按鈕（純週一錨，週一-週日 7 格）*/}
                                     <div className="flex justify-between items-center">
-                                        {['日', '一', '二', '三', '四', '五', '六'].map((day, idx) => {
-                                            const d = new Date(currentWeekStart);
+                                        {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
+                                            const d = new Date(currentWeeklyMonday);
                                             d.setDate(d.getDate() + idx);
                                             const dateStr = getLogicalDateStr(d);
                                             const isThisDayApp = activeApp?.quest_date === dateStr;

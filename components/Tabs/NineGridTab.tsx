@@ -54,7 +54,7 @@ interface NineGridTabProps {
     onFortuneSave: (fortunes: Record<string, number>) => Promise<void>;
     onRefresh: () => void;
     logs: DailyLog[];
-    currentWeekStart: Date;
+    currentWeeklyMonday: Date;
     seasonWeekStart: Date;
     onCheckIn: (q: Quest) => void;
     onUndo: (q: Quest) => void;
@@ -64,7 +64,7 @@ interface NineGridTabProps {
 
 export function NineGridTab({
     userId, userName, userData, grid, onFortuneSave, onRefresh,
-    logs, currentWeekStart, seasonWeekStart, onCheckIn, onUndo,
+    logs, currentWeeklyMonday, seasonWeekStart, onCheckIn, onUndo,
     questRewardOverrides, disabledQuests,
 }: NineGridTabProps) {
     const [fortunes, setFortunes] = useState<Record<string, number>>(() => {
@@ -150,7 +150,7 @@ export function NineGridTab({
                         questId={quest.id}
                         logs={logs}
                         disabled={isDisabled}
-                        currentWeekStart={currentWeekStart}
+                        currentWeeklyMonday={currentWeeklyMonday}
                         {...makeWeekHandler(quest.id, quest)}
                     />
                 </div>
@@ -165,7 +165,7 @@ export function NineGridTab({
                         旅伴：{detail?.name ?? grid.companion_type}
                     </span>
                 </div>
-                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} currentWeekStart={currentWeekStart} />
+                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} seasonWeekStart={seasonWeekStart} />
 
                 {/* 人生大戲分享 */}
                 {(wk4SmallQuest || wk4LargeQuest) && (

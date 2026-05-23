@@ -1,12 +1,17 @@
 /**
- * Audit：賽季週改為「週日 → 週六」後，5/17（週日）這天的紀錄會從舊 W1 (5/10-5/17 8天)
+ * ⚠️ DEPRECATED（2026-05-24）：本腳本是針對「週日對齊」短暫遷移寫的 audit，
+ * 後續決策回到「W1 8 天 + W2+ 週一-週日」，5/17 又歸 W1，這份 audit 已無意義。
+ * 保留檔案僅供歷史紀錄，請勿執行。
+ *
+ * 原描述：賽季週改為「週日 → 週六」後，5/17（週日）這天的紀錄會從舊 W1 (5/10-5/17 8天)
  * 變為新 W2 (5/17-5/23)。可能造成同週上限被破壞（同一個人同週多次紀錄）。
  *
  * 本腳本掃描以下任務在 2026-05-17 (週日) ~ 2026-05-23 (週六) 區間內，是否有
  * 人同週超量。只印名單，**不自動處理**（採寬恕模式）。
- *
- * 用法：npx ts-node scripts/audit_week_sunday_migration.ts
  */
+console.error('[deprecated] 本腳本已棄用，請勿執行。理由見檔頭註解。');
+process.exit(1);
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });

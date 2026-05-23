@@ -3,27 +3,28 @@ import React from 'react';
 import { DailyLog } from '@/types';
 import { getLogicalDateStr } from '@/lib/utils/time';
 
-// 週曆打卡列：以父層傳入的 currentWeekStart（週日）為準，
-// 賽季週採「週日 → 週六」7 天。避免在渲染時重呼 new Date() 導致跨午夜顯示錯亂。
+// 週曆打卡列：以父層傳入的 currentWeeklyMonday（純週一錨）為準，顯示週一-週日 7 格。
+// 不受賽季 W1 8 天特例影響（5/10 那天不出現在按鈕列，但 wk1|2026-05-10 仍可透過其他流程記錄）。
+// 避免在渲染時重呼 new Date() 導致跨午夜顯示錯亂。
 export function WeekCalendarRow({
     questId,
     logs,
     disabled,
-    currentWeekStart,
+    currentWeeklyMonday,
     onCheckIn,
     onUndo,
 }: {
     questId: string;
     logs: DailyLog[];
     disabled: boolean;
-    currentWeekStart: Date;
+    currentWeeklyMonday: Date;
     onCheckIn: (qId: string, day: Date) => void;
     onUndo: (qId: string, day: Date) => void;
 }) {
     return (
         <div className="flex justify-between items-center px-1">
-            {['日', '一', '二', '三', '四', '五', '六'].map((dayLabel, idx) => {
-                const d = new Date(currentWeekStart);
+            {['一', '二', '三', '四', '五', '六', '日'].map((dayLabel, idx) => {
+                const d = new Date(currentWeeklyMonday);
                 d.setDate(d.getDate() + idx);
                 const qId = `${questId}|${getLogicalDateStr(d)}`;
                 const isDone = logs.some(l => l.QuestID === qId);

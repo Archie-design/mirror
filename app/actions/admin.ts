@@ -764,15 +764,15 @@ export async function listAllGatheringsForAdmin(): Promise<{
 
     const supabase = createClient(_supabaseUrl, _supabaseKey);
 
-    // 本週週日（賽季週採週日 → 週六；變數名 weekMondayStr 保留歷史命名，內容為週日日期）
+    // 本週週一（W1 特例 5/10 由 backfill 處理，此處用標準週一即可；用於 OnlineGatheringApplications.week_monday 篩選）
     const now = new Date();
     const twDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
     const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
     const today = new Date(Date.UTC(y, m - 1, d));
-    const weekday = today.getUTCDay(); // 0 = Sun
-    const sunday = new Date(today);
-    sunday.setUTCDate(today.getUTCDate() - weekday);
-    const weekMondayStr = `${sunday.getUTCFullYear()}-${String(sunday.getUTCMonth() + 1).padStart(2, '0')}-${String(sunday.getUTCDate()).padStart(2, '0')}`;
+    const weekday = today.getUTCDay() || 7;
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
+    const weekMondayStr = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
 
     const [offlineRes, onlineRes] = await Promise.all([
         supabase

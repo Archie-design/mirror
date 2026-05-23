@@ -46,10 +46,10 @@ export const getTaipeiDateStr = (dateInput?: Date | string): string => {
 };
 
 /**
- * 取得本週起算日（週日）00:00:00 +08 的時間
- * 賽季週採「週日 → 週六」7 天為一週，本函式回傳上一個（或當日）週日的 00:00。
+ * 取得本週週一 00:00:00 +08 的時間（純週一錨點，無賽季概念）
+ * 用於日曆 UI 顯示「本週」7 格按鈕（週一-週日）。
  */
-export const getWeeklySunday = (date: Date = new Date()): Date => {
+export const getWeeklyMonday = (date: Date = new Date()): Date => {
     // 以 Asia/Taipei 推算當地日期與週幾
     const twParts = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Taipei',
@@ -59,20 +59,30 @@ export const getWeeklySunday = (date: Date = new Date()): Date => {
     const y = parseInt(get('year'), 10);
     const m = parseInt(get('month'), 10);
     const d = parseInt(get('day'), 10);
-    const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const dow = weekdayMap[get('weekday')] ?? 0;
-    // 推回到該週日，以 +08:00 為時區錨點
+    // ISO weekday: 1 = Mon, 7 = Sun
+    const weekdayMap: Record<string, number> = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = weekdayMap[get('weekday')] ?? 1;
     const dayMs = 24 * 60 * 60 * 1000;
-    const localMidnight = Date.UTC(y, m - 1, d) - 8 * 60 * 60 * 1000; // +08 midnight in ms
-    return new Date(localMidnight - dow * dayMs);
+    const localMidnight = Date.UTC(y, m - 1, d) - 8 * 60 * 60 * 1000;
+    return new Date(localMidnight - (dow - 1) * dayMs);
 };
 
 // ── 賽季週分桶 ─────────────────────────────────────────────────────────────
-// 賽季採「週日 → 週六」7 天為一週。
-// 因賽季首日 2026-05-10 剛好是週日，W1 自然為 5/10–5/16，無特殊規則。
+// 賽季週採「週一 → 週日」7 天為一週。
+// 第 1 週特例：2026-05-10(日) ~ 2026-05-17(日)，8 天（含起跑首日週日）。
+// 第 2 週起回歸標準週一起算（5/18 一 ~ 5/24 日）。
 // 用於每週任務上限、排行榜本週積分、週快照等「賽季週」邊界。
+export const SEASON_W1_START = '2026-05-10';
+export const SEASON_W2_MONDAY = '2026-05-18';
+
 export function getSeasonWeekStart(date: Date = new Date()): Date {
-    return getWeeklySunday(date);
+    const dStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(date);
+    if (dStr >= SEASON_W1_START && dStr < SEASON_W2_MONDAY) {
+        return new Date('2026-05-10T00:00:00+08:00');
+    }
+    return getWeeklyMonday(date);
 }
 
 // ── 活動旅程階段 ────────────────────────────────────────────────────────────
@@ -103,32 +113,31 @@ export function getCurrentThemePeriod(date: Date = new Date()): ThemePeriod {
     if (dateStr > '2026-07-12') {
         return { title: '感謝參與', emoji: '🏆', type: 'after', taskType: null, weeks: '活動已結束', desc: '感謝所有學員踏上屬於自己的黃磚路！' };
     }
-    if (dateStr >= '2026-05-10' && dateStr <= '2026-05-16') {
+    if (dateStr >= '2026-05-10' && dateStr <= '2026-05-17') {
         return { title: '開學日・踏上黃磚路', emoji: '👟', type: 'regular', taskType: 't1t2', weeks: '第 1 週', desc: '一切都是陌生的，不舒服正是真正開始走路的感覺' };
     }
-    if (dateStr >= '2026-07-05') {
+    if (dateStr >= '2026-07-06') {
         return { title: '畢業典禮・回望旅程', emoji: '✨', type: 'graduation', taskType: 't1t2', weeks: '第 9 週', desc: '停下來回望，看見自己走過的路。黃磚路盡頭沒有大法師，只有一面鏡子' };
     }
-    // 2026-05-17 ~ 2026-07-04（第 2–8 週）
+    // 2026-05-18 ~ 2026-07-05（第 2–8 週）
     return { title: '課後課・旅伴同行', emoji: '🌿', type: 'regular', taskType: 't1t2', weeks: '第 2–8 週', desc: '夥伴成為彼此的鏡子，給出鼓勵的同時已先相信自己值得' };
 }
 
 /**
  * 取得雙週主題週期起始日 (BiWeeklyStart)
- * 以週日為週起點，每兩週為一個雙週週期。
+ * 以週一為週起點，每兩週為一個雙週週期。
  */
 export const getBiWeeklyStart = (date: Date = new Date()): Date => {
-    const sunday = getWeeklySunday(date);
-    const firstDayOfYear = startOfYear(sunday);
+    const monday = getWeeklyMonday(date);
+    const firstDayOfYear = startOfYear(monday);
 
-    // 計算當前週日是該年度的第幾週 (相對於該年第一天的週數，週起點為週日)
-    const currentWeek = differenceInCalendarWeeks(sunday, firstDayOfYear, { weekStartsOn: 0 }) + 1;
+    const currentWeek = differenceInCalendarWeeks(monday, firstDayOfYear, { weekStartsOn: 1 }) + 1;
 
     if (currentWeek % 2 !== 0) {
-        return sunday;
+        return monday;
     } else {
-        const prevSunday = new Date(sunday);
-        prevSunday.setDate(prevSunday.getDate() - 7);
-        return prevSunday;
+        const prevMonday = new Date(monday);
+        prevMonday.setDate(prevMonday.getDate() - 7);
+        return prevMonday;
     }
 };

@@ -47,18 +47,33 @@ function fmtDate(d: Date): string {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-/** 以台灣時區回傳本週週日 YYYY-MM-DD（UTC anchor）。賽季週以週日 → 週六為一週。 */
-function getCurrentWeekSundayDate(): Date {
+/** 以台灣時區回傳本賽季週起算日 YYYY-MM-DD（UTC anchor）。
+ * 賽季週以週一-週日為一週；第 1 週特例：5/10(日) ~ 5/17(日) 8 天。
+ * 若今日在 W1 期間，回傳 5/10；其餘期間回傳本週週一。
+ */
+function getCurrentWeekMondayDate(): Date {
     const now = new Date();
     const twDateStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(now);
+    // W1 特例：5/10–5/17 一律回 5/10
+    if (twDateStr >= '2026-05-10' && twDateStr <= '2026-05-17') {
+        return new Date(Date.UTC(2026, 4, 10));
+    }
     const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
     const today = new Date(Date.UTC(y, m - 1, d));
-    const weekday = today.getUTCDay(); // 0 = Sun
-    const sunday = new Date(today);
-    sunday.setUTCDate(today.getUTCDate() - weekday);
-    return sunday;
+    const weekday = today.getUTCDay() || 7;
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
+    return monday;
+}
+
+/** 由賽季週起算日推算下個賽季週起算日（W1 為 8 天、其他為 7 天）。 */
+function nextSeasonWeekStart(weekStart: Date): Date {
+    const next = new Date(weekStart);
+    const days = fmtDate(weekStart) === '2026-05-10' ? 8 : 7;
+    next.setUTCDate(weekStart.getUTCDate() + days);
+    return next;
 }
 
 function getCurrentMonthStartDate(): Date {
@@ -102,15 +117,13 @@ export async function getCurrentWeekLeaderboard(): Promise<{ success: boolean; e
         const r = authErrorResponse(e); if (r) return r; throw e;
     }
     try {
-        const weekStart = getCurrentWeekSundayDate();
-        const nextWeekStart = new Date(weekStart);
-        nextWeekStart.setUTCDate(weekStart.getUTCDate() + 7);
+        const weekStart = getCurrentWeekMondayDate();
+        const nextWeekStart = nextSeasonWeekStart(weekStart);
         const start = `${fmtDate(weekStart)}T12:00:00+08:00`;
         const end = `${fmtDate(nextWeekStart)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
         return {
             success: true,
-            // 欄名 weekMonday 保留歷史名稱，實際存週日日期
             weekMonday: fmtDate(weekStart),
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
@@ -126,9 +139,18 @@ export async function getPreviousWeekLeaderboard(): Promise<{ success: boolean; 
         const r = authErrorResponse(e); if (r) return r; throw e;
     }
     try {
-        const weekStart = getCurrentWeekSundayDate();
-        const prevWeekStart = new Date(weekStart);
-        prevWeekStart.setUTCDate(weekStart.getUTCDate() - 7);
+        const weekStart = getCurrentWeekMondayDate();
+        const weekStartStr = fmtDate(weekStart);
+        // 上一賽季週：若本週為 5/18 (W2)，上週是 W1 5/10 (8天)；若本週為 5/10 (W1)，無上週；其餘 -7
+        let prevWeekStart: Date;
+        if (weekStartStr === '2026-05-18') {
+            prevWeekStart = new Date(Date.UTC(2026, 4, 10));
+        } else if (weekStartStr === '2026-05-10') {
+            return { success: true, entries: [], weekMonday: undefined };
+        } else {
+            prevWeekStart = new Date(weekStart);
+            prevWeekStart.setUTCDate(weekStart.getUTCDate() - 7);
+        }
         const start = `${fmtDate(prevWeekStart)}T12:00:00+08:00`;
         const end   = `${fmtDate(weekStart)}T12:00:00+08:00`;
         const entries = await aggregateRange(start, end);
