@@ -67,7 +67,7 @@ jobs:
           LIST_JSON=$(curl --fail-with-body --show-error -sS -X POST \
             -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
             -H "Content-Type: application/json" \
-            -d '{"limit":1000,"sortBy":{"column":"name","order":"desc"}}' \
+            -d '{"prefix":"","limit":1000,"sortBy":{"column":"name","order":"desc"}}' \
             "$SUPABASE_URL/storage/v1/object/list/db-backups")
           OLD_FILES=$(echo "$LIST_JSON" | jq -r '.[].name' | grep -E '^backup_[0-9]+_[0-9]+\.sql\.gz$' | tail -n +31 || true)
           if [ -z "$OLD_FILES" ]; then
