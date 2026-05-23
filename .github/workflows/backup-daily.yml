@@ -1,0 +1,84 @@
+name: Daily DB Backup
+
+# 每日 19:30 UTC = 隔天台灣 03:30（離峰時段，避免與 cron snapshot 衝突）
+# 也允許手動觸發供測試 / 緊急備份
+on:
+  schedule:
+    - cron: '30 19 * * *'
+  workflow_dispatch: {}
+
+# 同時最多跑一個，避免重疊
+concurrency:
+  group: daily-db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install PostgreSQL 16 client (含 pg_dump)
+        run: |
+          set -e
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y install postgresql-client-16
+          pg_dump --version
+
+      - name: Run pg_dump
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -e
+          if [ -z "$BACKUP_DATABASE_URL" ]; then
+            echo "::error::BACKUP_DATABASE_URL secret 未設定（需用 5432 direct connection，非 6543 pooler）"
+            exit 1
+          fi
+          TS=$(date -u +%Y%m%d_%H%M)
+          FILE="backup_${TS}.sql.gz"
+          pg_dump "$BACKUP_DATABASE_URL" \
+            --no-owner --no-acl --clean --if-exists --quote-all-identifiers \
+            | gzip > "$FILE"
+          ls -lh "$FILE"
+          echo "BACKUP_FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Upload to Supabase Storage
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+          curl --fail-with-body --show-error -sS -X POST \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/gzip" \
+            -H "x-upsert: false" \
+            --data-binary "@$BACKUP_FILE" \
+            "$SUPABASE_URL/storage/v1/object/db-backups/$BACKUP_FILE"
+          echo
+          echo "Uploaded: $BACKUP_FILE"
+
+      - name: Rotate (保留最新 30 份)
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+          LIST_JSON=$(curl --fail-with-body --show-error -sS -X POST \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"limit":1000,"sortBy":{"column":"name","order":"desc"}}' \
+            "$SUPABASE_URL/storage/v1/object/list/db-backups")
+          OLD_FILES=$(echo "$LIST_JSON" | jq -r '.[].name' | grep -E '^backup_[0-9]+_[0-9]+\.sql\.gz$' | tail -n +31 || true)
+          if [ -z "$OLD_FILES" ]; then
+            echo "No old files to delete."
+            exit 0
+          fi
+          echo "Deleting old backups:"
+          echo "$OLD_FILES"
+          DEL_BODY=$(echo "$OLD_FILES" | jq -R -s 'split("\n") | map(select(length > 0)) | {prefixes: .}')
+          curl --fail-with-body --show-error -sS -X DELETE \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$DEL_BODY" \
+            "$SUPABASE_URL/storage/v1/object/db-backups"
