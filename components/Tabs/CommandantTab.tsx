@@ -10,6 +10,8 @@ const SquadGrowthChart = dynamic(
 );
 import { CharacterStats, BonusApplication, SquadMemberStats, TempQuestApplication } from '@/types';
 import { exportMembersWithSummary } from '@/app/actions/admin';
+import { exportCommandantDailyLogsCsv, getCommandantMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
+import { downloadCsv } from '@/lib/utils/csv-download';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import {
@@ -418,6 +420,48 @@ function GatheringPendingReviews({
     );
 }
 
+// 個人定課查詢結果：單日 card（與截圖類似的分類顯示）
+function MemberDayCard({ day }: { day: MemberDailyDetail }) {
+    const rows: Array<{ label: string; items: string[] }> = [
+        { label: '每日定課',     items: day.bucket.daily },
+        { label: '打拳',         items: day.bucket.boxing },
+        { label: '其他加權任務', items: day.bucket.pOther },
+        { label: '吃素',         items: day.bucket.diet },
+        { label: '週主題',       items: day.bucket.topicWeek },
+        { label: '天使通話',     items: day.bucket.angel },
+        { label: '凝聚',         items: day.bucket.gather },
+        { label: '九宮格',       items: day.bucket.nine },
+        { label: '一次性任務',   items: day.bucket.once },
+        { label: '臨時加碼',     items: day.bucket.temp },
+    ].filter(r => r.items.length > 0);
+
+    return (
+        <div className="bg-white border border-rose-100 rounded-2xl p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-black text-gray-800">{day.logicalDate}</span>
+                <span className="text-xs font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-200">
+                    +{day.bucket.total.toLocaleString()} 分
+                </span>
+            </div>
+            {rows.length === 0 ? (
+                <p className="text-xs text-gray-400">當日無紀錄</p>
+            ) : (
+                <div className="space-y-1">
+                    {rows.map(r => (
+                        <div key={r.label} className="flex items-start gap-2 text-xs">
+                            <CheckCircle2 size={12} className="mt-0.5 text-emerald-500 shrink-0" />
+                            <div className="flex-1">
+                                <span className="font-bold text-gray-700">{r.label}</span>
+                                <span className="text-gray-500 ml-2">{r.items.join('、')}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battalionMembers = {} }: CommandantTabProps) {
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [notes, setNotes] = useState<Record<string, string>>({});
@@ -426,8 +470,60 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
     const [batching, setBatching] = useState(false);
     const [memberExporting, setMemberExporting] = useState(false);
 
+    // 每日定課明細匯出
+    const [logsExporting, setLogsExporting] = useState(false);
+    const [logsTeam, setLogsTeam] = useState<string>('');  // '' = 全大隊
+    const [logsStart, setLogsStart] = useState<string>('2026-05-10');
+    const [logsEnd, setLogsEnd] = useState<string>(getLogicalDateStr());
+
+    // 查詢個人定課
+    const [lookupMemberId, setLookupMemberId] = useState<string>('');
+    const [lookupStart, setLookupStart] = useState<string>('2026-05-10');
+    const [lookupEnd, setLookupEnd] = useState<string>(getLogicalDateStr());
+    const [lookupLoading, setLookupLoading] = useState(false);
+    const [lookupResult, setLookupResult] = useState<{
+        member: { userId: string; name: string; teamName: string | null };
+        days: MemberDailyDetail[];
+    } | null>(null);
+
     const toggleSquad = (name: string) => setExpandedSquads(prev => ({ ...prev, [name]: !prev[name] }));
     const squadEntries = Object.entries(battalionMembers);
+    const teamOptions = squadEntries.map(([name]) => name).filter(n => n !== '未編組');
+
+    const handleExportLogs = async () => {
+        if (!userData.UserID) return;
+        if (logsStart > logsEnd) { onShowMessage('日期區間錯誤：起 > 訖', 'error'); return; }
+        setLogsExporting(true);
+        const res = await exportCommandantDailyLogsCsv(
+            userData.UserID,
+            logsTeam || null,
+            logsStart,
+            logsEnd,
+        );
+        setLogsExporting(false);
+        if (!res.success || !res.csv) { onShowMessage(res.error || '匯出失敗', 'error'); return; }
+        downloadCsv(res.csv, res.filename || `daily_logs_${logsStart}_${logsEnd}.csv`);
+    };
+
+    const handleLookupMember = async () => {
+        if (!userData.UserID) return;
+        if (!lookupMemberId) { onShowMessage('請選擇隊員', 'error'); return; }
+        if (lookupStart > lookupEnd) { onShowMessage('日期區間錯誤：起 > 訖', 'error'); return; }
+        setLookupLoading(true);
+        const res = await getCommandantMemberDailyDetails(
+            userData.UserID,
+            lookupMemberId,
+            lookupStart,
+            lookupEnd,
+        );
+        setLookupLoading(false);
+        if (!res.success || !res.member || !res.days) {
+            setLookupResult(null);
+            onShowMessage(res.error || '查詢失敗', 'error');
+            return;
+        }
+        setLookupResult({ member: res.member, days: res.days });
+    };
 
     const toggleSelect = (appId: string) => {
         setSelectedIds(prev => {
@@ -508,13 +604,7 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                                 const res = await exportMembersWithSummary();
                                 setMemberExporting(false);
                                 if (!res.success || !res.csv) { onShowMessage(res.error || '匯出失敗', 'error'); return; }
-                                const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `members_export_${new Date().toISOString().slice(0, 10)}.csv`;
-                                a.click();
-                                URL.revokeObjectURL(url);
+                                downloadCsv(res.csv, `members_export_${new Date().toISOString().slice(0, 10)}.csv`);
                             }}
                             disabled={memberExporting}
                             className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 active:scale-95 transition-all border border-rose-200 text-sm font-black min-h-[44px] disabled:opacity-50"
@@ -528,6 +618,113 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
                             <RefreshCw size={16} />
                         </button>
                     </div>
+                </div>
+
+                {/* 每日定課明細匯出 */}
+                <div className="mt-4 pt-4 border-t border-rose-100">
+                    <p className="text-xs font-black text-rose-600 mb-2 tracking-widest">每日定課明細匯出</p>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            小隊
+                            <select
+                                value={logsTeam}
+                                onChange={e => setLogsTeam(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm min-w-[8rem]"
+                            >
+                                <option value="">全大隊</option>
+                                {teamOptions.map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            起
+                            <input
+                                type="date"
+                                value={logsStart}
+                                onChange={e => setLogsStart(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                            />
+                        </label>
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            訖
+                            <input
+                                type="date"
+                                value={logsEnd}
+                                onChange={e => setLogsEnd(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm"
+                            />
+                        </label>
+                        <button
+                            onClick={handleExportLogs}
+                            disabled={logsExporting}
+                            className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition-all text-sm font-black min-h-[44px] disabled:opacity-50"
+                        >
+                            <ScrollText size={14} />{logsExporting ? '匯出中…' : '下載每日定課明細'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* 查詢個人定課 */}
+                <div className="mt-4 pt-4 border-t border-rose-100">
+                    <p className="text-xs font-black text-rose-600 mb-2 tracking-widest">查詢個人定課</p>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            隊員
+                            <select
+                                value={lookupMemberId}
+                                onChange={e => setLookupMemberId(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm min-w-[10rem]"
+                            >
+                                <option value="">請選擇</option>
+                                {squadEntries.map(([teamName, members]) => (
+                                    <optgroup key={teamName} label={teamName}>
+                                        {members.map(m => (
+                                            <option key={m.UserID} value={m.UserID}>{m.Name}</option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            起
+                            <input type="date" value={lookupStart}
+                                onChange={e => setLookupStart(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                        </label>
+                        <label className="flex flex-col text-xs text-gray-600 font-bold">
+                            訖
+                            <input type="date" value={lookupEnd}
+                                onChange={e => setLookupEnd(e.target.value)}
+                                className="mt-1 px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm" />
+                        </label>
+                        <button
+                            onClick={handleLookupMember}
+                            disabled={lookupLoading}
+                            className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition-all text-sm font-black min-h-[44px] disabled:opacity-50"
+                        >
+                            {lookupLoading ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+                            {lookupLoading ? '查詢中…' : '查詢'}
+                        </button>
+                    </div>
+
+                    {lookupResult && (
+                        <div className="mt-4 space-y-3">
+                            <div className="text-sm font-black text-gray-800">
+                                {lookupResult.member.name}
+                                <span className="text-gray-500 font-normal ml-2 text-xs">
+                                    {lookupResult.member.teamName ?? '未編組'} · {lookupResult.member.userId}
+                                </span>
+                            </div>
+                            {lookupResult.days.length === 0 ? (
+                                <p className="text-sm text-gray-500">此區間無紀錄</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {lookupResult.days.map(d => <MemberDayCard key={d.logicalDate} day={d} />)}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

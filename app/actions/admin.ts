@@ -319,7 +319,8 @@ export async function updateMemberPhone(
 }
 
 // ── 成員管理：從名單中移除成員 ───────────────────────────────
-// 用於開營一週內無條件退出：刪除學員的所有相關資料（CharacterStats、申請、報到、繳費、九宮格、Rosters 名冊等）
+// 用於開營一週內無條件退出：刪除學員的所有相關資料
+// （CharacterStats、申請、報到、繳費、九宮格、臨時任務申請、排行榜快照、Rosters 名冊等）
 // DailyLogs 透過 ON DELETE CASCADE 自動清除
 export async function deleteMember(
     targetUserId: string,
@@ -348,6 +349,9 @@ export async function deleteMember(
         await client.query(`DELETE FROM "OnlineGatheringApplications" WHERE user_id = $1`, [targetUserId]);
         await client.query(`DELETE FROM "UserNineGrid"              WHERE member_id = $1`, [targetUserId]);
         await client.query(`DELETE FROM "FinePayments"              WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "TempQuestApplications"     WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "WeeklyRankSnapshot"        WHERE user_id   = $1`, [targetUserId]);
+        await client.query(`DELETE FROM "MonthlyRankSnapshot"       WHERE user_id   = $1`, [targetUserId]);
 
         // 主角色（DailyLogs 會 CASCADE）
         await client.query(`DELETE FROM "CharacterStats" WHERE "UserID" = $1`, [targetUserId]);
@@ -510,7 +514,7 @@ export async function adjustMemberScore(
 ): Promise<{ success: boolean; newScore?: number; error?: string }> {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
     if (delta === 0 || !Number.isFinite(delta)) return { success: false, error: '調整分數不可為 0' };
-    if (Math.abs(delta) > 2000) return { success: false, error: '單次調整上限 2000 分' };
+    if (Math.abs(delta) > 5000) return { success: false, error: '單次調整上限 5000 分' };
     if (!reason.trim()) return { success: false, error: '請填寫調整原因' };
 
     const supabase = createClient(_supabaseUrl, _supabaseKey);
