@@ -33,12 +33,13 @@ export function useLogicalDate() {
         };
     }, []);
     // tick 作為 useMemo 觸發器：每分鐘 setTick 後重新計算
-    // - currentWeeklyMonday：純週一錨，給日曆 UI（WeekCalendarRow 等）顯示 7 格
-    // - seasonWeekStart：賽季週錨（W1 特例 + W2+ 週一），給每週限制計數
+    // - 週/賽季週錨點以「邏輯日」為基準（中午前算前一天），讓週曆不會在週一 0:00 太早翻頁；
+    //   學員 5/24 晚上 ~ 5/25 中午之間做的事仍歸 W2，calendar 顯示 5/18-5/24
     /* eslint-disable react-hooks/exhaustive-deps */
     const logicalTodayStr = useMemo(() => getLogicalDateStr(), [tick]);
-    const currentWeeklyMonday = useMemo(() => getWeeklyMonday(), [tick]);
-    const seasonWeekStart = useMemo(() => getSeasonWeekStart(), [tick]);
+    const logicalAnchor = useMemo(() => new Date(`${logicalTodayStr}T00:00:00+08:00`), [logicalTodayStr]);
+    const currentWeeklyMonday = useMemo(() => getWeeklyMonday(logicalAnchor), [logicalAnchor]);
+    const seasonWeekStart = useMemo(() => getSeasonWeekStart(logicalAnchor), [logicalAnchor]);
     /* eslint-enable react-hooks/exhaustive-deps */
     return { logicalTodayStr, currentWeeklyMonday, seasonWeekStart };
 }
