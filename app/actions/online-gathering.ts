@@ -71,11 +71,14 @@ export async function submitOnlineGathering(
 
     const { data: user } = await supabase
         .from('CharacterStats')
-        .select('Name, TeamName')
+        .select('Name, TeamName, IsCommandant')
         .eq('UserID', userId)
         .single();
 
-    if (!user?.TeamName) return { success: false, error: '尚未設定小隊，無法提交申請' };
+    // 大隊長多數沒有 TeamName（管整個大隊），放行送出；team_name 留 null
+    if (!user?.IsCommandant && !user?.TeamName) {
+        return { success: false, error: '尚未設定小隊，無法提交申請' };
+    }
 
     const weekMonday = currentWeekMondayStr();
 
@@ -160,8 +163,13 @@ export async function listPendingOnlineGatheringsForCaptain(
     if (captain.IsCommandant) {
         const scope = await getCommandantTeamNames(supabase, captainId);
         if (!scope) return { success: false, error: '大隊長範圍不明（缺 SquadName）' };
-        if (scope.teamNames.length === 0) return { success: true, apps: [] };
-        query = query.in('team_name', scope.teamNames);
+        // 大隊長：本大隊所轄小隊 + 自己送的（大隊長多數 TeamName=null，自送 team_name 也 null，需 OR 兜底）
+        if (scope.teamNames.length === 0) {
+            query = query.eq('user_id', captainId);
+        } else {
+            const teamList = scope.teamNames.map(n => `"${n.replace(/"/g, '""')}"`).join(',');
+            query = query.or(`team_name.in.(${teamList}),user_id.eq.${captainId}`);
+        }
     } else {
         if (!captain.TeamName) return { success: true, apps: [] };
         query = query.eq('team_name', captain.TeamName);
@@ -217,9 +225,13 @@ export async function reviewOnlineGathering(
     // 範圍驗證（admin 不受限）
     if (!isAdmin) {
         if (reviewer!.IsCommandant && !reviewer!.IsCaptain) {
-            const scope = await getCommandantTeamNames(supabase, reviewerId);
-            if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
-                return { success: false, error: '無權限審核非本大隊申請' };
+            // 自送 bypass：大隊長 TeamName 多為 null，自送紀錄 team_name 也 null，特例放行
+            const isSelfReview = app.user_id === reviewerId;
+            if (!isSelfReview) {
+                const scope = await getCommandantTeamNames(supabase, reviewerId);
+                if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+                    return { success: false, error: '無權限審核非本大隊申請' };
+                }
             }
         } else if (reviewer!.IsCaptain && app.team_name !== reviewer!.TeamName) {
             return { success: false, error: '只能審核本小隊的申請' };
