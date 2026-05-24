@@ -548,7 +548,7 @@ GROUP BY quest_id ORDER BY approved_count DESC;
 | `id` | UUID | gen_random_uuid() | **主鍵** |
 | `user_id` | TEXT | NOT NULL | 學員 UserID |
 | `user_name` | TEXT | NULL | 學員姓名 |
-| `team_name` | TEXT | NOT NULL | 小隊 |
+| `team_name` | TEXT | NULL | 小隊(大隊長自送時為 null,202605240002 放寬) |
 | `week_monday` | DATE | NOT NULL | 該週週一(Asia/Taipei) |
 | `status` | TEXT | `'pending'` NOT NULL | `pending` / `approved` / `rejected` |
 | `notes` | TEXT | NULL | 學員補充說明 |
