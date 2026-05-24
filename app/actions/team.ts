@@ -214,11 +214,12 @@ function addLogToBucket(b: DailyBucket, log: DailyLogRow) {
 }
 
 // 邏輯日範圍 → DailyLogs 時間戳邊界（邏輯日 X = X 12:00+08 ~ X+1 12:00+08）
+// 用 UTC 操作避免 server local timezone（Vercel 預設 UTC）影響「加 1 天」結果
 function logicalRangeToIso(fromLogical: string, toLogical: string): { startISO: string; endISO: string } {
     const startISO = `${fromLogical}T12:00:00+08:00`;
-    const toDate = new Date(`${toLogical}T00:00:00+08:00`);
-    toDate.setDate(toDate.getDate() + 1);
-    const toNextStr = `${toDate.getFullYear()}-${String(toDate.getMonth() + 1).padStart(2, '0')}-${String(toDate.getDate()).padStart(2, '0')}`;
+    const toDate = new Date(`${toLogical}T00:00:00Z`);
+    toDate.setUTCDate(toDate.getUTCDate() + 1);
+    const toNextStr = toDate.toISOString().slice(0, 10);
     return { startISO, endISO: `${toNextStr}T12:00:00+08:00` };
 }
 
