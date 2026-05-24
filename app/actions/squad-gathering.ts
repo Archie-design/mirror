@@ -6,7 +6,7 @@ import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getLogicalDateStr, getSeasonWeekStart } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr, getSeasonWeekStart } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -340,8 +340,8 @@ export async function scanGatheringQR(
         return { success: false, error: '此凝聚已結束或被取消，無法再報到' };
     }
 
-    const logicalToday = getLogicalDateStr();
-    if (session.gathering_date !== logicalToday) {
+    const calendarToday = getTaipeiDateStr();
+    if (session.gathering_date !== calendarToday) {
         return { success: false, error: `QR 僅限凝聚當日（${session.gathering_date}）有效` };
     }
 

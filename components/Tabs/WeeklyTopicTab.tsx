@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Quest, DailyLog, TemporaryQuest, TempQuestApplication } from '@/types';
 import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { getLogicalDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
 import { WeekCalendarRow } from '@/components/WeekCalendarRow';
 import { getTeamGatheringContext, type TeamGatheringContext } from '@/app/actions/squad-gathering';
 import {
@@ -172,7 +172,7 @@ function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: st
     const attendees = ctx?.attendees ?? [];
     const teamCount = ctx?.teamMemberCount ?? 0;
     const hasCheckedIn = ctx?.hasCheckedIn ?? false;
-    const isToday = session?.gatheringDate === getLogicalDateStr();
+    const isToday = session?.gatheringDate === getTaipeiDateStr();
 
     const renderStatus = () => {
         if (loading) return (

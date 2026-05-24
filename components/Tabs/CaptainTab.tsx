@@ -28,7 +28,7 @@ import {
 import { exportTeamDailyLogsCsv, getMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
 import { downloadCsv } from '@/lib/utils/csv-download';
 import { ScrollText, CheckCircle2 } from 'lucide-react';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr } from '@/lib/utils/time';
 import type { UserNineGrid } from '@/types';
 
 interface SquadMemberRole {
@@ -286,7 +286,7 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
     const teamMemberCount = ctx?.teamMemberCount ?? 0;
     const hasCommandant = attendees.some(a => a.isCommandant);
     const captainAlreadyIn = attendees.some(a => a.userId === captainId);
-    const isToday = session?.gatheringDate === getLogicalDateStr();
+    const isToday = session?.gatheringDate === getTaipeiDateStr();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
 
