@@ -465,7 +465,7 @@ function SquadOnlineGatheringReviewSection({ captainId }: { captainId: string })
                                     onClick={() => handleReview(app.id, true)}
                                     className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl shadow-lg active:scale-95 disabled:opacity-50"
                                 >
-                                    {reviewingId === app.id ? <Loader2 size={14} className="animate-spin inline" /> : '✅ 核准並入帳 +100'}
+                                    {reviewingId === app.id ? <Loader2 size={14} className="animate-spin inline" /> : '✅ 核准並入帳 +1000'}
                                 </button>
                             </div>
                         </div>

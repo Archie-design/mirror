@@ -16,7 +16,7 @@ import { logAdminAction } from '@/app/actions/admin';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-const WK3_ONLINE_REWARD = 100;
+const WK3_ONLINE_REWARD = 1000;
 const WK3_ONLINE_TITLE = '小組凝聚（線上）';
 
 function getServiceClient() {
@@ -262,7 +262,7 @@ export async function reviewOnlineGathering(
         return { success: true, newStatus: 'rejected' };
     }
 
-    // 核准：先更新狀態，再 processCheckInCore 入帳 +100
+    // 核准：先更新狀態，再 processCheckInCore 入帳 +1000
     const { error: updateErr } = await supabase
         .from('OnlineGatheringApplications')
         .update({
