@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireSelf, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getSeasonWeekStart, getLogicalDateStr, getLogicalNowAnchor } from '@/lib/utils/time';
+import { getSeasonWeekStart, getLogicalNowAnchor, getTaipeiDateStr } from '@/lib/utils/time';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { logAdminAction } from '@/app/actions/admin';
 
@@ -26,7 +26,8 @@ function getServiceClient() {
 // 計算本賽季週起始的 YYYY-MM-DD（Asia/Taipei），用於 week_monday 欄位
 // 第 1 週（5/10–5/17）回傳 2026-05-10；第 2 週起回傳該週週一
 function currentWeekMondayStr(): string {
-    return getLogicalDateStr(getSeasonWeekStart(getLogicalNowAnchor()));
+    // getTaipeiDateStr 取 TW 日曆日字串(無中午切換),避免 Monday-midnight 被 shift 成前一天 Sunday
+    return getTaipeiDateStr(getSeasonWeekStart(getLogicalNowAnchor()));
 }
 
 export type OnlineGatheringApp = {
