@@ -6,7 +6,7 @@ import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getLogicalDateStr, getTaipeiDateStr, getSeasonWeekStart } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr, getSeasonWeekStart, getLogicalNowAnchor } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -639,9 +639,9 @@ export async function reviewGathering(
     const failedUsers: string[] = [];
     const cappedUsers: { userId: string; granted: number }[] = [];
 
-    // 每週每人 wk3_offline 累積上限：5000
+    // 每週每人 wk3_offline 累積上限：5000(以邏輯日為基準判斷「本週」)
     const WEEKLY_CAP = 5000;
-    const weekStart = getSeasonWeekStart();
+    const weekStart = getSeasonWeekStart(getLogicalNowAnchor());
     const userIds = attendees.map(a => a.user_id);
     const { data: existingLogs } = await supabase
         .from('DailyLogs')

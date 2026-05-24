@@ -3,6 +3,7 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireUser, authErrorResponse } from '@/lib/auth';
+import { getLogicalDateStr } from '@/lib/utils/time';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -47,15 +48,12 @@ function fmtDate(d: Date): string {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-/** 以台灣時區回傳本賽季週起算日 YYYY-MM-DD（UTC anchor）。
+/** 以「邏輯日今天」回傳本賽季週起算日 YYYY-MM-DD（UTC anchor）。
  * 賽季週以週一-週日為一週；第 1 週特例：5/10(日) ~ 5/17(日) 8 天。
- * 若今日在 W1 期間，回傳 5/10；其餘期間回傳本週週一。
+ * 用邏輯日意味著:5/25 上午（邏輯日仍 5/24）會回 W2 的 5/18,中午後翻 W3 的 5/25。
  */
 function getCurrentWeekMondayDate(): Date {
-    const now = new Date();
-    const twDateStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(now);
+    const twDateStr = getLogicalDateStr();
     // W1 特例：5/10–5/17 一律回 5/10
     if (twDateStr >= '2026-05-10' && twDateStr <= '2026-05-17') {
         return new Date(Date.UTC(2026, 4, 10));
@@ -77,10 +75,7 @@ function nextSeasonWeekStart(weekStart: Date): Date {
 }
 
 function getCurrentMonthStartDate(): Date {
-    const now = new Date();
-    const twDateStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(now);
+    const twDateStr = getLogicalDateStr();
     const [y, m] = twDateStr.split('-').map(n => parseInt(n, 10));
     return new Date(Date.UTC(y, m - 1, 1));
 }

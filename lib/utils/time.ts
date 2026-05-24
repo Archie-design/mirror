@@ -46,6 +46,14 @@ export const getTaipeiDateStr = (dateInput?: Date | string): string => {
 };
 
 /**
+ * 取「邏輯日今天」的 00:00 +08 anchor。
+ * 用於把 getWeeklyMonday/getSeasonWeekStart 改成跟著邏輯日切換（中午前算前一天）。
+ */
+export const getLogicalNowAnchor = (): Date => {
+    return new Date(`${getLogicalDateStr()}T00:00:00+08:00`);
+};
+
+/**
  * 取得本週週一 00:00:00 +08 的時間（純週一錨點，無賽季概念）
  * 用於日曆 UI 顯示「本週」7 格按鈕（週一-週日）。
  */
