@@ -481,9 +481,13 @@ export function WeeklyTopicTab({
                                             )}
                                         </div>
                                     )}
-                                    {isApproved && (
-                                        <div className="mb-3">
-                                            <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">✅ 已核准入帳（{activeApp?.quest_date}）</span>
+                                    {isApproved && activeApp && (
+                                        <div className="mb-3 inline-flex flex-col items-start gap-1">
+                                            <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">✅ 已核准入帳</span>
+                                            <span className="text-[10px] text-gray-500 px-1">
+                                                活動日 {activeApp.quest_date}
+                                                {activeApp.final_review_at && ` · 入帳於 ${getTaipeiDateStr(activeApp.final_review_at)}`}
+                                            </span>
                                         </div>
                                     )}
 

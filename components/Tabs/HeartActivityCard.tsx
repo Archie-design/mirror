@@ -5,6 +5,7 @@ import { Star, Loader2, CheckCircle2 } from 'lucide-react';
 import type { BonusApplication, CharacterStats } from '@/types';
 import { submitBonusApplication } from '@/app/actions/bonus';
 import { compressImage } from '@/lib/utils/compress-image';
+import { getTaipeiDateStr } from '@/lib/utils/time';
 
 // 心成活動 (o9) — 一級審核 + 可申請多次
 // 用 BonusApplications 表（quest_id='o9'）。提交 → status=pending →
@@ -219,6 +220,9 @@ export function HeartActivityCard({
                                     </span>
                                     <span className={`shrink-0 px-2 py-0.5 rounded-lg font-bold ${s.cls}`}>{s.label}</span>
                                 </div>
+                                {a.status === 'approved' && a.final_review_at && (
+                                    <p className="text-[10px] text-gray-400">入帳於 {getTaipeiDateStr(a.final_review_at)}</p>
+                                )}
                                 {rejectionNote && (
                                     <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1">
                                         駁回原因：{rejectionNote}
