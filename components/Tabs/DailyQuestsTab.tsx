@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish } from 'lucide-react';
+import { CheckCircle2, Check, Pencil, ChevronDown, ChevronUp, Sunrise, Salad, Fish, AlertTriangle } from 'lucide-react';
 import { Quest, DailyLog } from '@/types';
 import {
     DAILY_BASIC_CONFIG, DAILY_WEIGHTED_CONFIG,
@@ -287,16 +287,31 @@ export function DailyQuestsTab({
     };
 
     return (
-        <div className="space-y-5 pb-10 animate-in slide-in-from-bottom-4 duration-500">
+        <div className={`space-y-5 pb-10 animate-in slide-in-from-bottom-4 duration-500 transition-colors ${isEditMode ? 'bg-amber-50/60 -mx-4 px-4 py-4 rounded-3xl' : ''}`}>
+
+            {/* 編輯模式提示條（A + C：背景變色 + 紅色提醒不會打卡） */}
+            {isEditMode && (
+                <div className="rounded-2xl bg-red-50 border-2 border-red-300 p-3 flex items-start gap-2 text-red-700 text-sm font-bold shadow-sm">
+                    <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                    <span>
+                        ⚠️ 編輯模式中 — 此頁面僅用於「釘選常用定課」,
+                        <u>不會打卡入帳</u>。完成釘選後請按「完成」回到打卡頁。
+                    </span>
+                </div>
+            )}
 
             {/* 常用定課編輯按鈕 */}
             <div className="flex justify-end px-1">
                 <button
                     onClick={() => setIsEditMode(v => !v)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] text-gray-500 text-sm font-bold hover:text-[#1A6B4A] active:scale-95 transition-all"
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-bold active:scale-95 transition-all ${
+                        isEditMode
+                            ? 'bg-[#1A6B4A] border-[#1A6B4A] text-white hover:bg-[#155a3d]'
+                            : 'bg-[#F5FAF7] border-[#B2DFC0] text-gray-500 hover:text-[#1A6B4A]'
+                    }`}
                 >
-                    {isEditMode ? <CheckCircle2 size={11} className="text-[#1A6B4A]" /> : <Pencil size={9} />}
-                    {isEditMode ? '完成' : '常用'}
+                    {isEditMode ? <CheckCircle2 size={11} /> : <Pencil size={9} />}
+                    {isEditMode ? '完成編輯' : '常用'}
                 </button>
             </div>
 
