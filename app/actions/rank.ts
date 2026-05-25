@@ -2,7 +2,7 @@
 
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import { requireUser, authErrorResponse } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { getLogicalDateStr } from '@/lib/utils/time';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -108,9 +108,7 @@ async function aggregateRange(start: string, end: string): Promise<PersonalRankE
 // ── 個人排行：本週 ────────────────────────────────────────────────────────────
 export async function getCurrentWeekLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; weekMonday?: string; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
         const weekStart = getCurrentWeekMondayDate();
         const nextWeekStart = nextSeasonWeekStart(weekStart);
@@ -130,9 +128,7 @@ export async function getCurrentWeekLeaderboard(): Promise<{ success: boolean; e
 // ── 個人排行：上週（live aggregate，快照尚未建立前使用）──────────────────────
 export async function getPreviousWeekLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; weekMonday?: string; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
         const weekStart = getCurrentWeekMondayDate();
         const weekStartStr = fmtDate(weekStart);
@@ -162,9 +158,7 @@ export async function getPreviousWeekLeaderboard(): Promise<{ success: boolean; 
 // ── 個人排行：歷史週（從 snapshot）─────────────────────────────────────────
 export async function getPastWeekLeaderboard(weekMonday: string): Promise<{ success: boolean; entries?: PersonalRankEntry[]; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase
         .from('WeeklyRankSnapshot')
@@ -189,9 +183,7 @@ export async function getPastWeekLeaderboard(weekMonday: string): Promise<{ succ
 // ── 個人排行：上月（live aggregate，快照尚未建立前使用）──────────────────────
 export async function getPreviousMonthLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; monthStart?: string; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
         const monthStart = getCurrentMonthStartDate();
         const prevMonthStart = new Date(monthStart);
@@ -212,9 +204,7 @@ export async function getPreviousMonthLeaderboard(): Promise<{ success: boolean;
 // ── 個人排行：本月 ────────────────────────────────────────────────────────────
 export async function getCurrentMonthLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; monthStart?: string; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
         const monthStart = getCurrentMonthStartDate();
         const nextMonth = new Date(monthStart);
@@ -235,9 +225,7 @@ export async function getCurrentMonthLeaderboard(): Promise<{ success: boolean; 
 // ── 個人排行：歷史月 ──────────────────────────────────────────────────────────
 export async function getPastMonthLeaderboard(monthStart: string): Promise<{ success: boolean; entries?: PersonalRankEntry[]; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase
         .from('MonthlyRankSnapshot')
@@ -261,9 +249,6 @@ export async function getPastMonthLeaderboard(monthStart: string): Promise<{ suc
 
 // ── 過去 N 週 weekMonday 列表（給期間選單用）────────────────────────────────
 export async function listAvailableWeeks(limit: number = 12): Promise<{ success: boolean; weeks?: string[]; error?: string }> {
-    try { await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
     const supabase = createClient(supabaseUrl, supabaseKey);
     // DB 層 DISTINCT + ORDER + LIMIT，避免應用層 Set 去重的全表掃描問題
     const { data, error } = await supabase.rpc('get_distinct_week_mondays', { p_limit: limit });
@@ -273,9 +258,6 @@ export async function listAvailableWeeks(limit: number = 12): Promise<{ success:
 }
 
 export async function listAvailableMonths(limit: number = 12): Promise<{ success: boolean; months?: string[]; error?: string }> {
-    try { await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase.rpc('get_distinct_month_starts', { p_limit: limit });
     if (error) return { success: false, error: error.message };
@@ -286,9 +268,7 @@ export async function listAvailableMonths(limit: number = 12): Promise<{ success
 // ── 小組成長曲線（過去 N 週每隊每週分數）──────────────────────────────────
 export async function getSquadGrowthChart(weeks: number = 8): Promise<{ success: boolean; data?: SquadGrowthDatum[]; teamNames?: string[]; error?: string }> {
     let sessionUid: string | undefined;
-    try { sessionUid = await requireUser(); } catch (e) {
-        const r = authErrorResponse(e); if (r) return r; throw e;
-    }
+    try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
