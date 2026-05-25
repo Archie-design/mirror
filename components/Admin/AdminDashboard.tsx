@@ -11,6 +11,7 @@ import { AdminLeaderboardSection } from '@/components/Admin/AdminLeaderboardSect
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
+import { AdminGatheringBackfillSection } from '@/components/Admin/AdminGatheringBackfillSection';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -1258,6 +1259,9 @@ export function AdminDashboard({
                             else console.log(msg);
                         }}
                     />
+
+                    {/* 實體凝聚補報（QR 沒掃成功 / 隊長忘了送審 的補救） */}
+                    <AdminGatheringBackfillSection adminUserId={adminUserId ?? 'admin'} />
 
                     {/* F5 一次性任務申請統計 */}
                     <section className="space-y-4">

@@ -120,6 +120,8 @@ export type SquadGatheringSession = {
     approvedHasCommandant: boolean | null;
     notes: string | null;
     createdAt: string;
+    evidenceScreenshotUrl: string | null;
+    backfilledByAdmin: string | null;
 };
 
 export type SquadGatheringAttendee = {
@@ -153,6 +155,8 @@ function mapSession(row: Record<string, unknown>): SquadGatheringSession {
         approvedHasCommandant: (row.approved_has_commandant as boolean | null) ?? null,
         notes: (row.notes as string | null) ?? null,
         createdAt: row.created_at as string,
+        evidenceScreenshotUrl: (row.evidence_screenshot_url as string | null) ?? null,
+        backfilledByAdmin: (row.backfilled_by_admin as string | null) ?? null,
     };
 }
 
@@ -721,4 +725,244 @@ export async function listGatheringSessions(
     if (error) return { success: false, error: error.message };
 
     return { success: true, sessions: (data ?? []).map(mapSession) };
+}
+
+// =============================================================================
+// 管理員補報實體凝聚（QR 沒成功 / 隊長忘了送審等補救路徑）
+// 直接以 status=approved 入庫，需上傳截圖作佐證
+// =============================================================================
+
+const SEASON_START = '2026-05-10';  // 賽季開始日
+
+export async function adminBackfillGathering(params: {
+    teamName: string;
+    gatheringDate: string;           // YYYY-MM-DD
+    attendeeUserIds: string[];
+    hasCommandant: boolean;
+    evidenceScreenshotUrl: string;
+    notes?: string;
+}): Promise<{
+    success: boolean;
+    sessionId?: string;
+    rewardPerPerson?: number;
+    attendeeCount?: number;
+    failedUsers?: string[];
+    cappedUsers?: { userId: string; granted: number }[];
+    error?: string;
+}> {
+    const { teamName, gatheringDate, attendeeUserIds, hasCommandant, evidenceScreenshotUrl, notes } = params;
+
+    if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
+
+    let adminId: string;
+    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+
+    // 輸入驗證
+    if (!teamName) return { success: false, error: '請選擇小隊' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(gatheringDate)) return { success: false, error: '日期格式錯誤' };
+    if (gatheringDate < SEASON_START) return { success: false, error: `日期不可早於賽季開始 ${SEASON_START}` };
+    if (gatheringDate > getTaipeiDateStr()) return { success: false, error: '日期不可未來' };
+    if (!attendeeUserIds || attendeeUserIds.length === 0) return { success: false, error: '至少需勾選一位出席隊員' };
+    if (!evidenceScreenshotUrl) return { success: false, error: '請上傳截圖作為佐證' };
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 防止與既有 session 衝突（unique(team_name, gathering_date)）
+    const { data: existing } = await supabase
+        .from('SquadGatheringSessions')
+        .select('id, status')
+        .eq('team_name', teamName)
+        .eq('gathering_date', gatheringDate)
+        .maybeSingle();
+    if (existing) {
+        return { success: false, error: `該小隊 ${gatheringDate} 已有凝聚紀錄（狀態：${existing.status}），請先刪除或選擇其他日期` };
+    }
+
+    // 驗證 attendeeUserIds 都是該小隊成員（避免亂塞）
+    const { data: teamMembers } = await supabase
+        .from('CharacterStats')
+        .select('UserID, Name, IsCommandant')
+        .eq('TeamName', teamName);
+    const memberIds = new Set((teamMembers ?? []).map(m => m.UserID as string));
+    // 大隊長可能不在 TeamName 內，所以額外把已勾選但不在 memberIds 的 user 拉出來驗證是否為大隊長
+    const outsideIds = attendeeUserIds.filter(id => !memberIds.has(id));
+    if (outsideIds.length > 0) {
+        const { data: commandants } = await supabase
+            .from('CharacterStats')
+            .select('UserID, IsCommandant')
+            .in('UserID', outsideIds);
+        const allCommandants = (commandants ?? []).every(c => c.IsCommandant);
+        if (!allCommandants || (commandants ?? []).length !== outsideIds.length) {
+            return { success: false, error: '勾選了不屬於該小隊的成員' };
+        }
+    }
+
+    const memberCount = (teamMembers ?? []).length;
+
+    // 計算 reward（同 reviewGathering 規則）
+    let reward = 3000;
+    if (memberCount > 0 && attendeeUserIds.length >= memberCount) reward += 1000;
+    if (hasCommandant) reward += 1000;
+
+    // 建立 session（status=approved）
+    const nowIso = new Date().toISOString();
+    const { data: sessionRow, error: sessErr } = await supabase
+        .from('SquadGatheringSessions')
+        .insert({
+            team_name: teamName,
+            gathering_date: gatheringDate,
+            status: 'approved',
+            scheduled_by: adminId,
+            captain_submitted_by: adminId,
+            captain_submitted_at: nowIso,
+            commandant_reviewed_at: nowIso,
+            approved_by: adminId,
+            approved_reward_per_person: reward,
+            approved_member_count: memberCount,
+            approved_attendee_count: attendeeUserIds.length,
+            approved_has_commandant: hasCommandant,
+            notes: notes ?? null,
+            evidence_screenshot_url: evidenceScreenshotUrl,
+            backfilled_by_admin: adminId,
+        })
+        .select('id')
+        .single();
+
+    if (sessErr || !sessionRow) {
+        return { success: false, error: '建立凝聚紀錄失敗：' + (sessErr?.message ?? 'unknown') };
+    }
+    const sessionId = sessionRow.id as string;
+
+    // 寫入 attendances
+    const attendanceRows = attendeeUserIds.map(uid => ({
+        session_id: sessionId,
+        user_id: uid,
+        user_name: (teamMembers ?? []).find(m => m.UserID === uid)?.Name ?? null,
+        is_commandant: hasCommandant && !memberIds.has(uid),
+        scanned_at: nowIso,
+    }));
+    const { error: attErr } = await supabase
+        .from('SquadGatheringAttendances')
+        .insert(attendanceRows);
+    if (attErr) {
+        // session 已建但 attendances 失敗 — 刪 session 回滾
+        await supabase.from('SquadGatheringSessions').delete().eq('id', sessionId);
+        return { success: false, error: '寫入出席紀錄失敗：' + attErr.message };
+    }
+
+    // 批次入帳（同 reviewGathering 規則，受每週 5000 cap）
+    const questId = `wk3_offline|${sessionId}`;
+    const questTitle = '小組凝聚（實體）';
+    const WEEKLY_CAP = 5000;
+    const weekStart = getSeasonWeekStart(getLogicalNowAnchor());
+    const { data: existingLogs } = await supabase
+        .from('DailyLogs')
+        .select('UserID, RewardPoints')
+        .in('UserID', attendeeUserIds)
+        .like('QuestID', 'wk3_offline|%')
+        .gte('Timestamp', weekStart.toISOString());
+    const weekTotalByUser = new Map<string, number>();
+    for (const log of (existingLogs ?? []) as { UserID: string; RewardPoints: number | null }[]) {
+        weekTotalByUser.set(log.UserID, (weekTotalByUser.get(log.UserID) ?? 0) + (log.RewardPoints ?? 0));
+    }
+
+    const failedUsers: string[] = [];
+    const cappedUsers: { userId: string; granted: number }[] = [];
+    for (const uid of attendeeUserIds) {
+        const already = weekTotalByUser.get(uid) ?? 0;
+        const remaining = Math.max(0, WEEKLY_CAP - already);
+        const grantReward = Math.min(reward, remaining);
+        if (grantReward <= 0) {
+            cappedUsers.push({ userId: uid, granted: 0 });
+            continue;
+        }
+        const r = await processCheckInCore(uid, questId, questTitle, grantReward);
+        if (!r.success) failedUsers.push(uid);
+        else if (grantReward < reward) cappedUsers.push({ userId: uid, granted: grantReward });
+    }
+
+    await logAdminAction(
+        'backfill_squad_gathering',
+        adminId,
+        sessionId,
+        teamName,
+        {
+            gatheringDate,
+            attendeeCount: attendeeUserIds.length,
+            memberCount,
+            hasCommandant,
+            reward,
+            evidenceScreenshotUrl,
+            notes: notes ?? null,
+            failedUsers,
+            cappedUsers,
+        },
+        failedUsers.length > 0 ? 'error' : 'success',
+    );
+
+    return {
+        success: true,
+        sessionId,
+        rewardPerPerson: reward,
+        attendeeCount: attendeeUserIds.length,
+        failedUsers,
+        cappedUsers,
+    };
+}
+
+// ── 學員：撈自己參加過的所有實體凝聚（按日期降序）─────────────────────────
+export type MyGatheringHistoryEntry = {
+    sessionId: string;
+    teamName: string;
+    gatheringDate: string;
+    rewardPerPerson: number | null;
+    attendeeCount: number | null;
+    memberCount: number | null;
+    hasCommandant: boolean | null;
+    evidenceScreenshotUrl: string | null;
+    backfilled: boolean;   // 是否為 admin 補報
+    notes: string | null;
+};
+
+export async function getMyGatheringHistory(
+    userId: string,
+): Promise<{ success: boolean; entries?: MyGatheringHistoryEntry[]; error?: string }> {
+    try { await requireSelf(userId); } catch (e) {
+        const r = authErrorResponse(e)!;
+        return { success: false, error: r.error };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 取得這位學員所有出席的 session ids
+    const { data: atts } = await supabase
+        .from('SquadGatheringAttendances')
+        .select('session_id')
+        .eq('user_id', userId);
+    const sessionIds = Array.from(new Set((atts ?? []).map(a => a.session_id as string)));
+    if (sessionIds.length === 0) return { success: true, entries: [] };
+
+    // 撈對應 sessions（僅 approved）
+    const { data: sessions, error } = await supabase
+        .from('SquadGatheringSessions')
+        .select('*')
+        .in('id', sessionIds)
+        .eq('status', 'approved')
+        .order('gathering_date', { ascending: false });
+    if (error) return { success: false, error: error.message };
+
+    const entries: MyGatheringHistoryEntry[] = (sessions ?? []).map(s => ({
+        sessionId: s.id as string,
+        teamName: s.team_name as string,
+        gatheringDate: s.gathering_date as string,
+        rewardPerPerson: (s.approved_reward_per_person as number | null) ?? null,
+        attendeeCount: (s.approved_attendee_count as number | null) ?? null,
+        memberCount: (s.approved_member_count as number | null) ?? null,
+        hasCommandant: (s.approved_has_commandant as boolean | null) ?? null,
+        evidenceScreenshotUrl: (s.evidence_screenshot_url as string | null) ?? null,
+        backfilled: !!s.backfilled_by_admin,
+        notes: (s.notes as string | null) ?? null,
+    }));
+
+    return { success: true, entries };
 }
