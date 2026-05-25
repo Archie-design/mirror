@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Loader2, Upload, Crown, ImageIcon, CheckCircle2 } from 'lucide-react';
+import { CalendarDays, Loader2, Upload, Crown, ImageIcon, CheckCircle2, XCircle } from 'lucide-react';
 import { adminBackfillGathering } from '@/app/actions/squad-gathering';
 import { listAllMembers } from '@/app/actions/admin';
 import { compressImage } from '@/lib/utils/compress-image';
@@ -108,6 +108,12 @@ export function AdminGatheringBackfillSection({ adminUserId }: Props) {
             const msg = err instanceof Error ? err.message : String(err);
             setError('圖片處理失敗:' + msg);
         }
+    }
+
+    function clearScreenshot() {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setFile(null);
+        setPreviewUrl(null);
     }
 
     function reset() {
@@ -284,16 +290,29 @@ export function AdminGatheringBackfillSection({ adminUserId }: Props) {
             {/* 截圖上傳 */}
             <div>
                 <label className="block text-[10px] text-slate-400 font-bold mb-1">截圖佐證 *</label>
-                <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={onFileChange}
-                    className="text-xs text-slate-300"
-                />
-                {previewUrl && (
-                    <div className="mt-2 inline-block bg-slate-800 p-2 rounded-xl">
-                        <img src={previewUrl} alt="截圖預覽" className="max-h-32 rounded" />
+                {previewUrl ? (
+                    <div className="relative inline-block">
+                        <img src={previewUrl} alt="截圖預覽" className="max-h-40 rounded-xl border border-slate-700" />
+                        <button
+                            type="button"
+                            onClick={clearScreenshot}
+                            className="absolute -top-2 -right-2 bg-slate-800 border border-slate-600 rounded-full w-6 h-6 flex items-center justify-center shadow"
+                            aria-label="移除截圖"
+                        >
+                            <XCircle size={16} className="text-red-400" />
+                        </button>
                     </div>
+                ) : (
+                    <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-700 rounded-xl px-3 py-3 cursor-pointer text-xs text-slate-400 hover:bg-slate-800/40 min-h-[44px]">
+                        <ImageIcon size={14} />
+                        <span>選擇圖片(拍照或從相簿)</span>
+                        <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={onFileChange}
+                            className="hidden"
+                        />
+                    </label>
                 )}
                 {!file && (
                     <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><ImageIcon size={10} /> 必填,任何能證明凝聚發生的圖檔皆可(LINE 通話截圖、合照、簽到表…)</p>
