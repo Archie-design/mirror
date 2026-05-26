@@ -755,7 +755,7 @@ export async function adminBackfillGathering(params: {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
 
     let adminId: string;
-    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+    try { adminId = await requireUser(); } catch { adminId = 'ADMIN'; }
 
     // 輸入驗證
     if (!teamName) return { success: false, error: '請選擇小隊' };
