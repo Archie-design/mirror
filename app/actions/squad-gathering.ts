@@ -775,7 +775,12 @@ export async function adminBackfillGathering(params: {
         .eq('gathering_date', gatheringDate)
         .maybeSingle();
     if (existing) {
-        return { success: false, error: `該小隊 ${gatheringDate} 已有凝聚紀錄（狀態：${existing.status}），請先刪除或選擇其他日期` };
+        if (existing.status !== 'rejected') {
+            return { success: false, error: `該小隊 ${gatheringDate} 已有凝聚紀錄（狀態：${existing.status}），請先刪除或選擇其他日期` };
+        }
+        // rejected 紀錄可以被補報覆蓋：先清除舊資料（不曾入帳，安全刪除）
+        await supabase.from('SquadGatheringAttendances').delete().eq('session_id', (existing as { id: string }).id);
+        await supabase.from('SquadGatheringSessions').delete().eq('id', (existing as { id: string }).id);
     }
 
     // 驗證 attendeeUserIds 都是該小隊成員（避免亂塞）
