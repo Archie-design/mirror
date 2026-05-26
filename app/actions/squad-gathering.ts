@@ -959,7 +959,7 @@ export async function getMyGatheringHistory(
     const entries: MyGatheringHistoryEntry[] = (sessions ?? []).map(s => ({
         sessionId: s.id as string,
         teamName: s.team_name as string,
-        gatheringDate: s.gathering_date as string,
+        gatheringDate: getTaipeiDateStr(new Date(s.gathering_date as string)),
         rewardPerPerson: (s.approved_reward_per_person as number | null) ?? null,
         attendeeCount: (s.approved_attendee_count as number | null) ?? null,
         memberCount: (s.approved_member_count as number | null) ?? null,
