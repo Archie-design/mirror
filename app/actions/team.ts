@@ -173,12 +173,19 @@ export interface DailyBucket {
     once: string[];       // o*
     temp: string[];       // temp_*
     total: number;
+    // 各分類積分（hover 顯示用）
+    dailyPts: number; boxingPts: number; pOtherPts: number; dietPts: number;
+    topicWeekPts: number; angelPts: number; gatherPts: number;
+    ninePts: number; oncePts: number; tempPts: number;
 }
 
 const emptyBucket = (): DailyBucket => ({
     daily: [], boxing: [], pOther: [], diet: [],
     topicWeek: [], angel: [], gather: [],
     nine: [], once: [], temp: [], total: 0,
+    dailyPts: 0, boxingPts: 0, pOtherPts: 0, dietPts: 0,
+    topicWeekPts: 0, angelPts: 0, gatherPts: 0,
+    ninePts: 0, oncePts: 0, tempPts: 0,
 });
 
 // 把單筆 log 灌進對應分類；mutates bucket
@@ -187,29 +194,30 @@ function addLogToBucket(b: DailyBucket, log: DailyLogRow) {
     const base = questBase(log.QuestID);
     const title = log.QuestTitle || '';
 
+    const pts = log.RewardPoints || 0;
     if (TITLES_D[base]) {
-        b.daily.push(TITLES_D[base]);
+        b.daily.push(TITLES_D[base]); b.dailyPts += pts;
     } else if (base === 'p1') {
-        b.boxing.push(TITLES_P.p1);
+        b.boxing.push(TITLES_P.p1); b.boxingPts += pts;
     } else if (base === 'p1_dawn') {
-        b.boxing.push('破曉打拳');
+        b.boxing.push('破曉打拳'); b.boxingPts += pts;
     } else if (TITLES_P[base]) {
-        b.pOther.push(TITLES_P[base]);
+        b.pOther.push(TITLES_P[base]); b.pOtherPts += pts;
     } else if (TITLES_DIET[base]) {
-        b.diet.push(TITLES_DIET[base]);
+        b.diet.push(TITLES_DIET[base]); b.dietPts += pts;
     } else if (base === 'wk1' || base === 'wk4_small' || base === 'wk4_large') {
         const label = TITLES_WK[base] || base;
-        b.topicWeek.push(title ? `${label}-${title}` : label);
+        b.topicWeek.push(title ? `${label}-${title}` : label); b.topicWeekPts += pts;
     } else if (base === 'wk2') {
-        b.angel.push(TITLES_WK.wk2);
+        b.angel.push(TITLES_WK.wk2); b.angelPts += pts;
     } else if (base === 'wk3_online' || base === 'wk3_offline') {
-        b.gather.push(TITLES_WK[base]);
+        b.gather.push(TITLES_WK[base]); b.gatherPts += pts;
     } else if (log.QuestID.startsWith('nine_grid_')) {
-        b.nine.push(title || log.QuestID);
+        b.nine.push(title || log.QuestID); b.ninePts += pts;
     } else if (/^o[0-9]/.test(base)) {
-        b.once.push(title || base);
+        b.once.push(title || base); b.oncePts += pts;
     } else if (base.startsWith('temp_')) {
-        b.temp.push(title || base);
+        b.temp.push(title || base); b.tempPts += pts;
     }
 }
 

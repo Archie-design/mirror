@@ -567,17 +567,17 @@ function TempQuestReviewSection({ captainId }: { captainId: string }) {
 
 // 個人定課查詢結果：單日 card
 function MemberDayCard({ day }: { day: MemberDailyDetail }) {
-    const rows: Array<{ label: string; items: string[] }> = [
-        { label: '每日定課',     items: day.bucket.daily },
-        { label: '打拳',         items: day.bucket.boxing },
-        { label: '其他加權任務', items: day.bucket.pOther },
-        { label: '吃素',         items: day.bucket.diet },
-        { label: '週主題',       items: day.bucket.topicWeek },
-        { label: '天使通話',     items: day.bucket.angel },
-        { label: '凝聚',         items: day.bucket.gather },
-        { label: '九宮格',       items: day.bucket.nine },
-        { label: '一次性任務',   items: day.bucket.once },
-        { label: '臨時加碼',     items: day.bucket.temp },
+    const rows: Array<{ label: string; items: string[]; pts: number }> = [
+        { label: '每日定課',     items: day.bucket.daily,     pts: day.bucket.dailyPts },
+        { label: '打拳',         items: day.bucket.boxing,    pts: day.bucket.boxingPts },
+        { label: '其他加權任務', items: day.bucket.pOther,    pts: day.bucket.pOtherPts },
+        { label: '吃素',         items: day.bucket.diet,      pts: day.bucket.dietPts },
+        { label: '週主題',       items: day.bucket.topicWeek, pts: day.bucket.topicWeekPts },
+        { label: '天使通話',     items: day.bucket.angel,     pts: day.bucket.angelPts },
+        { label: '凝聚',         items: day.bucket.gather,    pts: day.bucket.gatherPts },
+        { label: '九宮格',       items: day.bucket.nine,      pts: day.bucket.ninePts },
+        { label: '一次性任務',   items: day.bucket.once,      pts: day.bucket.oncePts },
+        { label: '臨時加碼',     items: day.bucket.temp,      pts: day.bucket.tempPts },
     ].filter(r => r.items.length > 0);
 
     return (
@@ -593,12 +593,15 @@ function MemberDayCard({ day }: { day: MemberDailyDetail }) {
             ) : (
                 <div className="space-y-1">
                     {rows.map(r => (
-                        <div key={r.label} className="flex items-start gap-2 text-xs">
+                        <div key={r.label} className="group flex items-start gap-2 text-xs">
                             <CheckCircle2 size={12} className="mt-0.5 text-emerald-500 shrink-0" />
                             <div className="flex-1">
                                 <span className="font-bold text-gray-700">{r.label}</span>
                                 <span className="text-gray-500 ml-2">{r.items.join('、')}</span>
                             </div>
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                                +{r.pts.toLocaleString()}
+                            </span>
                         </div>
                     ))}
                 </div>
