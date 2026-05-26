@@ -31,7 +31,7 @@ export async function loginWithPhone(
 
     if (error) return { success: false, error: '系統連線異常' };
     const match = (data && data[0]) as CharacterStats | undefined;
-    if (!match) return { success: false, error: '查無此觀影者帳號。' };
+    if (!match) return { success: false, error: '查無此帳號，請確認姓名與手機末三碼是否正確。' };
 
     await setSessionCookie(match.UserID);
     return { success: true, userId: match.UserID, stats: match };

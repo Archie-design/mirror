@@ -498,7 +498,7 @@ export default function App() {
         saveSession(res.stats.UserID);
         if (!handleReturnTo()) setView('app');
       } else {
-        setModalMessage({ text: res.error || '查無此觀影者帳號。', type: 'error' });
+        setModalMessage({ text: res.error || '查無此帳號，請確認姓名與手機末三碼是否正確。', type: 'error' });
       }
     } catch (err) { setModalMessage({ text: "系統連線異常。", type: 'error' }); } finally { setIsSyncing(false); }
   };
