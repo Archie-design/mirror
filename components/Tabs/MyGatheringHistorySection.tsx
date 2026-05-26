@@ -76,6 +76,7 @@ export function MyGatheringHistorySection({ userId }: Props) {
                         <div className="shrink-0 text-right">
                             <p className="text-emerald-600 font-black text-base">+{(e.rewardPerPerson ?? 0).toLocaleString()}</p>
                             <p className="text-[9px] text-gray-400">分/人</p>
+                            <p className="text-[9px] text-gray-400 mt-0.5">實際入帳受每週<br />5000 上限影響</p>
                         </div>
                     </div>
                     {e.evidenceScreenshotUrl && (
