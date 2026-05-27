@@ -304,12 +304,12 @@ export default function App() {
     }
   };
 
-  const handleAddTempQuest = async (title: string, sub: string, desc: string, reward: number) => {
+  const handleAddTempQuest = async (title: string, sub: string, desc: string, reward: number, startDate?: string, endDate?: string) => {
     setIsSyncing(true);
     try {
-      const res = await addTempQuest(title, sub, desc, reward);
+      const res = await addTempQuest(title, sub, desc, reward, undefined, startDate, endDate);
       if (!res.success || !res.id) throw new Error(res.error);
-      const newQuest: TemporaryQuest = { id: res.id, title, sub, desc, reward, limit: 1, active: true };
+      const newQuest: TemporaryQuest = { id: res.id, title, sub, desc, reward, limit: 1, active: true, start_date: startDate ?? null, end_date: endDate ?? null };
       setTemporaryQuests(prev => [newQuest, ...prev]);
     } catch (err: any) {
       console.error(err);

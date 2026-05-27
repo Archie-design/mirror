@@ -41,6 +41,18 @@ export async function submitTempQuestApplication(
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // 驗證任務存在、啟用中，且送出日期在有效範圍內
+    const { data: quest } = await supabase
+        .from('temporaryquests')
+        .select('id, active, start_date, end_date')
+        .eq('id', questId)
+        .maybeSingle();
+    if (!quest || !quest.active) return { success: false, error: '找不到此任務或任務已停用' };
+    if (quest.start_date && questDate < (quest.start_date as string))
+        return { success: false, error: `任務開放日期為 ${quest.start_date} 起` };
+    if (quest.end_date && questDate > (quest.end_date as string))
+        return { success: false, error: `任務已於 ${quest.end_date} 截止` };
+
     // 已有活躍申請（非 rejected）則不允許重複提交
     const { data: existing } = await supabase
         .from('TempQuestApplications')

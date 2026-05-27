@@ -502,7 +502,11 @@ export function WeeklyTopicTab({
                                             const isThisDayPending = isThisDayApp && activeApp?.status === 'pending';
                                             const isThisDaySquadApproved = isThisDayApp && activeApp?.status === 'squad_approved';
                                             const isDoneViaDailyLog = logs.some(l => l.QuestID === `${tq.id}|${dateStr}`);
-                                            const isAvailable = !isLocked && !isFormOpenForThis;
+                                            const isOutOfRange = Boolean(
+                                                (tq.start_date && dateStr < tq.start_date) ||
+                                                (tq.end_date && dateStr > tq.end_date)
+                                            );
+                                            const isAvailable = !isLocked && !isFormOpenForThis && !isOutOfRange;
                                             const isThisFormDay = isFormOpenForThis && tempForm?.questDate === dateStr;
 
                                             let btnClass = 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-blue-50';
@@ -518,6 +522,8 @@ export function WeeklyTopicTab({
                                                 label = '✓';
                                             } else if (isThisFormDay) {
                                                 btnClass = 'bg-blue-600 text-white ring-2 ring-blue-300';
+                                            } else if (isOutOfRange) {
+                                                btnClass = 'bg-gray-100 text-gray-300 cursor-not-allowed opacity-50';
                                             } else if (isLocked) {
                                                 btnClass = 'bg-gray-100 text-gray-300 cursor-not-allowed';
                                             }

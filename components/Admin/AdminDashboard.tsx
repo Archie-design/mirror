@@ -714,7 +714,7 @@ interface AdminDashboardProps {
     pendingFinalReviewApps: BonusApplication[];
     adminLogs: AdminLog[];
     adminUserId?: string;
-    onAddTempQuest: (title: string, sub: string, desc: string, reward: number) => void;
+    onAddTempQuest: (title: string, sub: string, desc: string, reward: number, startDate?: string, endDate?: string) => void;
     onToggleTempQuest: (id: string, active: boolean) => void;
     onDeleteTempQuest: (id: string) => void;
     onImportRoster: (csvData: string) => Promise<void>;
@@ -1199,8 +1199,10 @@ export function AdminDashboard({
                                 const sub = fd.get('sub') as string;
                                 const desc = fd.get('desc') as string;
                                 const reward = parseInt(fd.get('reward') as string, 10);
+                                const startDate = (fd.get('start_date') as string) || undefined;
+                                const endDate = (fd.get('end_date') as string) || undefined;
                                 if (title && reward) {
-                                    onAddTempQuest(title, sub, desc, reward);
+                                    onAddTempQuest(title, sub, desc, reward, startDate, endDate);
                                     e.currentTarget.reset();
                                 }
                             }} className="space-y-4">
@@ -1208,6 +1210,16 @@ export function AdminDashboard({
                                     <input name="title" required placeholder="主標題（固定顯示：特別任務）" className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500" />
                                     <input name="sub" required placeholder="任務名稱（例：跟父母三道菜）" className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500" />
                                     <input name="desc" placeholder="任務說明（例：面對面或是視訊）" className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-orange-500" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[10px] text-slate-500 font-bold mb-1">開放日期（選填）</label>
+                                        <input name="start_date" type="date" min="2026-05-10" max="2026-06-28" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-slate-500 font-bold mb-1">截止日期（選填）</label>
+                                        <input name="end_date" type="date" min="2026-05-10" max="2026-06-28" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
+                                    </div>
                                 </div>
                                 <div className="flex gap-4 items-center">
                                     <input name="reward" type="number" required defaultValue={500} placeholder="加分額度" className="w-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white font-bold text-center outline-none focus:border-orange-500" />

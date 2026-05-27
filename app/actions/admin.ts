@@ -459,6 +459,8 @@ export async function addTempQuest(
     desc: string,
     reward: number,
     actorName: string = 'admin',
+    startDate?: string,
+    endDate?: string,
 ) {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
     const trimmedTitle = (title || '').trim();
@@ -470,6 +472,8 @@ export async function addTempQuest(
     const { error } = await supabase.from('temporaryquests').insert([{
         id, title: trimmedTitle, sub: sub?.trim() || '', desc: desc?.trim() || '',
         reward, limit_count: 1, active: true,
+        start_date: startDate || null,
+        end_date: endDate || null,
     }]);
     if (error) return { success: false, error: error.message };
 

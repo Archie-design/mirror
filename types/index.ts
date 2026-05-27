@@ -59,6 +59,8 @@ export interface Quest {
 export interface TemporaryQuest extends Quest {
   active: boolean;
   created_at?: string;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 export interface TempQuestApplication {
