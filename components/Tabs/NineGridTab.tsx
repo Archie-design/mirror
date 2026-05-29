@@ -5,7 +5,7 @@ import { CharacterStats, UserNineGrid, DailyLog, Quest } from '@/types';
 import { NineGridCard } from '@/components/NineGridCard';
 import { FORTUNE_COMPANIONS } from '@/components/Login/RegisterForm';
 import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr } from '@/lib/utils/time';
 import { WeekCalendarRow } from '@/components/WeekCalendarRow';
 
 const COMPANION_DETAILS: Record<string, {
@@ -90,8 +90,9 @@ export function NineGridTab({
             wk4SmallCount: 0,
             wk4LargeCount: 0,
         };
+        const weekStartStr = getTaipeiDateStr(seasonWeekStart);
         const hasCell = grid.cells.some(
-            c => c.completed && c.completed_at && new Date(c.completed_at) >= seasonWeekStart
+            c => c.completed && c.completed_at && getLogicalDateStr(new Date(c.completed_at)) >= weekStartStr
         );
         const disabledSet = new Set(disabledQuests || []);
         const allWk4 = WEEKLY_QUEST_CONFIG

@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, Grid3X3, Award, RotateCcw } from 'lucide-react';
 import { UserNineGrid } from '@/types';
 import { completeCell, undoNineGridCellSelf } from '@/app/actions/nine-grid';
 import { FORTUNE_COMPANIONS } from '@/components/Login/RegisterForm';
+import { getLogicalDateStr, getTaipeiDateStr } from '@/lib/utils/time';
 
 // 8條連線定義（橫3 + 直3 + 斜2）
 const NINE_GRID_LINES = [
@@ -54,9 +55,10 @@ export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStar
     const lineBonus = completedLines.length * 3000;
     const highlightedIndices = new Set(completedLines.flat());
 
+    const weekStartStr = getTaipeiDateStr(seasonWeekStart);
     const thisWeekCells = new Set(
         grid.cells
-            .map((c, i) => (c.completed && c.completed_at && new Date(c.completed_at) >= seasonWeekStart ? i : -1))
+            .map((c, i) => (c.completed && c.completed_at && getLogicalDateStr(new Date(c.completed_at)) >= weekStartStr ? i : -1))
             .filter(i => i >= 0)
     );
     const hasCompletedThisWeek = thisWeekCells.size > 0;
