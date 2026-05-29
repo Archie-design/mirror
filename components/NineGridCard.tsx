@@ -176,8 +176,10 @@ export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStar
                                 <p className={`text-[10px] leading-tight line-clamp-2 ${isWeeklyBlocked ? 'text-gray-400' : 'text-[#7A9A7A]'}`}>{cell.description}</p>
                             )}
                             {isCompleted && cell.completed_at && (
-                                <p className="text-[9px] text-[#A8C4B0] mt-auto">
-                                    {new Date(cell.completed_at).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })}
+                                <p className="text-[9px] text-[#A8C4B0] mt-auto leading-tight">
+                                    {new Date(cell.completed_at).toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit' })}
+                                    {' '}
+                                    {new Date(cell.completed_at).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false })}
                                 </p>
                             )}
                             {isLoading && <p className="text-[10px] mt-auto font-bold" style={{ color }}>記錄中...</p>}
