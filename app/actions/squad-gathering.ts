@@ -119,6 +119,7 @@ export type SquadGatheringSession = {
     approvedAttendeeCount: number | null;
     approvedHasCommandant: boolean | null;
     notes: string | null;
+    gatheringTheme: string | null;
     createdAt: string;
     evidenceScreenshotUrl: string | null;
     backfilledByAdmin: string | null;
@@ -154,6 +155,7 @@ function mapSession(row: Record<string, unknown>): SquadGatheringSession {
         approvedAttendeeCount: (row.approved_attendee_count as number | null) ?? null,
         approvedHasCommandant: (row.approved_has_commandant as boolean | null) ?? null,
         notes: (row.notes as string | null) ?? null,
+        gatheringTheme: (row.gathering_theme as string | null) ?? null,
         createdAt: row.created_at as string,
         evidenceScreenshotUrl: (row.evidence_screenshot_url as string | null) ?? null,
         backfilledByAdmin: (row.backfilled_by_admin as string | null) ?? null,
@@ -173,6 +175,7 @@ function mapAttendee(row: Record<string, unknown>): SquadGatheringAttendee {
 export async function scheduleSquadGathering(
     teamName: string,
     gatheringDateISO: string,  // YYYY-MM-DD
+    theme?: string,
 ): Promise<{ success: boolean; error?: string; session?: SquadGatheringSession }> {
     if (!teamName || !/^\d{4}-\d{2}-\d{2}$/.test(gatheringDateISO)) {
         return { success: false, error: '輸入格式錯誤' };
@@ -199,6 +202,7 @@ export async function scheduleSquadGathering(
             gathering_date: gatheringDateISO,
             status: 'scheduled',
             scheduled_by: adminId,
+            gathering_theme: theme || null,
         })
         .select('*')
         .single();

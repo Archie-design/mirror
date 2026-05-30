@@ -181,6 +181,7 @@ function GatheringScheduler({
     const teamOptions = Object.keys(battalionMembers).sort();
     const [team, setTeam] = useState<string>(teamOptions[0] ?? '');
     const [date, setDate] = useState<string>('');
+    const [theme, setTheme] = useState<string>('');
     const [saving, setSaving] = useState(false);
     const [sessions, setSessions] = useState<SquadGatheringSession[]>([]);
     const [loading, setLoading] = useState(true);
@@ -196,11 +197,12 @@ function GatheringScheduler({
     const handleCreate = async () => {
         if (!team || !date) return;
         setSaving(true);
-        const res = await scheduleSquadGathering(team, date);
+        const res = await scheduleSquadGathering(team, date, theme || undefined);
         setSaving(false);
         if (res.success) {
             onShowMessage('✅ 已排定實體凝聚', 'success');
             setDate('');
+            setTheme('');
             reload();
         } else {
             onShowMessage(res.error ?? '排定失敗', 'error');
@@ -250,6 +252,16 @@ function GatheringScheduler({
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-rose-400 mt-1"
                     />
                 </div>
+                <div>
+                    <label className="text-xs font-black text-gray-500">凝聚主題（選填）</label>
+                    <input
+                        type="text"
+                        placeholder="例：財富運共學、定課分享"
+                        value={theme}
+                        onChange={e => setTheme(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 text-sm outline-none focus:border-rose-400 mt-1"
+                    />
+                </div>
                 <button
                     disabled={saving || !team || !date}
                     onClick={handleCreate}
@@ -278,6 +290,9 @@ function GatheringScheduler({
                                             {s.status === 'scheduled' ? '排定中' : '審核中'}
                                         </span>
                                     </p>
+                                    {s.gatheringTheme && (
+                                        <p className="text-xs text-rose-500 font-bold truncate mt-0.5">{s.gatheringTheme}</p>
+                                    )}
                                 </div>
                                 {s.status === 'scheduled' && (
                                     <button
@@ -358,6 +373,9 @@ function GatheringPendingReviews({
                                 <div className="min-w-0">
                                     <p className="font-black text-gray-900 text-base">{item.session.teamName}</p>
                                     <p className="text-sm text-gray-500">凝聚日：{item.session.gatheringDate}</p>
+                                    {item.session.gatheringTheme && (
+                                        <p className="text-xs text-rose-500 font-bold mt-0.5">{item.session.gatheringTheme}</p>
+                                    )}
                                 </div>
                                 <span className="shrink-0 text-sm font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
                                     每人 +{item.projectedReward}
