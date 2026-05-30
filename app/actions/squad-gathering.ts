@@ -6,7 +6,7 @@ import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getLogicalDateStr, getTaipeiDateStr, getSeasonWeekStart, getLogicalNowAnchor } from '@/lib/utils/time';
+import { getTaipeiDateStr, getSeasonWeekStart } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -651,9 +651,12 @@ export async function reviewGathering(
     const failedUsers: string[] = [];
     const cappedUsers: { userId: string; granted: number }[] = [];
 
-    // 每週每人 wk3_offline 累積上限：5000(以邏輯日為基準判斷「本週」)
+    // 每週每人 wk3_offline 累積上限：5000
+    // 以「凝聚日」所在的賽季週為基準（非核准日），避免補報跨週佔錯週上限
     const WEEKLY_CAP = 5000;
-    const weekStart = getSeasonWeekStart(getLogicalNowAnchor());
+    const gatheringAnchor = new Date(`${session.gathering_date}T12:00:00+08:00`);
+    const weekStart = getSeasonWeekStart(gatheringAnchor);
+    const gatheringTs = `${session.gathering_date}T12:00:00+08:00`;
     const userIds = attendees.map(a => a.user_id);
     const { data: existingLogs } = await supabase
         .from('DailyLogs')
@@ -675,7 +678,7 @@ export async function reviewGathering(
             cappedUsers.push({ userId: a.user_id, granted: 0 });
             continue;
         }
-        const r = await processCheckInCore(a.user_id, questId, questTitle, grantReward);
+        const r = await processCheckInCore(a.user_id, questId, questTitle, grantReward, gatheringTs);
         if (!r.success) failedUsers.push(a.user_id);
         else if (grantReward < reward) cappedUsers.push({ userId: a.user_id, granted: grantReward });
     }
@@ -864,10 +867,13 @@ export async function adminBackfillGathering(params: {
     }
 
     // 批次入帳（同 reviewGathering 規則，受每週 5000 cap）
+    // 以「凝聚日」所在的賽季週為基準，補報不會佔錯週上限
     const questId = `wk3_offline|${sessionId}`;
     const questTitle = '小組凝聚（實體）';
     const WEEKLY_CAP = 5000;
-    const weekStart = getSeasonWeekStart(getLogicalNowAnchor());
+    const gatheringAnchor = new Date(`${gatheringDate}T12:00:00+08:00`);
+    const weekStart = getSeasonWeekStart(gatheringAnchor);
+    const gatheringTs = `${gatheringDate}T12:00:00+08:00`;
     const { data: existingLogs } = await supabase
         .from('DailyLogs')
         .select('UserID, RewardPoints')
@@ -889,7 +895,7 @@ export async function adminBackfillGathering(params: {
             cappedUsers.push({ userId: uid, granted: 0 });
             continue;
         }
-        const r = await processCheckInCore(uid, questId, questTitle, grantReward);
+        const r = await processCheckInCore(uid, questId, questTitle, grantReward, gatheringTs);
         if (!r.success) failedUsers.push(uid);
         else if (grantReward < reward) cappedUsers.push({ userId: uid, granted: grantReward });
     }

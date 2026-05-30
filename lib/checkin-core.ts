@@ -17,17 +17,19 @@ export async function processCheckInCore(
     userId: string,
     questId: string,
     questTitle: string,
-    questReward: number
+    questReward: number,
+    overrideTimestamp?: string,  // ISO 字串，讓凝聚入帳使用 gathering_date 而非 NOW()
 ): Promise<{ success: boolean; error?: string; rewardCapped?: boolean; user?: unknown }> {
     const supabase = getServiceClient();
     const logicalTodayStr = getLogicalDateStr();
 
     const { data, error } = await supabase.rpc('process_checkin', {
-        p_user_id:       userId,
-        p_quest_id:      questId,
-        p_quest_title:   questTitle,
-        p_quest_reward:  questReward,
-        p_logical_today: logicalTodayStr,
+        p_user_id:             userId,
+        p_quest_id:            questId,
+        p_quest_title:         questTitle,
+        p_quest_reward:        questReward,
+        p_logical_today:       logicalTodayStr,
+        p_override_timestamp:  overrideTimestamp ?? null,
     });
 
     if (error) return { success: false, error: error.message };
