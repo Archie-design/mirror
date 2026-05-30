@@ -135,7 +135,7 @@ BEGIN
 
   -- ── 連線獎勵 ─────────────────────────────────────────────────────────────
   IF v_new_line_count > 0 THEN
-    v_line_bonus := v_new_line_count * v_grid.cell_score;
+    v_line_bonus := v_new_line_count * 3000;
     v_line_quest_id := 'nine_grid_line|cell' || p_cell_index;
 
     INSERT INTO "DailyLogs" ("Timestamp", "UserID", "QuestID", "QuestTitle", "RewardPoints")

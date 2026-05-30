@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import {
-    Phone, Users, Zap,
+    Phone, Users, Zap, Trophy,
     Map, Star, Crown, Loader2, QrCode, CheckCircle2,
 } from 'lucide-react';
-import { Quest, DailyLog, TemporaryQuest, TempQuestApplication } from '@/types';
+import { Quest, DailyLog, TemporaryQuest, TempQuestApplication, WeeklyPracticeApplication } from '@/types';
 import { WEEKLY_QUEST_CONFIG } from '@/lib/constants';
 import { getLogicalDateStr, getTaipeiDateStr, getCurrentThemePeriod } from '@/lib/utils/time';
 import { WeekCalendarRow } from '@/components/WeekCalendarRow';
@@ -16,6 +16,7 @@ import {
     type OnlineGatheringApp,
 } from '@/app/actions/online-gathering';
 import { submitTempQuestApplication, cancelTempQuestApplication } from '@/app/actions/temp-quest-application';
+import { submitWeeklyPractice, cancelWeeklyPractice } from '@/app/actions/weekly-practice';
 import { compressImage } from '@/lib/utils/compress-image';
 
 interface WeeklyTopicTabProps {
@@ -30,10 +31,22 @@ interface WeeklyTopicTabProps {
     userId: string;
     tempQuestApplications?: TempQuestApplication[];
     onTempQuestAppUpdated?: () => Promise<void>;
+    weeklyPracticeApps?: WeeklyPracticeApplication[];
+    onWeeklyPracticeUpdated?: () => Promise<void>;
 }
 
 interface TempQuestFormState {
     questId: string;
+    questDate: string;
+    file: File | null;
+    previewUrl: string | null;
+    note: string;
+    uploading: boolean;
+    submitting: boolean;
+    error: string | null;
+}
+
+interface Wk5FormState {
     questDate: string;
     file: File | null;
     previewUrl: string | null;
@@ -250,15 +263,19 @@ export function WeeklyTopicTab({
     userId,
     tempQuestApplications = [],
     onTempQuestAppUpdated,
+    weeklyPracticeApps = [],
+    onWeeklyPracticeUpdated,
 }: WeeklyTopicTabProps) {
     const [tempForm, setTempForm] = useState<TempQuestFormState | null>(null);
     const [cancelling, setCancelling] = useState<string | null>(null);
+    const [wk5Form, setWk5Form] = useState<Wk5FormState | null>(null);
+    const [wk5Cancelling, setWk5Cancelling] = useState<string | null>(null);
     // ── 當前電影主題週期 ──
     const themePeriod = getCurrentThemePeriod();
 
     const {
-        wk1Quest, wk2Quest, wk3OnlineQuest, wk3OfflineQuest,
-        wk1Count, wk2Count,
+        wk1Quest, wk2Quest, wk3OnlineQuest, wk3OfflineQuest, wk5Quest,
+        wk1Count, wk2Count, wk5Count,
     } = useMemo(() => {
         const disabledSet = new Set(disabledQuests || []);
         const weeklyQuests = WEEKLY_QUEST_CONFIG
@@ -271,8 +288,10 @@ export function WeeklyTopicTab({
             wk2Quest: weeklyQuests.find(q => q.id === 'wk2'),
             wk3OnlineQuest: weeklyQuests.find(q => q.id === 'wk3_online'),
             wk3OfflineQuest: weeklyQuests.find(q => q.id === 'wk3_offline'),
+            wk5Quest: weeklyQuests.find(q => q.id === 'wk5'),
             wk1Count: countThisWeek('wk1'),
             wk2Count: countThisWeek('wk2'),
+            wk5Count: countThisWeek('wk5'),
         };
     }, [logs, seasonWeekStart, questRewardOverrides, disabledQuests]);
 
@@ -368,6 +387,214 @@ export function WeeklyTopicTab({
                 </section>
             )}
 
+
+            {/* ── wk5：精進力（二級審核制）── */}
+            {wk5Quest && (() => {
+                const isCapped = wk5Count >= 1;
+                const thisWeekApp = weeklyPracticeApps.find(a =>
+                    a.status !== 'rejected' &&
+                    new Date(`${a.quest_date}T12:00:00+08:00`) >= seasonWeekStart
+                );
+
+                const handleWk5FileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+                    const raw = e.target.files?.[0];
+                    if (!raw) return;
+                    if (!raw.type.startsWith('image/')) {
+                        setWk5Form(prev => prev ? { ...prev, error: '請上傳 JPG、PNG 或 WebP 圖片' } : null);
+                        return;
+                    }
+                    try {
+                        const compressed = await compressImage(raw);
+                        const file = new File([compressed], 'screenshot.jpg', { type: 'image/jpeg' });
+                        setWk5Form(prev => prev ? { ...prev, file, previewUrl: URL.createObjectURL(file), error: null } : null);
+                    } catch {
+                        setWk5Form(prev => prev ? { ...prev, error: '圖片處理失敗，請重試' } : null);
+                    }
+                };
+
+                const handleWk5Submit = async () => {
+                    if (!wk5Form) return;
+                    if (!wk5Form.file) {
+                        setWk5Form(prev => prev ? { ...prev, error: '請上傳截圖佐證（必填）' } : null);
+                        return;
+                    }
+                    setWk5Form(prev => prev ? { ...prev, submitting: true, uploading: true, error: null } : null);
+                    let screenshotUrl = '';
+                    const fd = new FormData();
+                    fd.append('file', wk5Form.file);
+                    fd.append('userId', userId);
+                    fd.append('folder', 'weekly_practice');
+                    try {
+                        const r = await fetch('/api/upload/bonus-screenshot', { method: 'POST', body: fd });
+                        const j = await r.json();
+                        if (!j.success) throw new Error(j.error ?? '上傳失敗');
+                        screenshotUrl = j.url;
+                    } catch (err: unknown) {
+                        const msg = err instanceof Error ? err.message : '上傳失敗';
+                        setWk5Form(prev => prev ? { ...prev, uploading: false, submitting: false, error: '截圖上傳失敗：' + msg } : null);
+                        return;
+                    }
+                    setWk5Form(prev => prev ? { ...prev, uploading: false } : null);
+                    const res = await submitWeeklyPractice(userId, wk5Form.questDate, screenshotUrl, wk5Form.note || undefined);
+                    if (!res.success) {
+                        setWk5Form(prev => prev ? { ...prev, submitting: false, error: res.error ?? '提交失敗' } : null);
+                        return;
+                    }
+                    if (wk5Form.previewUrl) URL.revokeObjectURL(wk5Form.previewUrl);
+                    setWk5Form(null);
+                    await onWeeklyPracticeUpdated?.();
+                };
+
+                const handleWk5Cancel = async (appId: string) => {
+                    setWk5Cancelling(appId);
+                    await cancelWeeklyPractice(userId, appId);
+                    setWk5Cancelling(null);
+                    await onWeeklyPracticeUpdated?.();
+                };
+
+                return (
+                    <section className="space-y-3">
+                        <div className="flex justify-between items-center px-1">
+                            <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest">精進力</h2>
+                            <span className={`text-sm font-bold ${isCapped ? 'text-[#C0392B]' : 'text-gray-500'}`}>{wk5Count} / 1</span>
+                        </div>
+                        <div className={`rounded-3xl bg-white border border-[#B2DFC0] relative overflow-hidden shadow-sm ${isCapped ? 'opacity-60' : ''}`}>
+                            <div className="p-5 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-[#F5FAF7] border border-[#B2DFC0] flex items-center justify-center text-[#1A6B4A] shrink-0"><Trophy size={22} /></div>
+                                    <div className="flex-1">
+                                        <p className="font-bold text-[#1A2A1A] text-base">{wk5Quest.title}</p>
+                                        <p className="text-sm text-gray-500">每週 1 次 · +{wk5Quest.reward.toLocaleString()}</p>
+                                        {wk5Quest.sub && <p className="text-xs text-gray-400 mt-0.5">{wk5Quest.sub}</p>}
+                                    </div>
+                                </div>
+
+                                {/* 狀態 chip */}
+                                {thisWeekApp && thisWeekApp.status !== 'approved' && (
+                                    <div className="flex items-center justify-between gap-2">
+                                        {thisWeekApp.status === 'pending' && (
+                                            <>
+                                                <span className="text-xs font-black text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">⏳ 審核中（{thisWeekApp.quest_date}）</span>
+                                                <button
+                                                    disabled={wk5Cancelling === thisWeekApp.id}
+                                                    onClick={() => handleWk5Cancel(thisWeekApp.id)}
+                                                    className="text-xs text-gray-400 hover:text-red-500 font-bold disabled:opacity-50"
+                                                >
+                                                    {wk5Cancelling === thisWeekApp.id ? '取消中…' : '撤回申請'}
+                                                </button>
+                                            </>
+                                        )}
+                                        {thisWeekApp.status === 'squad_approved' && (
+                                            <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">✓ 初審通過，待終審（{thisWeekApp.quest_date}）</span>
+                                        )}
+                                    </div>
+                                )}
+                                {isCapped && thisWeekApp?.status === 'approved' && (
+                                    <div className="inline-flex flex-col items-start gap-1">
+                                        <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">✅ 已核准入帳</span>
+                                        <span className="text-[10px] text-gray-500 px-1">活動日 {thisWeekApp.quest_date}{thisWeekApp.final_review_at && ` · 入帳於 ${getTaipeiDateStr(thisWeekApp.final_review_at)}`}</span>
+                                    </div>
+                                )}
+
+                                {/* 日期按鈕 */}
+                                <div className="flex justify-between items-center">
+                                    {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
+                                        const d = new Date(currentWeeklyMonday);
+                                        d.setDate(d.getDate() + idx);
+                                        const dateStr = getLogicalDateStr(d);
+                                        const isApprovedDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'approved';
+                                        const isPendingDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'pending';
+                                        const isSquadApprovedDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'squad_approved';
+                                        const isDoneViaDailyLog = logs.some(l => l.QuestID === `wk5|${dateStr}`);
+                                        const isLocked = !!thisWeekApp || isCapped;
+                                        const isFormDay = wk5Form?.questDate === dateStr;
+                                        const isAvailable = !isLocked && !isFormDay;
+
+                                        let btnClass = 'bg-[#F5FAF7] text-gray-500 border border-[#B2DFC0] hover:bg-green-50';
+                                        let label: React.ReactNode = day;
+                                        if (isDoneViaDailyLog || isApprovedDay) { btnClass = 'bg-emerald-500 text-white shadow-md'; label = '✓'; }
+                                        else if (isPendingDay) { btnClass = 'bg-amber-400 text-white'; label = '⏳'; }
+                                        else if (isSquadApprovedDay) { btnClass = 'bg-blue-500 text-white'; label = '✓'; }
+                                        else if (isFormDay) { btnClass = 'bg-emerald-600 text-white ring-2 ring-emerald-300'; }
+                                        else if (isLocked) { btnClass = 'bg-gray-100 text-gray-300 cursor-not-allowed'; }
+
+                                        return (
+                                            <div key={idx} className="flex flex-col items-center gap-1.5">
+                                                <span className="text-[11px] text-gray-400 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
+                                                <button
+                                                    disabled={!isAvailable && !isFormDay}
+                                                    onClick={() => {
+                                                        if (!isAvailable) return;
+                                                        if (isFormDay) {
+                                                            if (wk5Form?.previewUrl) URL.revokeObjectURL(wk5Form.previewUrl);
+                                                            setWk5Form(null);
+                                                            return;
+                                                        }
+                                                        if (wk5Form?.previewUrl) URL.revokeObjectURL(wk5Form.previewUrl);
+                                                        setWk5Form({ questDate: dateStr, file: null, previewUrl: null, note: '', uploading: false, submitting: false, error: null });
+                                                    }}
+                                                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${btnClass}`}
+                                                >{label}</button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* 展開式提交表單 */}
+                            {wk5Form && (
+                                <div className="border-t border-emerald-100 p-5 bg-emerald-50 space-y-4">
+                                    <p className="text-sm font-black text-emerald-700">提交精進力佐證 — {wk5Form.questDate}</p>
+                                    <label className="block">
+                                        <span className="text-xs font-bold text-gray-500 mb-1 block">上傳截圖（必填）</span>
+                                        {wk5Form.previewUrl ? (
+                                            <div className="relative inline-block">
+                                                <img src={wk5Form.previewUrl} alt="預覽" className="max-h-36 rounded-xl border border-emerald-200 object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (wk5Form.previewUrl) URL.revokeObjectURL(wk5Form.previewUrl);
+                                                        setWk5Form(prev => prev ? { ...prev, file: null, previewUrl: null } : null);
+                                                    }}
+                                                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-black"
+                                                >✕</button>
+                                            </div>
+                                        ) : (
+                                            <div className="relative">
+                                                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleWk5FileSelect} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                                                <div className="border-2 border-dashed border-emerald-300 rounded-2xl p-4 text-center text-sm text-emerald-500 font-bold bg-white">📷 點此選擇或拍照上傳（必填）</div>
+                                            </div>
+                                        )}
+                                    </label>
+                                    <textarea
+                                        placeholder="備註（選填）"
+                                        value={wk5Form.note}
+                                        onChange={e => setWk5Form(prev => prev ? { ...prev, note: e.target.value } : null)}
+                                        rows={2}
+                                        className="w-full border border-emerald-200 rounded-xl p-3 text-sm outline-none focus:border-emerald-400 resize-none bg-white"
+                                    />
+                                    {wk5Form.error && <p className="text-xs text-red-500 font-bold">{wk5Form.error}</p>}
+                                    <div className="flex gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => { if (wk5Form.previewUrl) URL.revokeObjectURL(wk5Form.previewUrl); setWk5Form(null); }}
+                                            className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-500 font-black text-sm"
+                                        >取消</button>
+                                        <button
+                                            type="button"
+                                            disabled={wk5Form.submitting || wk5Form.uploading}
+                                            onClick={handleWk5Submit}
+                                            className="flex-[2] py-2.5 rounded-2xl bg-emerald-600 text-white font-black text-sm shadow-lg active:scale-95 disabled:opacity-50"
+                                        >
+                                            {wk5Form.uploading ? '上傳中…' : wk5Form.submitting ? '提交中…' : '送出申請'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                );
+            })()}
 
             {/* ── 臨時加碼任務（二級審核制）── */}
             {temporaryQuests.length > 0 && (

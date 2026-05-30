@@ -1,7 +1,7 @@
 import {
     Flame, Heart, ThumbsUp, BookOpen, Brain, Sparkles, Star, Utensils,
     HeartHandshake, Waves, Moon, Sun, Salad, MicVocal, Target, PenLine,
-    Bell, Phone, Mic, Award, Users, Zap,
+    Bell, Phone, Mic, Award, Users, Zap, Trophy,
     type LucideIcon,
 } from 'lucide-react';
 import { Quest } from '@/types';
@@ -67,6 +67,7 @@ export const DIET_QUEST_IDS = new Set(['diet_veg', 'diet_seafood']);
 // wk2：天使通話，每週最多 2 次
 // wk3_online / wk3_offline：小組凝聚，每週 1 次，須審核
 // wk4_small / wk4_large：人生大戲分享，每週各 1 次
+// wk5：精進力，每週 1 次，二級審核制（截圖佐證）
 export const WEEKLY_QUEST_CONFIG: Quest[] = [
     { id: 'wk1',         title: '破框練習',         sub: '做不習慣、討厭、害怕的事；在小群分享',               reward: 2000, limit: 3 },
     { id: 'wk2',         title: '天使通話',         sub: '與夥伴進行天使通話，分享近期親證狀況',               reward: 2000, limit: 2 },
@@ -74,6 +75,7 @@ export const WEEKLY_QUEST_CONFIG: Quest[] = [
     { id: 'wk3_offline', title: '小組凝聚（實體）', sub: '實體小組聚會（QR 掃碼報到，全到+1000、大隊長出席再+1000）', reward: 3000, limit: 1 },
     { id: 'wk4_small',   title: '人生大戲（小群）', sub: '選定最弱一運，在小群分享親證狀況',                   reward: 2000, limit: 1 },
     { id: 'wk4_large',   title: '人生大戲（大群）', sub: '選定最弱一運，在大群（全隊）分享親證狀況',            reward: 3000, limit: 1 },
+    { id: 'wk5',         title: '精進力',           sub: '完成精進力的挑戰並且分享到大群',                     reward: 2000, limit: 1 },
 ];
 
 // ── Quest Icon Map（ID → Lucide Component）─────────────────────────────────
@@ -105,6 +107,7 @@ export const QUEST_ICON_MAP: Record<string, LucideIcon> = {
     wk3_offline: Users, // 小組凝聚（實體）
     wk4_small:   Mic,   // 人生大戲（小群）
     wk4_large:   Award, // 人生大戲（大群）
+    wk5:         Trophy, // 精進力
 };
 
 export const SQUAD_ROLES = ['副隊長', '抱抱', '衡衡', '叮叮1號', '叮叮2號', '樂樂'] as const;

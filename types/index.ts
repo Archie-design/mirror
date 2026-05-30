@@ -188,4 +188,22 @@ export interface SquadMemberStats {
   lastCheckIn?: string; // 最近一筆 DailyLogs Timestamp（YYYY-MM-DD）
 }
 
+export interface WeeklyPracticeApplication {
+  id: string;
+  quest_date: string;        // YYYY-MM-DD
+  user_id: string;
+  user_name: string;
+  team_name?: string;
+  screenshot_url: string;
+  note?: string;
+  status: 'pending' | 'squad_approved' | 'approved' | 'rejected';
+  squad_review_by?: string;
+  squad_review_at?: string;
+  squad_review_notes?: string;
+  final_review_by?: string;
+  final_review_at?: string;
+  final_review_notes?: string;
+  created_at?: string;
+}
+
 

@@ -10,6 +10,8 @@ import { NineGridTemplateEditor } from '@/components/Admin/NineGridTemplateEdito
 import { AdminLeaderboardSection } from '@/components/Admin/AdminLeaderboardSection';
 import { getSnapshotStatus, triggerWeeklySnapshot, triggerMonthlySnapshot } from '@/app/actions/snapshot';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
+import { listWeeklyPracticeForAdmin, reviewWeeklyPracticeByAdmin } from '@/app/actions/weekly-practice';
+import type { WeeklyPracticeApplication } from '@/types';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
 import { AdminGatheringBackfillSection } from '@/components/Admin/AdminGatheringBackfillSection';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
@@ -757,6 +759,12 @@ export function AdminDashboard({
     const [tempReviewNotes, setTempReviewNotes] = React.useState<Record<string, string>>({});
     const [tempReviewErr, setTempReviewErr] = React.useState<string | null>(null);
 
+    // 精進力終審
+    const [wpApps, setWpApps] = React.useState<WeeklyPracticeApplication[]>([]);
+    const [reviewingWpId, setReviewingWpId] = React.useState<string | null>(null);
+    const [wpReviewNotes, setWpReviewNotes] = React.useState<Record<string, string>>({});
+    const [wpReviewErr, setWpReviewErr] = React.useState<string | null>(null);
+
     // F4 Gathering overview
     type GatheringSession = { id: string; team_name: string; gathering_date: string; status: string; approved_reward_per_person: number | null; approved_attendee_count: number | null; approved_has_commandant: boolean | null };
     type OnlineApp = { id: string; user_name: string; team_name: string; week_monday: string; status: string; squad_review_notes: string | null };
@@ -787,8 +795,20 @@ export function AdminDashboard({
                 if (r.success) setGatheringData({ offline: r.offline as GatheringSession[], online: r.online as OnlineApp[] });
             });
             listTempQuestAppsForAdmin().then(r => { if (r.success) setTempQuestApps(r.apps); });
+            listWeeklyPracticeForAdmin().then(r => { if (r.success) setWpApps(r.apps ?? []); });
         }
     }, [activeAdminTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleWpReview = async (appId: string, approve: boolean) => {
+        setReviewingWpId(appId);
+        setWpReviewErr(null);
+        const res = await reviewWeeklyPracticeByAdmin(appId, approve, 'admin', wpReviewNotes[appId] || '');
+        if (!res.success) setWpReviewErr(res.error ?? '審核失敗');
+        const refreshed = await listWeeklyPracticeForAdmin();
+        if (refreshed.success) setWpApps(refreshed.apps ?? []);
+        setWpReviewNotes(prev => { const n = { ...prev }; delete n[appId]; return n; });
+        setReviewingWpId(null);
+    };
 
     const handleTempQuestReview = async (appId: string, approve: boolean) => {
         setReviewingTempId(appId);
@@ -1382,6 +1402,58 @@ export function AdminDashboard({
                                     );
                                 })
                             )}
+                        </div>
+                    </section>
+
+                    {/* ── 精進力終審 ── */}
+                    <section className="space-y-6">
+                        <div className="flex items-center gap-2 text-emerald-400 font-black text-sm uppercase tracking-widest">🏆 精進力終審</div>
+                        <div className="bg-slate-900 border-2 border-emerald-500/20 p-8 rounded-4xl shadow-xl space-y-4">
+                            {wpApps.length === 0 ? (
+                                <p className="text-sm text-slate-500 text-center py-4">目前無待終審的精進力申請</p>
+                            ) : (
+                                wpApps.map(app => (
+                                    <div key={app.id} className="bg-slate-800 rounded-2xl p-5 space-y-3">
+                                        <div className="flex justify-between items-start flex-wrap gap-2">
+                                            <div>
+                                                <p className="font-black text-white">{app.user_name}</p>
+                                                <p className="text-xs text-slate-400">{app.team_name} · 日期：{app.quest_date}</p>
+                                                {app.squad_review_notes && (
+                                                    <p className="text-xs text-emerald-400 mt-1">隊長備註：{app.squad_review_notes}</p>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-black px-2 py-1 rounded-lg text-emerald-400 bg-emerald-400/10">待終審</span>
+                                        </div>
+                                        {app.note && <p className="text-xs text-slate-400 italic">「{app.note}」</p>}
+                                        {app.screenshot_url && (
+                                            <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                                                <img src={app.screenshot_url} alt="佐證截圖" loading="lazy"
+                                                    className="max-h-48 rounded-xl border border-slate-700 hover:opacity-90 transition-opacity" />
+                                            </a>
+                                        )}
+                                        <textarea
+                                            placeholder="終審備註（選填）"
+                                            value={wpReviewNotes[app.id] || ''}
+                                            onChange={e => setWpReviewNotes(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                            rows={2}
+                                            className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white text-xs outline-none focus:border-emerald-500 resize-none"
+                                        />
+                                        <div className="flex gap-3">
+                                            <button
+                                                disabled={reviewingWpId === app.id}
+                                                onClick={() => handleWpReview(app.id, false)}
+                                                className="flex-1 py-2 bg-red-600/20 text-red-400 font-black rounded-xl text-sm border border-red-600/30 active:scale-95 transition-all disabled:opacity-50"
+                                            >❌ 駁回</button>
+                                            <button
+                                                disabled={reviewingWpId === app.id}
+                                                onClick={() => handleWpReview(app.id, true)}
+                                                className="flex-[2] py-2 bg-emerald-600 text-white font-black rounded-xl text-sm shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                                            >✅ 核准入帳</button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            {wpReviewErr && <p className="text-sm text-red-400 text-center">{wpReviewErr}</p>}
                         </div>
                     </section>
 

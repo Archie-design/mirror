@@ -34,6 +34,8 @@ import { getSquadMembersStats, getBattalionMembersStats } from '@/app/actions/te
 import { SquadMemberStats } from '@/types';
 import { reviewBonusBySquadLeader, reviewBonusByAdmin, getBonusApplications, getAdminActivityLog } from '@/app/actions/bonus';
 import { getMyTempQuestApplications } from '@/app/actions/temp-quest-application';
+import { getMyWeeklyPracticeApps } from '@/app/actions/weekly-practice';
+import type { WeeklyPracticeApplication } from '@/types';
 import { NineGridTab } from '@/components/Tabs/NineGridTab';
 import { getMemberGrid, initMemberGrid, updateUserFortunes } from '@/app/actions/nine-grid';
 import { loginWithPhone, registerAccount, logoutUser } from '@/app/actions/auth';
@@ -113,6 +115,7 @@ export default function App() {
   const [pendingFinalReviewApps, setPendingFinalReviewApps] = useState<BonusApplication[]>([]);
   const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
   const [myTempQuestApps, setMyTempQuestApps] = useState<TempQuestApplication[]>([]);
+  const [myWeeklyPracticeApps, setMyWeeklyPracticeApps] = useState<WeeklyPracticeApplication[]>([]);
 
   const [squadMembers, setSquadMembers] = useState<SquadMemberStats[]>([]);
   const [squadMembersLoaded, setSquadMembersLoaded] = useState(false);
@@ -626,6 +629,8 @@ export default function App() {
         .then(r => { if (r.success) setMyBonusApps(r.applications); }),
       getMyTempQuestApplications(stats.UserID)
         .then(apps => setMyTempQuestApps(apps)),
+      getMyWeeklyPracticeApps(stats.UserID)
+        .then(apps => setMyWeeklyPracticeApps(apps)),
     ]).catch(() => {});
   }, [refreshBonusApps]);
 
@@ -909,6 +914,11 @@ export default function App() {
             onTempQuestAppUpdated={async () => {
               const apps = await getMyTempQuestApplications(userData.UserID);
               setMyTempQuestApps(apps);
+            }}
+            weeklyPracticeApps={myWeeklyPracticeApps}
+            onWeeklyPracticeUpdated={async () => {
+              const apps = await getMyWeeklyPracticeApps(userData.UserID);
+              setMyWeeklyPracticeApps(apps);
             }}
           />
         )}
