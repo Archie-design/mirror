@@ -743,6 +743,7 @@ export function AdminDashboard({
 
     // Announcement state
     const [newAnnouncementText, setNewAnnouncementText] = React.useState('');
+    const [logSearch, setLogSearch] = React.useState('');
     const [announcementPublishing, setAnnouncementPublishing] = React.useState(false);
 
     // F3 Activity stats
@@ -1622,32 +1623,52 @@ export function AdminDashboard({
 
                     <section className="space-y-6">
                         <div className="flex items-center gap-2 text-orange-500 font-black text-sm uppercase tracking-widest"><BarChart3 size={16} /> 管理操作日誌</div>
+                        <input
+                            type="text"
+                            value={logSearch}
+                            onChange={e => setLogSearch(e.target.value)}
+                            placeholder="搜尋操作者、對象、動作類型…"
+                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-xs outline-none focus:border-orange-500 placeholder:text-slate-500"
+                        />
                         <div className="bg-slate-900 border-2 border-slate-800 rounded-4xl overflow-hidden shadow-xl max-h-[400px] overflow-y-auto divide-y divide-slate-800">
-                            {adminLogs.length === 0 ? (
-                                <p className="text-sm text-slate-500 text-center py-8">尚無操作記錄</p>
-                            ) : adminLogs.map(log => (
-                                <div key={log.id} className={`p-4 hover:bg-white/5 transition-colors ${log.result === 'error' ? 'bg-red-950/20' : ''}`}>
-                                    <div className="flex justify-between items-start gap-2">
-                                        <div className="flex-1 min-w-0">
-                                            <p className={`text-xs font-black ${log.result === 'error' ? 'text-red-400' : 'text-slate-200'}`}>
-                                                {ACTION_LABELS[log.action] || log.action}
-                                            </p>
-                                            {log.target_name && <p className="text-[10px] text-slate-500 truncate">對象：{log.target_name}</p>}
-                                            {log.details && (
-                                                <p className="text-[10px] text-slate-600 truncate">
-                                                    {Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                            {(() => {
+                                const q = logSearch.trim().toLowerCase();
+                                const filtered = q
+                                    ? adminLogs.filter(log =>
+                                        (log.actor?.toLowerCase().includes(q)) ||
+                                        (log.target_name?.toLowerCase().includes(q)) ||
+                                        ((ACTION_LABELS[log.action] || log.action).toLowerCase().includes(q)) ||
+                                        (log.details && JSON.stringify(log.details).toLowerCase().includes(q))
+                                    )
+                                    : adminLogs;
+                                if (filtered.length === 0) return (
+                                    <p className="text-sm text-slate-500 text-center py-8">{q ? '無符合結果' : '尚無操作記錄'}</p>
+                                );
+                                return filtered.map(log => (
+                                    <div key={log.id} className={`p-4 hover:bg-white/5 transition-colors ${log.result === 'error' ? 'bg-red-950/20' : ''}`}>
+                                        <div className="flex justify-between items-start gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <p className={`text-xs font-black ${log.result === 'error' ? 'text-red-400' : 'text-slate-200'}`}>
+                                                    {ACTION_LABELS[log.action] || log.action}
                                                 </p>
-                                            )}
-                                        </div>
-                                        <div className="text-right shrink-0">
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${log.result === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                                                {log.result === 'error' ? '失敗' : '成功'}
-                                            </span>
-                                            <p className="text-[10px] text-slate-600 mt-1">{new Date(log.created_at).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                                                {log.actor && <p className="text-[10px] text-orange-400/80 truncate">操作者：{log.actor}</p>}
+                                                {log.target_name && <p className="text-[10px] text-slate-500 truncate">對象：{log.target_name}</p>}
+                                                {log.details && (
+                                                    <p className="text-[10px] text-slate-600 truncate">
+                                                        {Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${log.result === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                                    {log.result === 'error' ? '失敗' : '成功'}
+                                                </span>
+                                                <p className="text-[10px] text-slate-600 mt-1">{new Date(log.created_at).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ));
+                            })()}
                         </div>
                     </section>
 
