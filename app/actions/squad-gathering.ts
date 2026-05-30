@@ -279,7 +279,11 @@ export async function getTeamGatheringContext(
         .eq('UserID', userId)
         .maybeSingle();
 
-    if (!user?.TeamName) return { success: true, context: undefined };
+    if (!user?.TeamName) {
+        // 大隊長可能沒有指定小隊，給空 context 讓 page 自行 fetch 特定 session
+        if (!user?.IsCommandant) return { success: true, context: undefined };
+        return { success: true, context: { session: null, attendees: [], teamMemberCount: 0, hasCheckedIn: false } };
+    }
 
     // 取最近一場（尚未 approved/rejected/cancelled 優先；其次最新一筆）
     const { data: sessions } = await supabase
