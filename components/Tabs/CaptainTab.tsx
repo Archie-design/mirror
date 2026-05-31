@@ -445,7 +445,7 @@ function SquadOnlineGatheringReviewSection({ captainId }: { captainId: string })
                                     <p className="font-black text-gray-900">{app.userName ?? app.userId}</p>
                                     <p className="text-sm text-gray-500">週一：{app.weekMonday}</p>
                                 </div>
-                                <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">+100 分</span>
+                                <span className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">+1000 分</span>
                             </div>
                             {app.notes && (
                                 <p className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-2 italic">「{app.notes}」</p>

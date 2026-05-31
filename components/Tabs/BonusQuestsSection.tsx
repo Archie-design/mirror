@@ -23,7 +23,7 @@ const QUEST_LIST: { id: string; title: string; reward: number; tier: 1 | 2; desc
     { id: 'o5',   title: '報高階（訂金）',           reward: 5000,  tier: 2, desc: '報名高階課程，每階訂金各計一次' },
     { id: 'o6',   title: '報高階（完款）',           reward: 10000, tier: 2, desc: '報名高階課程完款，每階完款各計一次' },
     { id: 'o7',   title: '傳愛',                     reward: 5000,  tier: 2, desc: '介紹他人參加，無上限，每人各計一次' },
-    { id: 'o8',   title: '圓夢計畫',                  reward: 10000, tier: 2, desc: '提交圓夢計畫並完成；二級審核通過後入帳' },
+    { id: 'o8',   title: '圓夢計畫',                  reward: 10000, tier: 2, desc: '新舊一階新生限定。請附上解圓夢計劃佐證（如：與解盤員合照、解盤內容）；二級審核通過後入帳' },
 ];
 
 const MULTI_SUBMIT_IDS = new Set(['o5', 'o6', 'o7']);

@@ -11,7 +11,7 @@ import { logAdminAction } from '@/app/actions/admin';
 
 // wk3_online 小組凝聚（線上）一級審核流程
 // DB: OnlineGatheringApplications（202604210002 migration）
-// 規格：每週 1 次，+100 分，小隊長初審通過即直接入帳。
+// 規格：每週 1 次，+1000 分，小隊長初審通過即直接入帳。
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
