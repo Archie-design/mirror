@@ -75,7 +75,7 @@ export const WEEKLY_QUEST_CONFIG: Quest[] = [
     { id: 'wk3_offline', title: '小組凝聚（實體）', sub: '實體小組聚會（QR 掃碼報到，全到+1000、大隊長出席再+1000）', reward: 3000, limit: 1 },
     { id: 'wk4_small',   title: '人生大戲（小群）', sub: '選定最弱一運，在小群分享親證狀況',                   reward: 2000, limit: 1 },
     { id: 'wk4_large',   title: '人生大戲（大群）', sub: '選定最弱一運，在大群（全隊）分享親證狀況',            reward: 3000, limit: 1 },
-    { id: 'wk5',         title: '精進力',           sub: '完成精進力的挑戰並且分享到大群',                     reward: 2000, limit: 1 },
+    { id: 'wk5',         title: '精進力',           sub: '有參加2026年心之使者內訓限定。完成精進力的挑戰並且分享到大群',  reward: 2000, limit: 1 },
 ];
 
 // ── Quest Icon Map（ID → Lucide Component）─────────────────────────────────
