@@ -7,6 +7,21 @@ import { getBonusApplications, reviewBonusBySquadLeader } from '@/app/actions/bo
 import { listPendingTempQuestsForAdmin, reviewTempQuestByCaptain } from '@/app/actions/temp-quest-application';
 import { listPendingOnlineGatheringsForAdmin, reviewOnlineGathering, type OnlineGatheringApp } from '@/app/actions/online-gathering';
 
+const BONUS_QUEST_TITLES: Record<string, string> = {
+    o1:   '超越巔峰',
+    o2_1: '戲劇進修－生命數字',
+    o2_2: '戲劇進修－生命蛻變',
+    o2_3: '戲劇進修－複訓大堂課',
+    o2_4: '戲劇進修－告別負債&貧窮',
+    o3:   '聯誼會（1年）',
+    o4:   '聯誼會（2年）',
+    o5:   '報高階（訂金）',
+    o6:   '報高階（完款）',
+    o7:   '傳愛',
+    o8:   '圓夢計畫',
+    o9:   '心成活動',
+};
+
 // Admin 兜底初審區塊：處理沒有 captain 可以初審、或 captain 暫無回應的 pending 申請。
 // 三類：一次性任務 (Bonus pending)、臨時加碼 (TempQuest pending)、線上凝聚 (OnlineGathering pending)
 export function AdminPendingReviewSection({
@@ -90,7 +105,7 @@ export function AdminPendingReviewSection({
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="min-w-0">
                                                 <p className="font-black text-white text-sm">{app.user_name}</p>
-                                                <p className="text-xs text-slate-400">{app.squad_name ?? '無小隊'} · <span className="text-amber-300 font-bold">{app.quest_id}</span> · {app.interview_date}</p>
+                                                <p className="text-xs text-slate-400">{app.squad_name ?? '無小隊'} · <span className="text-amber-300 font-bold">{BONUS_QUEST_TITLES[app.quest_id] ?? app.quest_id}</span> · {app.interview_date}</p>
                                                 {app.interview_target && <p className="text-xs text-slate-300 mt-0.5">對象：{app.interview_target}</p>}
                                                 {app.description && <p className="text-xs text-slate-400 italic mt-0.5">{app.description}</p>}
                                             </div>

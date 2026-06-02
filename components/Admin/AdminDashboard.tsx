@@ -14,6 +14,7 @@ import { listWeeklyPracticeForAdmin, reviewWeeklyPracticeByAdmin } from '@/app/a
 import type { WeeklyPracticeApplication } from '@/types';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
 import { AdminGatheringBackfillSection } from '@/components/Admin/AdminGatheringBackfillSection';
+import { downloadCsv } from '@/lib/utils/csv-download';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -1044,13 +1045,7 @@ export function AdminDashboard({
                                         const res = await exportMembersWithSummary();
                                         setMemberExporting(false);
                                         if (!res.success || !res.csv) { alert(res.error || '匯出失敗'); return; }
-                                        const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
-                                        const url = URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `members_export_${new Date().toISOString().slice(0, 10)}.csv`;
-                                        a.click();
-                                        URL.revokeObjectURL(url);
+                                        downloadCsv(res.csv, `members_export_${new Date().toISOString().slice(0, 10)}.csv`);
                                     }}
                                     disabled={memberExporting}
                                     className="w-full p-3 rounded-2xl bg-sky-600/20 border border-sky-500/30 text-sky-300 font-black text-sm hover:bg-sky-600/30 disabled:opacity-50 transition-all min-h-[44px]"
@@ -1086,13 +1081,7 @@ export function AdminDashboard({
                                         const res = await exportMemberScoresCsv();
                                         setCsvExporting(false);
                                         if (!res.success || !res.csv) return;
-                                        const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8;' });
-                                        const url = URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `members_score_${new Date().toISOString().slice(0, 10)}.csv`;
-                                        a.click();
-                                        URL.revokeObjectURL(url);
+                                        downloadCsv(res.csv, `members_score_${new Date().toISOString().slice(0, 10)}.csv`);
                                     }}
                                     disabled={csvExporting}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600/20 border border-sky-500/30 text-sky-300 rounded-xl text-xs font-black hover:bg-sky-600/30 disabled:opacity-50 transition-all"
