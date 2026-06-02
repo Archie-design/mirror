@@ -378,6 +378,59 @@ export async function reviewTempQuestByAdmin(
     return { success: true };
 }
 
+// ── 管理員：列出秘密任務1全部申請 + 小隊統計 ──────────────────────────────────
+export async function listAllAppsForMission1(): Promise<{
+    success: boolean;
+    apps: TempQuestApplication[];
+    squadStats: { teamName: string; total: number; approved: number }[];
+    error?: string;
+}> {
+    if (!(await verifyAdminSession())) {
+        return { success: false, apps: [], squadStats: [], error: '無權限執行此操作' };
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data, error } = await supabase
+        .from('TempQuestApplications')
+        .select('*')
+        .eq('quest_id', 'temp_1779076958469')
+        .order('created_at', { ascending: true });
+
+    if (error) return { success: false, apps: [], squadStats: [], error: error.message };
+    const apps = (data ?? []) as TempQuestApplication[];
+
+    // 各小隊人數（排除大隊長）
+    const { data: members } = await supabase
+        .from('CharacterStats')
+        .select('TeamName')
+        .not('TeamName', 'is', null)
+        .eq('IsCommandant', false);
+
+    const totalByTeam = new Map<string, number>();
+    for (const m of (members ?? []) as { TeamName: string }[]) {
+        if (!m.TeamName) continue;
+        totalByTeam.set(m.TeamName, (totalByTeam.get(m.TeamName) ?? 0) + 1);
+    }
+
+    const approvedByTeam = new Map<string, number>();
+    for (const a of apps) {
+        if (a.status === 'approved' && a.team_name) {
+            approvedByTeam.set(a.team_name, (approvedByTeam.get(a.team_name) ?? 0) + 1);
+        }
+    }
+
+    const squadStats = Array.from(totalByTeam.entries())
+        .map(([teamName, total]) => ({
+            teamName,
+            total,
+            approved: approvedByTeam.get(teamName) ?? 0,
+        }))
+        .sort((a, b) => b.approved / b.total - a.approved / a.total || a.teamName.localeCompare(b.teamName, 'zh-TW'));
+
+    return { success: true, apps, squadStats };
+}
+
 // ── 管理員：列出全系統 pending 申請（admin 兜底初審用） ────────────────────────
 export async function listPendingTempQuestsForAdmin(): Promise<{
     success: boolean; apps: TempQuestApplication[]; error?: string;

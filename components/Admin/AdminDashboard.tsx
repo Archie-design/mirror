@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw, Download, Activity, ChevronDown, ChevronUp, AlertCircle, Coins } from 'lucide-react';
+import { Settings, X, BarChart3, Save, Users, Lock, QrCode, Crown, Sliders, UserCog, Grid3X3, Calendar, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, Check, Database, Loader2, RefreshCw, Download, Activity, ChevronDown, ChevronUp, AlertCircle, Coins, Star } from 'lucide-react';
 import { SystemSettings, AnnouncementItem, CharacterStats, TemporaryQuest, BonusApplication, AdminLog, CourseEvent, TempQuestApplication } from '@/types';
 import { DEFAULT_COURSE_EVENTS } from '@/lib/courseConfig';
 
@@ -15,6 +15,7 @@ import type { WeeklyPracticeApplication } from '@/types';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
 import { AdminGatheringBackfillSection } from '@/components/Admin/AdminGatheringBackfillSection';
 import { downloadCsv } from '@/lib/utils/csv-download';
+import { Mission1Tab } from '@/components/Admin/Mission1Tab';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -740,7 +741,7 @@ export function AdminDashboard({
     const [reviewingW4Id, setReviewingW4Id] = React.useState<string | null>(null);
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
-    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course'>('members');
+    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course' | 'mission1'>('members');
 
     // Announcement state
     const [newAnnouncementText, setNewAnnouncementText] = React.useState('');
@@ -945,6 +946,7 @@ export function AdminDashboard({
         { id: 'ninegrid' as const, label: '九宮格', numeral: 'IV',  icon: <Grid3X3 size={14} /> },
         { id: 'system'   as const, label: '系統',   numeral: 'V',   icon: <BarChart3 size={14} /> },
         { id: 'course'   as const, label: '課程',   numeral: 'VI',  icon: <Calendar size={14} /> },
+        { id: 'mission1' as const, label: '秘密任務1', numeral: 'VII', icon: <Star size={14} /> },
     ];
 
     return (
@@ -1939,6 +1941,19 @@ export function AdminDashboard({
                             <Save size={15} /> {courseEventsSaved ? '已儲存！' : '儲存場次設定'}
                         </button>
                     </div>
+                </div>
+                )}
+
+                {/* ── Tab: 秘密任務1 ── */}
+                {activeAdminTab === 'mission1' && (
+                <div className="space-y-6 animate-fade-up">
+                    <Mission1Tab
+                        adminUserId={adminUserId ?? 'admin'}
+                        onShowMessage={(msg, type) => {
+                            if (type === 'error') console.error('[Mission1]', msg);
+                            else console.log('[Mission1]', msg);
+                        }}
+                    />
                 </div>
                 )}
             </div>
