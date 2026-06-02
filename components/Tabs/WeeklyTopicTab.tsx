@@ -394,7 +394,7 @@ export function WeeklyTopicTab({
 
 
             {/* ── wk5：精進力（二級審核制）── */}
-            {wk5Quest && new Date() >= new Date('2026-06-01T00:00:00+08:00') && (() => {
+            {wk5Quest && (() => {
                 const isCapped = wk5Count >= 1;
                 const thisWeekApp = weeklyPracticeApps.find(a =>
                     a.status !== 'rejected' &&
