@@ -186,7 +186,7 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
     }
 
     return (
-        <div className="bg-white border-2 border-[#B2DFC0] rounded-[2.5rem] shadow-md overflow-hidden">
+        <div className="bg-white border-2 border-[#B2DFC0] rounded-[2.5rem] shadow-md">
             <div className="px-5 pt-5 pb-3 flex items-center gap-2">
                 <CheckCircle size={16} className="text-[#1A6B4A]" />
                 <span className="text-sm font-black text-gray-500 tracking-widest uppercase">一次性任務（截止 7/1，傳愛截止 7/11）</span>
@@ -286,7 +286,7 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                                             type="date"
                                             value={form.date}
                                             onChange={e => setField(quest.id, 'date', e.target.value)}
-                                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base text-[#1A2A1A] focus:outline-none focus:border-[#1A6B4A]"
+                                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base text-[#1A2A1A] focus:outline-none focus:border-[#1A6B4A] min-h-[44px] cursor-pointer"
                                         />
                                     </div>
                                     <div>
