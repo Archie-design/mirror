@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { Loader2, CheckCircle2, XCircle, ChevronRight, X, Search, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import type { TempQuestApplication } from '@/types';
 import { listAllAppsForMission1, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
@@ -271,17 +272,26 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
                 })}
             </div>
 
-            {/* Lightbox */}
-            {lightboxUrl && (
-                <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setLightboxUrl(null)}>
-                    <button onClick={() => setLightboxUrl(null)}
-                        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center hover:bg-slate-700">
+            {/* Lightbox — portal 掛到 body，避免被上層 overflow/transform 裁切 */}
+            {lightboxUrl && typeof document !== 'undefined' && ReactDOM.createPortal(
+                <div
+                    className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center p-4"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <button
+                        onClick={() => setLightboxUrl(null)}
+                        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
+                    >
                         <X size={20} />
                     </button>
-                    <img src={lightboxUrl} alt="截圖放大"
+                    <img
+                        src={lightboxUrl}
+                        alt="截圖放大"
                         className="max-w-full max-h-[90vh] rounded-2xl object-contain"
-                        onClick={e => e.stopPropagation()} />
-                </div>
+                        onClick={e => e.stopPropagation()}
+                    />
+                </div>,
+                document.body
             )}
         </div>
     );
