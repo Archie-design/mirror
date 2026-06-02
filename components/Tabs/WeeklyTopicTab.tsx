@@ -281,8 +281,13 @@ export function WeeklyTopicTab({
         const weeklyQuests = WEEKLY_QUEST_CONFIG
             .filter(q => !disabledSet.has(q.id))
             .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
+        const weekStartStr = getTaipeiDateStr(seasonWeekStart);
         const countThisWeek = (qId: string) =>
-            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= seasonWeekStart).length;
+            logs.filter(l => {
+                if (!l.QuestID.startsWith(qId + '|')) return false;
+                const datePart = l.QuestID.slice(qId.length + 1);
+                return datePart >= weekStartStr;
+            }).length;
         return {
             wk1Quest: weeklyQuests.find(q => q.id === 'wk1'),
             wk2Quest: weeklyQuests.find(q => q.id === 'wk2'),
@@ -297,11 +302,11 @@ export function WeeklyTopicTab({
 
     const makeWeekHandler = (questId: string, quest: Quest) => ({
         onCheckIn: (_qid: string, day: Date) => {
-            const qId = `${questId}|${getLogicalDateStr(day)}`;
+            const qId = `${questId}|${getTaipeiDateStr(day)}`;
             onCheckIn({ ...quest, id: qId });
         },
         onUndo: (_qid: string, day: Date) => {
-            const qId = `${questId}|${getLogicalDateStr(day)}`;
+            const qId = `${questId}|${getTaipeiDateStr(day)}`;
             onUndo({ ...quest, id: qId });
         },
     });
@@ -501,7 +506,7 @@ export function WeeklyTopicTab({
                                     {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
                                         const d = new Date(currentWeeklyMonday);
                                         d.setDate(d.getDate() + idx);
-                                        const dateStr = getLogicalDateStr(d);
+                                        const dateStr = getTaipeiDateStr(d);
                                         const isApprovedDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'approved';
                                         const isPendingDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'pending';
                                         const isSquadApprovedDay = thisWeekApp?.quest_date === dateStr && thisWeekApp.status === 'squad_approved';
@@ -723,7 +728,7 @@ export function WeeklyTopicTab({
                                         {['一', '二', '三', '四', '五', '六', '日'].map((day, idx) => {
                                             const d = new Date(currentWeeklyMonday);
                                             d.setDate(d.getDate() + idx);
-                                            const dateStr = getLogicalDateStr(d);
+                                            const dateStr = getTaipeiDateStr(d);
                                             const isThisDayApp = activeApp?.quest_date === dateStr;
                                             const isThisDayApproved = isThisDayApp && activeApp?.status === 'approved';
                                             const isThisDayPending = isThisDayApp && activeApp?.status === 'pending';

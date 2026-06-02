@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { DailyLog } from '@/types';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getTaipeiDateStr } from '@/lib/utils/time';
 
 // 週曆打卡列：以父層傳入的 currentWeeklyMonday（純週一錨）為準，顯示週一-週日 7 格。
 // 不受賽季 W1 8 天特例影響（5/10 那天不出現在按鈕列，但 wk1|2026-05-10 仍可透過其他流程記錄）。
@@ -26,8 +26,10 @@ export function WeekCalendarRow({
             {['一', '二', '三', '四', '五', '六', '日'].map((dayLabel, idx) => {
                 const d = new Date(currentWeeklyMonday);
                 d.setDate(d.getDate() + idx);
-                const qId = `${questId}|${getLogicalDateStr(d)}`;
-                const isDone = logs.some(l => l.QuestID === qId);
+                // 同時查曆法日（新格式）與午夜邏輯日（舊格式），避免因格式不一致導致已完成的按鈕無法高亮
+                const qIdCalendar = `${questId}|${getTaipeiDateStr(d)}`;
+                const qIdShifted = `${questId}|${getLogicalDateStr(d)}`;
+                const isDone = logs.some(l => l.QuestID === qIdCalendar || l.QuestID === qIdShifted);
                 const isDisabled = disabled && !isDone;
                 return (
                     <div key={idx} className="flex flex-col items-center gap-1.5">

@@ -99,7 +99,11 @@ export function NineGridTab({
             .filter(q => (q.id === 'wk4_small' || q.id === 'wk4_large') && !disabledSet.has(q.id))
             .map(q => questRewardOverrides?.[q.id] != null ? { ...q, reward: questRewardOverrides[q.id] } : q);
         const countThisWeek = (qId: string) =>
-            logs.filter(l => l.QuestID.startsWith(qId + '|') && new Date(l.Timestamp) >= seasonWeekStart).length;
+            logs.filter(l => {
+                if (!l.QuestID.startsWith(qId + '|')) return false;
+                const datePart = l.QuestID.slice(qId.length + 1);
+                return datePart >= weekStartStr;
+            }).length;
         return {
             hasCompletedCellThisWeek: hasCell,
             wk4SmallQuest: allWk4.find(q => q.id === 'wk4_small'),
@@ -116,11 +120,11 @@ export function NineGridTab({
 
         const makeWeekHandler = (questId: string, quest: Quest) => ({
             onCheckIn: (_qid: string, day: Date) => {
-                const qId = `${questId}|${getLogicalDateStr(day)}`;
+                const qId = `${questId}|${getTaipeiDateStr(day)}`;
                 onCheckIn({ ...quest, id: qId });
             },
             onUndo: (_qid: string, day: Date) => {
-                const qId = `${questId}|${getLogicalDateStr(day)}`;
+                const qId = `${questId}|${getTaipeiDateStr(day)}`;
                 onUndo({ ...quest, id: qId });
             },
         });
