@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { DailyLog } from '@/types';
-import { getLogicalDateStr, getTaipeiDateStr } from '@/lib/utils/time';
+import { getTaipeiDateStr } from '@/lib/utils/time';
 
 // 週曆打卡列：以父層傳入的 currentWeeklyMonday（純週一錨）為準，顯示週一-週日 7 格。
 // 不受賽季 W1 8 天特例影響（5/10 那天不出現在按鈕列，但 wk1|2026-05-10 仍可透過其他流程記錄）。
@@ -26,17 +26,16 @@ export function WeekCalendarRow({
             {['一', '二', '三', '四', '五', '六', '日'].map((dayLabel, idx) => {
                 const d = new Date(currentWeeklyMonday);
                 d.setDate(d.getDate() + idx);
-                // 同時查曆法日（新格式）與午夜邏輯日（舊格式），避免因格式不一致導致已完成的按鈕無法高亮
+                // 統一用曆法日（getTaipeiDateStr）比對，避免相鄰按鈕因格式差一天互相認領（鬼打勾 bug）
                 const qIdCalendar = `${questId}|${getTaipeiDateStr(d)}`;
-                const qIdShifted = `${questId}|${getLogicalDateStr(d)}`;
-                const isDone = logs.some(l => l.QuestID === qIdCalendar || l.QuestID === qIdShifted);
+                const isDone = logs.some(l => l.QuestID === qIdCalendar);
                 const isDisabled = disabled && !isDone;
                 return (
                     <div key={idx} className="flex flex-col items-center gap-1.5">
                         <span className="text-sm text-gray-500 font-mono">{d.getMonth() + 1}/{d.getDate()}</span>
                         <button
                             disabled={isDisabled}
-                            onClick={() => isDone ? onUndo(questId, d) : onCheckIn(questId, d)}
+                            onClick={() => isDone ? onUndo(qIdCalendar, d) : onCheckIn(questId, d)}
                             className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all
                                 ${isDone
                                     ? 'bg-[#C0392B] text-white shadow-lg'
