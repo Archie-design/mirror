@@ -282,12 +282,14 @@ export function BonusQuestsSection({ userData, myApplications, onRefresh }: Bonu
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 mb-1">完成日期 *</label>
-                                        <input
-                                            type="date"
-                                            value={form.date}
-                                            onChange={e => setField(quest.id, 'date', e.target.value)}
-                                            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-base text-[#1A2A1A] focus:outline-none focus:border-[#1A6B4A] min-h-[44px] cursor-pointer"
-                                        />
+                                        <div className="min-h-[44px] flex items-center border border-gray-200 rounded-xl focus-within:border-[#1A6B4A]">
+                                            <input
+                                                type="date"
+                                                value={form.date}
+                                                onChange={e => setField(quest.id, 'date', e.target.value)}
+                                                className="w-full px-3 py-2 text-base text-[#1A2A1A] bg-transparent outline-none cursor-pointer"
+                                            />
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 mb-1">備註（選填）</label>
