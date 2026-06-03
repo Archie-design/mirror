@@ -13,6 +13,8 @@ import { exportMembersWithSummary } from '@/app/actions/admin';
 import { exportTeamDailyLogsCsv, getMemberDailyDetails, type MemberDailyDetail } from '@/app/actions/team';
 import { downloadCsv } from '@/lib/utils/csv-download';
 import { reviewBonusByAdmin, bulkReviewBonusByAdmin } from '@/app/actions/bonus';
+import { getMyWeeklyPracticeApps, reviewWeeklyPracticeByCommandant } from '@/app/actions/weekly-practice';
+import type { WeeklyPracticeApplication } from '@/types';
 import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 import {
     scheduleSquadGathering,
@@ -485,6 +487,110 @@ function MemberDayCard({ day }: { day: MemberDailyDetail }) {
     );
 }
 
+// ── 大隊長精進力自我終審區塊 ────────────────────────────────────────────────
+function WeeklyPracticeSelfReview({
+    commandantId,
+    commandantName,
+    onShowMessage,
+}: {
+    commandantId: string;
+    commandantName: string;
+    onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+}) {
+    const [apps, setApps] = React.useState<WeeklyPracticeApplication[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [reviewingId, setReviewingId] = React.useState<string | null>(null);
+    const [notesMap, setNotesMap] = React.useState<Record<string, string>>({});
+
+    const reload = useCallback(async () => {
+        setLoading(true);
+        const data = await getMyWeeklyPracticeApps(commandantId);
+        // 只顯示尚未核准/退回的申請
+        setApps(data.filter(a => a.status !== 'approved' && a.status !== 'rejected'));
+        setLoading(false);
+    }, [commandantId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    const handleReview = async (appId: string, approve: boolean) => {
+        setReviewingId(appId);
+        const res = await reviewWeeklyPracticeByCommandant(commandantId, appId, approve, notesMap[appId] || '');
+        setReviewingId(null);
+        if (res.success) {
+            onShowMessage(approve ? '精進力終審通過，已入帳 +2,000' : '已退回', 'success');
+            await reload();
+        } else {
+            onShowMessage(res.error ?? '審核失敗', 'error');
+        }
+    };
+
+    if (!loading && apps.length === 0) return null;
+
+    const statusLabel: Record<string, string> = {
+        pending: '待初審',
+        squad_approved: '初審通過',
+    };
+
+    return (
+        <section className="bg-white border-2 border-amber-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                🏆 精進力終審（本人申請）
+            </h3>
+            {loading ? (
+                <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-amber-500" /></div>
+            ) : (
+                <div className="space-y-3">
+                    {apps.map(app => (
+                        <div key={app.id} className="bg-gray-50 rounded-2xl p-4 space-y-3 border border-gray-200">
+                            <div className="flex justify-between items-start flex-wrap gap-2">
+                                <div>
+                                    <p className="font-black text-gray-900">{app.user_name}</p>
+                                    <p className="text-xs text-gray-500">活動日：{app.quest_date}</p>
+                                </div>
+                                <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                                    {statusLabel[app.status] ?? app.status}
+                                </span>
+                            </div>
+                            {app.note && (
+                                <p className="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-2 italic">「{app.note}」</p>
+                            )}
+                            {app.screenshot_url && (
+                                <a href={app.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                                    <img src={app.screenshot_url} alt="佐證截圖" loading="lazy"
+                                        className="max-h-40 rounded-xl border border-gray-200 hover:opacity-90 transition-opacity" />
+                                </a>
+                            )}
+                            <textarea
+                                rows={1}
+                                placeholder="終審備註（選填）"
+                                value={notesMap[app.id] ?? ''}
+                                onChange={e => setNotesMap(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 placeholder-gray-400 outline-none focus:border-amber-400 resize-none"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, false)}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-black border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 transition-all"
+                                >
+                                    {reviewingId === app.id ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} 退回
+                                </button>
+                                <button
+                                    disabled={reviewingId === app.id}
+                                    onClick={() => handleReview(app.id, true)}
+                                    className="flex-[2] flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-black bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 transition-all"
+                                >
+                                    {reviewingId === app.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} 終審通過 +2,000
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
 export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battalionMembers = {} }: CommandantTabProps) {
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [notes, setNotes] = useState<Record<string, string>>({});
@@ -817,6 +923,13 @@ export function CommandantTab({ userData, apps, onRefresh, onShowMessage, battal
 
             {/* 臨時加碼任務終審 */}
             <TempQuestFinalReviewSection reviewerName={userData.Name ?? userData.UserID} onShowMessage={onShowMessage} />
+
+            {/* 精進力自我終審 */}
+            <WeeklyPracticeSelfReview
+                commandantId={userData.UserID}
+                commandantName={userData.Name ?? userData.UserID}
+                onShowMessage={onShowMessage}
+            />
 
             {/* Application list */}
             {apps.length === 0 ? (

@@ -112,7 +112,7 @@ export async function getMyWeeklyPracticeApps(
     return (data ?? []) as WeeklyPracticeApplication[];
 }
 
-// ── 小隊長：查待初審清單 ──────────────────────────────────────────────────────
+// ── 小隊長 / 大隊長：查待初審清單 ────────────────────────────────────────────
 export async function listWeeklyPracticeForCaptain(
     captainId: string,
 ): Promise<{ success: boolean; apps?: WeeklyPracticeApplication[]; error?: string }> {
@@ -122,22 +122,34 @@ export async function listWeeklyPracticeForCaptain(
     const supabase = db();
     const { data: captain } = await supabase
         .from('CharacterStats')
-        .select('TeamName, IsCaptain')
+        .select('TeamName, IsCaptain, IsCommandant, Name')
         .eq('UserID', captainId)
         .maybeSingle();
-    if (!captain?.IsCaptain || !captain.TeamName) {
-        return { success: false, error: '僅限小隊長操作' };
+
+    if (!captain?.IsCaptain && !captain?.IsCommandant) {
+        return { success: false, error: '僅限小隊長或大隊長操作' };
     }
-    const { data } = await supabase
+
+    let query = supabase
         .from('WeeklyPracticeApplications')
         .select('*')
-        .eq('team_name', captain.TeamName)
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
+
+    if (captain.IsCommandant) {
+        // 大隊長：自己送的申請（team_name = null，以 user_id 匹配）
+        query = query.eq('user_id', captainId);
+    } else {
+        // 一般隊長：本小隊的申請
+        if (!captain.TeamName) return { success: true, apps: [] };
+        query = query.eq('team_name', captain.TeamName);
+    }
+
+    const { data } = await query;
     return { success: true, apps: (data ?? []) as WeeklyPracticeApplication[] };
 }
 
-// ── 小隊長：初審 ─────────────────────────────────────────────────────────────
+// ── 小隊長 / 大隊長（自審）：初審 ────────────────────────────────────────────
 export async function reviewWeeklyPracticeByCaptain(
     captainId: string,
     appId: string,
@@ -150,19 +162,29 @@ export async function reviewWeeklyPracticeByCaptain(
     const supabase = db();
     const { data: captain } = await supabase
         .from('CharacterStats')
-        .select('TeamName, IsCaptain, Name')
+        .select('TeamName, IsCaptain, IsCommandant, Name')
         .eq('UserID', captainId)
         .maybeSingle();
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長操作' };
+
+    if (!captain?.IsCaptain && !captain?.IsCommandant) {
+        return { success: false, error: '僅限小隊長或大隊長操作' };
+    }
 
     const { data: app } = await supabase
         .from('WeeklyPracticeApplications')
-        .select('id, status, team_name')
+        .select('id, status, team_name, user_id')
         .eq('id', appId)
         .maybeSingle();
     if (!app) return { success: false, error: '找不到申請記錄' };
     if (app.status !== 'pending') return { success: false, error: '此申請狀態不可初審' };
-    if (app.team_name !== captain.TeamName) return { success: false, error: '無權限審核非本小隊成員' };
+
+    if (captain.IsCommandant) {
+        // 大隊長只能初審自己送的申請
+        if (app.user_id !== captainId) return { success: false, error: '大隊長僅可自審本人申請' };
+    } else {
+        // 一般隊長只能審本小隊成員
+        if (app.team_name !== captain.TeamName) return { success: false, error: '無權限審核非本小隊成員' };
+    }
 
     const { error } = await supabase
         .from('WeeklyPracticeApplications')
@@ -235,6 +257,70 @@ export async function reviewWeeklyPracticeByAdmin(
         });
     } else {
         await logAdminAction('weekly_practice_reject', reviewerName, appId, app.user_name, {
+            questDate: app.quest_date, notes: notes?.trim(),
+        });
+    }
+    return { success: true };
+}
+
+// ── 大隊長：直接終審自己的精進力申請（不需 admin session） ────────────────────
+export async function reviewWeeklyPracticeByCommandant(
+    commandantId: string,
+    appId: string,
+    approve: boolean,
+    notes?: string,
+): Promise<{ success: boolean; error?: string }> {
+    try { await requireSelf(commandantId); } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : '請先登入' };
+    }
+    const supabase = db();
+
+    const { data: commandant } = await supabase
+        .from('CharacterStats')
+        .select('IsCommandant, Name')
+        .eq('UserID', commandantId)
+        .maybeSingle();
+    if (!commandant?.IsCommandant) return { success: false, error: '僅限大隊長操作' };
+
+    const { data: app } = await supabase
+        .from('WeeklyPracticeApplications')
+        .select('*')
+        .eq('id', appId)
+        .maybeSingle();
+    if (!app) return { success: false, error: '找不到申請記錄' };
+    if (app.user_id !== commandantId) return { success: false, error: '僅可終審本人申請' };
+    if (app.status === 'approved' || app.status === 'rejected') {
+        return { success: false, error: '此申請已完成審核' };
+    }
+
+    const reviewerName = commandant.Name ?? commandantId;
+    const { error } = await supabase
+        .from('WeeklyPracticeApplications')
+        .update({
+            status: approve ? 'approved' : 'rejected',
+            squad_review_by: app.squad_review_by ?? reviewerName,
+            squad_review_at: app.squad_review_at ?? new Date().toISOString(),
+            final_review_by: reviewerName,
+            final_review_at: new Date().toISOString(),
+            final_review_notes: notes?.trim() || null,
+        })
+        .eq('id', appId);
+    if (error) return { success: false, error: '審核失敗：' + error.message };
+
+    if (approve) {
+        const questId = `wk5|${app.quest_date}`;
+        const r = await processCheckInCore(app.user_id, questId, '精進力', 2000);
+        if (!r.success) {
+            await logAdminAction('weekly_practice_commandant_approve', reviewerName, appId, app.user_name, {
+                questDate: app.quest_date, checkinError: r.error,
+            }, 'error');
+            return { success: false, error: '入帳失敗：' + r.error };
+        }
+        await logAdminAction('weekly_practice_commandant_approve', reviewerName, appId, app.user_name, {
+            questDate: app.quest_date,
+        });
+    } else {
+        await logAdminAction('weekly_practice_commandant_reject', reviewerName, appId, app.user_name, {
             questDate: app.quest_date, notes: notes?.trim(),
         });
     }
