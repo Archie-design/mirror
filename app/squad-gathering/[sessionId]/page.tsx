@@ -3,17 +3,12 @@
 import { useState, useEffect, useCallback, Suspense, use } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, Users, AlertTriangle, Crown } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import {
     scanGatheringQR,
     getTeamGatheringContext,
+    getGatheringContextById,
     type TeamGatheringContext,
 } from '@/app/actions/squad-gathering';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
 
 type UiState =
     | { kind: 'loading' }
@@ -35,42 +30,14 @@ function SquadGatheringContent({ sessionId }: { sessionId: string }) {
         // 已有符合的 session，直接用
         if (res.context?.session?.id === sessionId) return res.context;
 
-        // 大隊長或跨小隊：直接從 DB 撈此 session + 出席清單
-        const [{ data: s }, { data: atRows }] = await Promise.all([
-            supabase
-                .from('SquadGatheringSessions')
-                .select('id, team_name, gathering_date, status')
-                .eq('id', sessionId)
-                .maybeSingle(),
-            supabase
-                .from('SquadGatheringAttendances')
-                .select('user_id, user_name, is_commandant, scanned_at')
-                .eq('session_id', sessionId)
-                .order('scanned_at', { ascending: true }),
-        ]);
-        if (!s) {
-            setState({ kind: 'error', message: '找不到此凝聚紀錄' });
+        // 大隊長或跨小隊：context 的 session 不是此 sessionId，改用 server action
+        // 取此 session（service role 繞過 RLS；client anon 會被 RLS 擋導致「找不到此凝聚紀錄」）
+        const byId = await getGatheringContextById(uid, sessionId);
+        if (!byId.success || !byId.context) {
+            setState({ kind: 'error', message: byId.error ?? '找不到此凝聚紀錄' });
             return null;
         }
-        const attendees = (atRows ?? []).map(a => ({
-            userId: a.user_id as string,
-            userName: a.user_name as string | null,
-            isCommandant: !!a.is_commandant,
-            scannedAt: a.scanned_at as string,
-        }));
-        return {
-            session: {
-                id: s.id, teamName: s.team_name, gatheringDate: s.gathering_date,
-                status: s.status as NonNullable<TeamGatheringContext['session']>['status'],
-                scheduledBy: '', captainSubmittedAt: null, captainSubmittedBy: null,
-                commandantReviewedAt: null, approvedBy: null, approvedRewardPerPerson: null,
-                approvedMemberCount: null, approvedAttendeeCount: null, approvedHasCommandant: null,
-                notes: null, gatheringTheme: null, createdAt: '', evidenceScreenshotUrl: null, backfilledByAdmin: null,
-            },
-            attendees,
-            teamMemberCount: 0,
-            hasCheckedIn: attendees.some(a => a.userId === uid),
-        } satisfies TeamGatheringContext;
+        return byId.context;
     }, [sessionId]);
 
     useEffect(() => {

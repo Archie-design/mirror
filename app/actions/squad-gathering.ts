@@ -406,6 +406,75 @@ export async function scanGatheringQR(
     return { success: true };
 }
 
+// ── 依 sessionId 取單一凝聚 + 出席（service role 繞過 RLS）─────────────────────
+// 用於 /squad-gathering/[sessionId] 頁面：大隊長/跨小隊掃碼時，client anon 受 RLS 擋，
+// 改由此 server action 取資料。僅需登入即可檢視；實際報到權限由 scanGatheringQR 把關。
+export async function getGatheringContextById(
+    userId: string,
+    sessionId: string,
+): Promise<{ success: boolean; context?: TeamGatheringContext; error?: string }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: s } = await supabase
+        .from('SquadGatheringSessions')
+        .select('*')
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (!s) return { success: false, error: '找不到此凝聚紀錄' };
+
+    const { data: atRows } = await supabase
+        .from('SquadGatheringAttendances')
+        .select('user_id, user_name, is_commandant, scanned_at')
+        .eq('session_id', sessionId)
+        .order('scanned_at', { ascending: true });
+
+    const attendees: SquadGatheringAttendee[] = (atRows ?? []).map(a => ({
+        userId: a.user_id as string,
+        userName: (a.user_name as string | null) ?? null,
+        isCommandant: !!a.is_commandant,
+        scannedAt: a.scanned_at as string,
+    }));
+
+    // 計算該小隊人數（全到加成顯示用）
+    let teamMemberCount = 0;
+    if (s.team_name) {
+        const { count } = await supabase
+            .from('CharacterStats')
+            .select('UserID', { count: 'exact', head: true })
+            .eq('TeamName', s.team_name);
+        teamMemberCount = count ?? 0;
+    }
+
+    const context: TeamGatheringContext = {
+        session: {
+            id: s.id,
+            teamName: s.team_name,
+            gatheringDate: s.gathering_date,
+            status: s.status,
+            scheduledBy: s.scheduled_by ?? '',
+            captainSubmittedAt: s.captain_submitted_at ?? null,
+            captainSubmittedBy: s.captain_submitted_by ?? null,
+            commandantReviewedAt: s.commandant_reviewed_at ?? null,
+            approvedBy: s.approved_by ?? null,
+            approvedRewardPerPerson: s.approved_reward_per_person ?? null,
+            approvedMemberCount: s.approved_member_count ?? null,
+            approvedAttendeeCount: s.approved_attendee_count ?? null,
+            approvedHasCommandant: s.approved_has_commandant ?? null,
+            notes: s.notes ?? null,
+            gatheringTheme: s.gathering_theme ?? null,
+            createdAt: s.created_at ?? '',
+            evidenceScreenshotUrl: s.evidence_screenshot_url ?? null,
+            backfilledByAdmin: s.backfilled_by_admin ?? null,
+        },
+        attendees,
+        teamMemberCount,
+        hasCheckedIn: attendees.some(a => a.userId === userId),
+    };
+    return { success: true, context };
+}
+
 // ── 小隊長：送出初審 ─────────────────────────────────────────────────────
 export async function submitGatheringForReview(
     captainId: string,
