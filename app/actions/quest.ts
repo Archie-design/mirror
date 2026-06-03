@@ -2,7 +2,7 @@
 
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getSeasonWeekStart, getLogicalNowAnchor } from '@/lib/utils/time';
 import { requireSelf, authErrorResponse } from '@/lib/auth';
 import { processCheckInCore } from '@/lib/checkin-core';
 
@@ -50,19 +50,12 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
 
     const log = targetLogs[0];
 
-    // 週任務（wk 前綴）：允許回溯本週內（週一台北時間 00:00 起）的記錄
+    // 週任務（wk 前綴）：允許回溯本賽季週內的記錄
+    // 以邏輯日錨點計算賽季週起（中午前算前一天 + W1 8 天特例），與九宮格/客戶端一致
     const isWeeklyQuest = questId.startsWith('wk');
     if (isWeeklyQuest) {
-        const nowTW = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-        const dayOfWeek = nowTW.getDay(); // 0=Sun
-        const daysFromMonday = (dayOfWeek + 6) % 7;
-        const mondayTW = new Date(nowTW);
-        mondayTW.setHours(0, 0, 0, 0);
-        mondayTW.setDate(mondayTW.getDate() - daysFromMonday);
-        // 轉為 UTC 比對
-        const mondayUTC = new Date(mondayTW.toLocaleString('en-US', { timeZone: 'UTC' }));
-        const logDate = new Date(log.Timestamp);
-        if (logDate < mondayUTC) {
+        const weekStart = getSeasonWeekStart(getLogicalNowAnchor());
+        if (new Date(log.Timestamp) < weekStart) {
             return { success: false, error: '因果已定，僅限回溯本週紀錄' };
         }
     } else {

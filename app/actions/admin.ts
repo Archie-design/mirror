@@ -9,6 +9,7 @@ import { standardizePhone } from '@/lib/utils/phone';
 import { requireUser } from '@/lib/auth';
 import { formatCsvRows } from '@/lib/utils/csv';
 import { BOOTSTRAP_CACHE_TAG } from '@/lib/cache-tags';
+import { getSeasonWeekStart, getLogicalNowAnchor, getTaipeiDateStr } from '@/lib/utils/time';
 
 const _supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const _supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -717,17 +718,8 @@ export async function getMemberActivityStats(): Promise<{
 
     const supabase = createClient(_supabaseUrl, _supabaseKey);
 
-    // 本週週一 12:00 TW
-    const now = new Date();
-    const twDateStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(now);
-    const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
-    const today = new Date(Date.UTC(y, m - 1, d));
-    const weekday = today.getUTCDay() || 7;
-    const monday = new Date(today);
-    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
-    const weekStart = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}T12:00:00+08:00`;
+    // 本賽季週起（以邏輯日錨點計算：中午前算前一天 + W1 8 天特例），與其他頁面一致
+    const weekStart = getSeasonWeekStart(getLogicalNowAnchor()).toISOString();
 
     const { data: members, error: mErr } = await supabase
         .from('CharacterStats')
@@ -768,15 +760,8 @@ export async function listAllGatheringsForAdmin(): Promise<{
 
     const supabase = createClient(_supabaseUrl, _supabaseKey);
 
-    // 本週週一（W1 特例 5/10 由 backfill 處理，此處用標準週一即可；用於 OnlineGatheringApplications.week_monday 篩選）
-    const now = new Date();
-    const twDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-    const [y, m, d] = twDateStr.split('-').map(n => parseInt(n, 10));
-    const today = new Date(Date.UTC(y, m - 1, d));
-    const weekday = today.getUTCDay() || 7;
-    const monday = new Date(today);
-    monday.setUTCDate(today.getUTCDate() - (weekday - 1));
-    const weekMondayStr = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`;
+    // 本賽季週起（邏輯日錨點 + W1 特例），與 OnlineGatheringApplications.week_monday 寫入邏輯一致
+    const weekMondayStr = getTaipeiDateStr(getSeasonWeekStart(getLogicalNowAnchor()));
 
     const [offlineRes, onlineRes] = await Promise.all([
         supabase
