@@ -7,6 +7,7 @@ import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
 import { getSeasonWeekStart } from '@/lib/utils/time';
+import { getCommandantTeamNames } from '@/lib/auth-scope';
 import type { WeeklyPracticeApplication } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -263,7 +264,49 @@ export async function reviewWeeklyPracticeByAdmin(
     return { success: true };
 }
 
-// ── 大隊長：直接終審自己的精進力申請（不需 admin session） ────────────────────
+// ── 大隊長：查待終審清單（所轄大隊 squad_approved + 本人 pending/squad_approved）─
+export async function listWeeklyPracticeForCommandant(
+    commandantId: string,
+): Promise<{ success: boolean; apps?: WeeklyPracticeApplication[]; error?: string }> {
+    try { await requireSelf(commandantId); } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : '請先登入' };
+    }
+    const supabase = db();
+
+    const { data: commandant } = await supabase
+        .from('CharacterStats')
+        .select('IsCommandant')
+        .eq('UserID', commandantId)
+        .maybeSingle();
+    if (!commandant?.IsCommandant) return { success: false, error: '僅限大隊長操作' };
+
+    const scope = await getCommandantTeamNames(supabase, commandantId);
+    if (!scope) return { success: false, error: '大隊長範圍不明（缺 SquadName）' };
+
+    let query = supabase
+        .from('WeeklyPracticeApplications')
+        .select('*')
+        .in('status', ['pending', 'squad_approved'])
+        .order('squad_review_at', { ascending: true });
+
+    if (scope.teamNames.length === 0) {
+        // 大隊長沒有所轄小隊，只看自己送的
+        query = query.eq('user_id', commandantId);
+    } else {
+        // 所轄小隊 + 自己送的（大隊長 team_name 多為 null）
+        const teamList = scope.teamNames.map(n => `"${n.replace(/"/g, '""')}"`).join(',');
+        query = query.or(`team_name.in.(${teamList}),user_id.eq.${commandantId}`);
+    }
+
+    const { data, error } = await query;
+    if (error) return { success: false, error: error.message };
+    // pending 只保留大隊長本人（隊員的 pending 須由小隊長初審，不在此終審）
+    const apps = ((data ?? []) as WeeklyPracticeApplication[])
+        .filter(a => a.status === 'squad_approved' || a.user_id === commandantId);
+    return { success: true, apps };
+}
+
+// ── 大隊長：終審所轄大隊（含自己）的精進力申請（不需 admin session） ──────────
 export async function reviewWeeklyPracticeByCommandant(
     commandantId: string,
     appId: string,
@@ -288,9 +331,17 @@ export async function reviewWeeklyPracticeByCommandant(
         .eq('id', appId)
         .maybeSingle();
     if (!app) return { success: false, error: '找不到申請記錄' };
-    if (app.user_id !== commandantId) return { success: false, error: '僅可終審本人申請' };
     if (app.status === 'approved' || app.status === 'rejected') {
         return { success: false, error: '此申請已完成審核' };
+    }
+
+    // 範圍驗證：本人送的，或所轄大隊小隊成員
+    const isSelf = app.user_id === commandantId;
+    if (!isSelf) {
+        const scope = await getCommandantTeamNames(supabase, commandantId);
+        if (!scope || !scope.teamNames.includes(app.team_name ?? '')) {
+            return { success: false, error: '無權限終審非本大隊申請' };
+        }
     }
 
     const reviewerName = commandant.Name ?? commandantId;

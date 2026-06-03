@@ -123,8 +123,9 @@ export function NineGridTab({
                 const qId = `${questId}|${getTaipeiDateStr(day)}`;
                 onCheckIn({ ...quest, id: qId });
             },
-            onUndo: (_qid: string, day: Date) => {
-                const qId = `${questId}|${getTaipeiDateStr(day)}`;
+            onUndo: (qid: string, day: Date) => {
+                // qid 為 WeekCalendarRow 實際比對到的 QuestID（可能是偏移格式），優先沿用以正確回朔
+                const qId = qid || `${questId}|${getTaipeiDateStr(day)}`;
                 onUndo({ ...quest, id: qId });
             },
         });

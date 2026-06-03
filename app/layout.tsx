@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_TC, Noto_Serif_TC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { VersionWatcher } from "@/components/VersionWatcher";
 import "./globals.css";
 
 const notoSansTC = Noto_Sans_TC({
@@ -32,6 +33,7 @@ export default function RootLayout({
     <html lang="zh-TW">
       <body className={`${notoSansTC.variable} ${notoSerifTC.variable} antialiased`}>
         <ErrorBoundary>{children}</ErrorBoundary>
+        <VersionWatcher />
         <Analytics />
       </body>
     </html>
