@@ -9,7 +9,8 @@ import { listAllAppsForMission1, reviewTempQuestByAdmin } from '@/app/actions/te
 type StatusFilter = 'all' | 'pending' | 'squad_approved' | 'approved' | 'rejected' | 'duplicate';
 type SortKey = 'date_asc' | 'date_desc' | 'name' | 'team' | 'status';
 
-interface SquadStat { teamName: string; total: number; approved: number; }
+interface SquadStat { teamName: string; total: number; credited: number; }
+interface CreditedNoApp { userId: string; userName: string; teamName: string | null; }
 
 const STATUS_LABEL: Record<string, string> = {
     pending: '待初審', squad_approved: '初審通過', approved: '已核准', rejected: '已退回',
@@ -37,6 +38,9 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
 }) {
     const [apps, setApps] = useState<TempQuestApplication[]>([]);
     const [squadStats, setSquadStats] = useState<SquadStat[]>([]);
+    const [creditedCount, setCreditedCount] = useState(0);
+    const [creditedNoApp, setCreditedNoApp] = useState<CreditedNoApp[]>([]);
+    const [showNoApp, setShowNoApp] = useState(false);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<StatusFilter>('all');
     const [sortBy, setSortBy] = useState<SortKey>('date_desc');
@@ -48,7 +52,12 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
     const reload = useCallback(async () => {
         setLoading(true);
         const res = await listAllAppsForMission1();
-        if (res.success) { setApps(res.apps); setSquadStats(res.squadStats); }
+        if (res.success) {
+            setApps(res.apps);
+            setSquadStats(res.squadStats);
+            setCreditedCount(res.creditedCount);
+            setCreditedNoApp(res.creditedNoApp);
+        }
         else onShowMessage(res.error ?? '載入失敗', 'error');
         setLoading(false);
     }, [onShowMessage]);
@@ -107,34 +116,60 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
                 <ChevronRight size={16} /> 秘密任務1・全部送審記錄
             </div>
 
-            {/* 統計卡 */}
-            <div className="grid grid-cols-5 gap-3">
+            {/* 統計卡（前 5 張為申請狀態；末張為實際入帳＝真正完成，含直接補分） */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                 {([
-                    ['all',           '總計',   counts.all,           'text-slate-300'],
-                    ['approved',      '已核准', counts.approved,      'text-emerald-400'],
-                    ['squad_approved','待終審', counts.squad_approved,'text-blue-400'],
-                    ['pending',       '待初審', counts.pending,       'text-amber-400'],
-                    ['rejected',      '已退回', counts.rejected,      'text-red-400'],
+                    ['all',           '送審總計', counts.all,           'text-slate-300'],
+                    ['approved',      '申請核准', counts.approved,      'text-emerald-400'],
+                    ['squad_approved','待終審',   counts.squad_approved,'text-blue-400'],
+                    ['pending',       '待初審',   counts.pending,       'text-amber-400'],
+                    ['rejected',      '已退回',   counts.rejected,      'text-red-400'],
                 ] as [StatusFilter, string, number, string][]).map(([key, label, count, color]) => (
                     <div key={key} className="bg-slate-900 border border-slate-700 rounded-2xl p-3 text-center">
                         <p className={`text-2xl font-black ${color}`}>{count}</p>
                         <p className="text-xs text-slate-400 mt-0.5">{label}</p>
                     </div>
                 ))}
+                <div className="bg-emerald-950/40 border border-emerald-600/40 rounded-2xl p-3 text-center">
+                    <p className="text-2xl font-black text-emerald-300">{creditedCount}</p>
+                    <p className="text-xs text-emerald-400/80 mt-0.5">實際入帳</p>
+                </div>
             </div>
 
-            {/* 小隊完成率 */}
+            {/* 直接補分（無申請）名單：申請列表看不到，這裡補列，回應「後台沒顯示有做過」 */}
+            {creditedNoApp.length > 0 && (
+                <div className="bg-slate-900 border border-emerald-700/30 rounded-2xl p-3">
+                    <button
+                        onClick={() => setShowNoApp(v => !v)}
+                        className="w-full flex items-center justify-between text-xs font-black text-emerald-300"
+                    >
+                        <span>✅ 已入帳但無送審申請（直接補分）：{creditedNoApp.length} 人</span>
+                        <span className="text-slate-500">{showNoApp ? '收合 ▲' : '展開 ▼'}</span>
+                    </button>
+                    {showNoApp && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                            {creditedNoApp.map(c => (
+                                <span key={c.userId} className="text-[11px] bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-300">
+                                    {c.userName}<span className="text-slate-500">（{c.teamName ?? '無小隊'}）</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 小隊完成率（以實際入帳為準）*/}
             <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4">
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">各小隊完成率</p>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">各小隊完成率（實際入帳）</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                     {squadStats.map(s => {
-                        const rate = s.total > 0 ? Math.round(s.approved / s.total * 100) : 0;
+                        const rate = s.total > 0 ? Math.round(s.credited / s.total * 100) : 0;
                         const barColor = rate === 100 ? 'bg-emerald-500' : rate >= 50 ? 'bg-amber-500' : 'bg-slate-600';
                         return (
                             <div key={s.teamName} className="bg-slate-800 rounded-xl p-2.5">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-xs font-bold text-slate-200">{s.teamName}</span>
-                                    <span className={`text-xs font-black ${rate === 100 ? 'text-emerald-400' : 'text-slate-400'}`}>{s.approved}/{s.total}</span>
+                                    <span className={`text-xs font-black ${rate === 100 ? 'text-emerald-400' : 'text-slate-400'}`}>{s.credited}/{s.total}</span>
                                 </div>
                                 <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                     <div className={`h-full ${barColor} transition-all`} style={{ width: `${rate}%` }} />

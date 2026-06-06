@@ -904,7 +904,10 @@ export default function App() {
             logs={logs}
             currentWeeklyMonday={currentWeeklyMonday}
             seasonWeekStart={seasonWeekStart}
-            temporaryQuests={temporaryQuests.filter(t => t.active)}
+            temporaryQuests={temporaryQuests.filter(t =>
+              // 上架中，或「已下架但本人已完成過」也顯示（唯讀「✅已完成」，避免學員以為沒加分）
+              t.active || logs.some(l => l.QuestID === t.id || l.QuestID.startsWith(t.id + '|'))
+            )}
             onCheckIn={handleCheckInAction}
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}

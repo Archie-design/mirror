@@ -285,16 +285,31 @@ export async function getTeamGatheringContext(
         return { success: true, context: { session: null, attendees: [], teamMemberCount: 0, hasCheckedIn: false } };
     }
 
-    // 取最近一場（尚未 approved/rejected/cancelled 優先；其次最新一筆）
+    // 取「該掃描/處理」的那一場。多筆排定時優先順序：
+    //   1. 今天且 scheduled（學員今天要掃的）
+    //   2. pending_review（剛辦完待審）
+    //   3. 最接近今天的未來 scheduled（上coming）
+    //   4. 其他 scheduled（過去未完成，取最新）
+    //   5. 最新一筆（approved/rejected/cancelled）
     const { data: sessions } = await supabase
         .from('SquadGatheringSessions')
         .select('*')
         .eq('team_name', user.TeamName)
         .order('gathering_date', { ascending: false })
-        .limit(5);
+        .limit(30);
 
-    const active = (sessions ?? []).find(s => s.status === 'scheduled' || s.status === 'pending_review');
-    const sessionRow = active ?? (sessions && sessions[0]) ?? null;
+    const todayStr = getTaipeiDateStr();
+    const list = sessions ?? [];
+    const upcoming = list
+        .filter(s => s.status === 'scheduled' && s.gathering_date >= todayStr)
+        .sort((a, b) => String(a.gathering_date).localeCompare(String(b.gathering_date)))[0];
+    const sessionRow =
+        list.find(s => s.status === 'scheduled' && s.gathering_date === todayStr)
+        ?? list.find(s => s.status === 'pending_review')
+        ?? upcoming
+        ?? list.find(s => s.status === 'scheduled')
+        ?? list[0]
+        ?? null;
 
     if (!sessionRow) {
         const { count: teamCount } = await supabase

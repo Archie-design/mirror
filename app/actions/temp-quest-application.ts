@@ -379,14 +379,18 @@ export async function reviewTempQuestByAdmin(
 }
 
 // ── 管理員：列出秘密任務1全部申請 + 小隊統計 ──────────────────────────────────
+// 「真正完成」以 DailyLogs 實際入帳為準（含直接補分、無申請者），不只看 approved 申請
 export async function listAllAppsForMission1(): Promise<{
     success: boolean;
     apps: TempQuestApplication[];
-    squadStats: { teamName: string; total: number; approved: number }[];
+    squadStats: { teamName: string; total: number; credited: number }[];
+    creditedCount: number;
+    creditedNoApp: { userId: string; userName: string; teamName: string | null }[];
     error?: string;
 }> {
+    const empty = { success: false as const, apps: [], squadStats: [], creditedCount: 0, creditedNoApp: [] };
     if (!(await verifyAdminSession())) {
-        return { success: false, apps: [], squadStats: [], error: '無權限執行此操作' };
+        return { ...empty, error: '無權限執行此操作' };
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -397,38 +401,49 @@ export async function listAllAppsForMission1(): Promise<{
         .eq('quest_id', 'temp_1779076958469')
         .order('created_at', { ascending: true });
 
-    if (error) return { success: false, apps: [], squadStats: [], error: error.message };
+    if (error) return { ...empty, error: error.message };
     const apps = (data ?? []) as TempQuestApplication[];
 
-    // 各小隊人數（排除大隊長）
+    // 實際入帳（DailyLogs）= 真正完成的人（含批次補分、無申請者）
+    const { data: creditLogs } = await supabase
+        .from('DailyLogs')
+        .select('UserID')
+        .like('QuestID', 'temp_1779076958469|%');
+    const creditedUserIds = new Set((creditLogs ?? []).map(l => l.UserID as string));
+
+    // 全員（UserID / Name / TeamName / IsCommandant）
     const { data: members } = await supabase
         .from('CharacterStats')
-        .select('TeamName')
-        .not('TeamName', 'is', null)
-        .eq('IsCommandant', false);
+        .select('UserID, Name, TeamName, IsCommandant');
 
     const totalByTeam = new Map<string, number>();
-    for (const m of (members ?? []) as { TeamName: string }[]) {
-        if (!m.TeamName) continue;
+    const creditedByTeam = new Map<string, number>();
+    const nameMap = new Map<string, { name: string; team: string | null }>();
+    for (const m of (members ?? []) as { UserID: string; Name: string; TeamName: string | null; IsCommandant: boolean | null }[]) {
+        nameMap.set(m.UserID, { name: m.Name, team: m.TeamName ?? null });
+        if (!m.TeamName || m.IsCommandant) continue;
         totalByTeam.set(m.TeamName, (totalByTeam.get(m.TeamName) ?? 0) + 1);
-    }
-
-    const approvedByTeam = new Map<string, number>();
-    for (const a of apps) {
-        if (a.status === 'approved' && a.team_name) {
-            approvedByTeam.set(a.team_name, (approvedByTeam.get(a.team_name) ?? 0) + 1);
+        if (creditedUserIds.has(m.UserID)) {
+            creditedByTeam.set(m.TeamName, (creditedByTeam.get(m.TeamName) ?? 0) + 1);
         }
     }
 
     const squadStats = Array.from(totalByTeam.entries())
-        .map(([teamName, total]) => ({
-            teamName,
-            total,
-            approved: approvedByTeam.get(teamName) ?? 0,
-        }))
-        .sort((a, b) => b.approved / b.total - a.approved / a.total || a.teamName.localeCompare(b.teamName, 'zh-TW'));
+        .map(([teamName, total]) => ({ teamName, total, credited: creditedByTeam.get(teamName) ?? 0 }))
+        .sort((a, b) => b.credited / b.total - a.credited / a.total || a.teamName.localeCompare(b.teamName, 'zh-TW'));
 
-    return { success: true, apps, squadStats };
+    // 已入帳但「沒有有效申請」者（批次直接補分）→ 申請列表看不到，這裡補列
+    const approvedAppUserIds = new Set(apps.filter(a => a.status === 'approved').map(a => a.user_id));
+    const creditedNoApp = Array.from(creditedUserIds)
+        .filter(uid => !approvedAppUserIds.has(uid))
+        .map(uid => ({
+            userId: uid,
+            userName: nameMap.get(uid)?.name ?? uid,
+            teamName: nameMap.get(uid)?.team ?? null,
+        }))
+        .sort((a, b) => (a.teamName ?? '').localeCompare(b.teamName ?? '', 'zh-TW') || a.userName.localeCompare(b.userName, 'zh-TW'));
+
+    return { success: true, apps, squadStats, creditedCount: creditedUserIds.size, creditedNoApp };
 }
 
 // ── 管理員：列出全系統 pending 申請（admin 兜底初審用） ────────────────────────
