@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 
 // 偵測部署版本變更：學員瀏覽器若跑舊快取（會產生偏移打卡等問題），
-// 部署新版後 5 分鐘內提示重新整理，載入最新前端。
+// 提示重新整理載入最新前端。
+// 為節省 Vercel 用量：每 30 分鐘輪詢 + 回前景時檢查（含 60 秒節流，避免頻繁切分頁狂打）。
 // dev 環境版本固定為 'dev'，不會觸發提示。
 export function VersionWatcher() {
     const [stale, setStale] = useState(false);
@@ -11,8 +12,12 @@ export function VersionWatcher() {
     useEffect(() => {
         let initial: string | null = null;
         let cancelled = false;
+        let lastCheck = 0;
 
         const check = async () => {
+            const now = Date.now();
+            if (now - lastCheck < 60 * 1000) return; // 60 秒節流
+            lastCheck = now;
             try {
                 const res = await fetch('/api/version', { cache: 'no-store' });
                 if (!res.ok) return;
@@ -29,7 +34,7 @@ export function VersionWatcher() {
         };
 
         check();
-        const id = setInterval(check, 5 * 60 * 1000);
+        const id = setInterval(check, 30 * 60 * 1000); // 每 30 分鐘
         const onVis = () => { if (document.visibilityState === 'visible') check(); };
         document.addEventListener('visibilitychange', onVis);
         return () => {
