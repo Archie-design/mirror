@@ -14,6 +14,7 @@ import {
     listAvailableMonths,
     PersonalRankEntry,
 } from '@/app/actions/rank';
+import { formatSeasonMonthLabel } from '@/lib/utils/time';
 
 // 大法師密室「旅人榜」子區塊：完整時段（累積/週/月/過往）+ 範圍（個人/小隊/大隊）。
 // 學員端 RankTab 已精簡為「本週 only」，所有歷史與累積查詢都集中在此供 admin 確認。
@@ -124,8 +125,7 @@ export function AdminLeaderboardSection({ leaderboard }: Props) {
         if (period === 'cumulative') return '活動全期';
         if (!displayedAnchor) return '';
         if (period === 'month') {
-            const [y, m] = displayedAnchor.split('-');
-            return `${y} 年 ${parseInt(m, 10)} 月`;
+            return formatSeasonMonthLabel(displayedAnchor);
         }
         const [y, m, d] = displayedAnchor.split('-').map(n => parseInt(n, 10));
         const start = new Date(Date.UTC(y, m - 1, d));
@@ -251,9 +251,12 @@ export function AdminLeaderboardSection({ leaderboard }: Props) {
                 >
                     <option value={0}>本{label}</option>
                     {list.length === 0 && <option value={-1}>上{label}</option>}
-                    {list.map((d, i) => (
-                        <option key={d} value={i + 1}>{d}（{i === 0 ? '上' + label : d}）</option>
-                    ))}
+                    {list.map((d, i) => {
+                        const text = period === 'month' ? formatSeasonMonthLabel(d) : d;
+                        return (
+                            <option key={d} value={i + 1}>{text}{i === 0 ? '（上' + label + '）' : ''}</option>
+                        );
+                    })}
                 </select>
                 {periodRangeLabel && (
                     <span className="text-xs text-emerald-200/70 font-bold">統計區間：{periodRangeLabel}</span>

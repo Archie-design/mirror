@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { SEASON_MONTHS, seasonMonthRangeIso, type SeasonMonth } from '@/lib/utils/time';
 
-// Cron 執行時間：每月 1 號 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）1 號 12:30
-// 為什麼選 1 號 12:30 TW：本系統邏輯日以中午 12:00 TW 為邊界，
-// 「上月最後一天的邏輯日」延伸至 1 號 12:00 TW，需在此之後才能確保資料完整。
-// vercel.json schedule: "30 4 1 * *"（UTC）= 每月 1 號 04:30 UTC = 台灣時間 1 號 12:30
+// Cron 執行時間：每日 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）12:30
+// 本系統邏輯日以中午 12:00 TW 為邊界；賽季月（5/10–6/14、6/15–7/11）結束邊界
+// 為「endExclusive 當日 12:00 TW」。route 每日自我把關：找出已結束、且尚未快照的
+// 最後一個賽季月才寫入 → 自癒、不漏（即使某天 cron 漏跑，隔天會補）。
+// vercel.json schedule: "30 4 * * *"（UTC）= 每日 04:30 UTC = 台灣時間 12:30
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -18,24 +20,15 @@ interface AggregateRow {
     cumulative_score: number;
 }
 
-function getLastMonthRange(): { monthStart: string; start: string; end: string } {
-    const now = new Date();
-    const twDateStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(now);
-    const [y, m] = twDateStr.split('-').map(n => parseInt(n, 10));
-    // 本月 1 號（即「上個月結束」邊界）
-    const thisMonthStart = new Date(Date.UTC(y, m - 1, 1));
-    // 上個月 1 號
-    const lastMonthStart = new Date(thisMonthStart);
-    lastMonthStart.setUTCMonth(thisMonthStart.getUTCMonth() - 1);
-
-    const fmt = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-    return {
-        monthStart: fmt(lastMonthStart),
-        start: `${fmt(lastMonthStart)}T12:00:00+08:00`,
-        end:   `${fmt(thisMonthStart)}T12:00:00+08:00`,
-    };
+// 找出「結束邊界已過（≤ 現在）」的最後一個賽季月；都還沒結束則回 null。
+function getEndedSeasonMonthToSnapshot(): SeasonMonth | null {
+    const now = Date.now();
+    let ended: SeasonMonth | null = null;
+    for (const m of SEASON_MONTHS) {
+        const endMs = new Date(seasonMonthRangeIso(m).end).getTime();
+        if (endMs <= now) ended = m; // SEASON_MONTHS 已按時間排序，取最後一個已結束者
+    }
+    return ended;
 }
 
 export async function GET(request: Request) {
@@ -48,10 +41,25 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { monthStart, start, end } = getLastMonthRange();
-    console.log('[cron/monthly-snapshot] taking snapshot for month_start =', monthStart, '(range:', start, '~', end, ')');
+    const target = getEndedSeasonMonthToSnapshot();
+    if (!target) {
+        return NextResponse.json({ success: true, inserted: 0, note: 'no season month ended yet' });
+    }
+    const monthStart = target.key;
+    const { start, end } = seasonMonthRangeIso(target);
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // 已有此賽季月快照 → 略過（避免每日重跑 aggregate）
+    const { count: existing } = await supabase
+        .from('MonthlyRankSnapshot')
+        .select('id', { count: 'exact', head: true })
+        .eq('month_start', monthStart);
+    if (existing && existing > 0) {
+        return NextResponse.json({ success: true, monthStart, inserted: 0, note: 'already snapshotted' });
+    }
+
+    console.log('[cron/monthly-snapshot] taking snapshot for month_start =', monthStart, '(range:', start, '~', end, ')');
     const { data, error } = await supabase.rpc('aggregate_dailylogs_by_user', { p_start: start, p_end: end });
     if (error) {
         console.error('[cron/monthly-snapshot] aggregate RPC error:', error);

@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/monthly-snapshot",
-      "schedule": "30 4 1 * *"
+      "schedule": "30 4 * * *"
     }
   ]
 }

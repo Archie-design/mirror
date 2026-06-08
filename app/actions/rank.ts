@@ -3,7 +3,7 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/auth';
-import { getLogicalDateStr } from '@/lib/utils/time';
+import { getLogicalDateStr, getCurrentSeasonMonth, getPrevSeasonMonth, seasonMonthRangeIso } from '@/lib/utils/time';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -72,12 +72,6 @@ function nextSeasonWeekStart(weekStart: Date): Date {
     const days = fmtDate(weekStart) === '2026-05-10' ? 8 : 7;
     next.setUTCDate(weekStart.getUTCDate() + days);
     return next;
-}
-
-function getCurrentMonthStartDate(): Date {
-    const twDateStr = getLogicalDateStr();
-    const [y, m] = twDateStr.split('-').map(n => parseInt(n, 10));
-    return new Date(Date.UTC(y, m - 1, 1));
 }
 
 // ── Live aggregate（本週 / 本月）────────────────────────────────────────────
@@ -185,15 +179,15 @@ export async function getPreviousMonthLeaderboard(): Promise<{ success: boolean;
     let sessionUid: string | undefined;
     try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
-        const monthStart = getCurrentMonthStartDate();
-        const prevMonthStart = new Date(monthStart);
-        prevMonthStart.setUTCMonth(monthStart.getUTCMonth() - 1);
-        const start = `${fmtDate(prevMonthStart)}T12:00:00+08:00`;
-        const end   = `${fmtDate(monthStart)}T12:00:00+08:00`;
+        // 賽季月：上一個賽季月（第一個月則無上月，回傳空）
+        const current = getCurrentSeasonMonth();
+        const prev = getPrevSeasonMonth(current.key);
+        if (!prev) return { success: true, entries: [], monthStart: undefined };
+        const { start, end } = seasonMonthRangeIso(prev);
         const entries = await aggregateRange(start, end);
         return {
             success: true,
-            monthStart: fmtDate(prevMonthStart),
+            monthStart: prev.key,
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
     } catch (error) {
@@ -201,20 +195,17 @@ export async function getPreviousMonthLeaderboard(): Promise<{ success: boolean;
     }
 }
 
-// ── 個人排行：本月 ────────────────────────────────────────────────────────────
+// ── 個人排行：本月（賽季月）────────────────────────────────────────────────────
 export async function getCurrentMonthLeaderboard(): Promise<{ success: boolean; entries?: PersonalRankEntry[]; monthStart?: string; error?: string }> {
     let sessionUid: string | undefined;
     try { sessionUid = await requireUser(); } catch { /* unauthenticated — isCurrentUser won't be marked */ }
     try {
-        const monthStart = getCurrentMonthStartDate();
-        const nextMonth = new Date(monthStart);
-        nextMonth.setUTCMonth(monthStart.getUTCMonth() + 1);
-        const start = `${fmtDate(monthStart)}T12:00:00+08:00`;
-        const end = `${fmtDate(nextMonth)}T12:00:00+08:00`;
+        const current = getCurrentSeasonMonth();
+        const { start, end } = seasonMonthRangeIso(current);
         const entries = await aggregateRange(start, end);
         return {
             success: true,
-            monthStart: fmtDate(monthStart),
+            monthStart: current.key,
             entries: entries.map(e => ({ ...e, isCurrentUser: e.userId === sessionUid })),
         };
     } catch (error) {

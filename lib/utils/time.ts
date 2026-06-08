@@ -93,6 +93,61 @@ export function getSeasonWeekStart(date: Date = new Date()): Date {
     return getWeeklyMonday(date);
 }
 
+// ── 賽季月分桶 ─────────────────────────────────────────────────────────────
+// 月排行榜採「賽季月」而非日曆月，邊界對齊賽季週、以中午 12:00 為邏輯日邊界。
+//   第一個月：5/10–6/14（W1–W5，5 週）
+//   第二個月：6/15–7/11（W6–W9，4 週；7/12 畢業日不計入任何月）
+// key 直接作為 MonthlyRankSnapshot.month_start（DATE）。
+export interface SeasonMonth {
+    key: string;          // 賽季月起始日（= 快照 month_start）
+    label: string;        // 「第一個月」
+    startDate: string;    // 含此邏輯日
+    endDate: string;      // 含此邏輯日（最後一天）
+    endExclusive: string; // 結束邊界（不含）：endDate 的次日，配 12:00 noon 邊界
+}
+
+export const SEASON_MONTHS: SeasonMonth[] = [
+    { key: '2026-05-10', label: '第一個月', startDate: '2026-05-10', endDate: '2026-06-14', endExclusive: '2026-06-15' },
+    { key: '2026-06-15', label: '第二個月', startDate: '2026-06-15', endDate: '2026-07-11', endExclusive: '2026-07-12' },
+];
+
+// 賽季月的聚合區間（中午 12:00 +08 邏輯日邊界）
+export function seasonMonthRangeIso(entry: SeasonMonth): { start: string; end: string } {
+    return {
+        start: `${entry.startDate}T12:00:00+08:00`,
+        end: `${entry.endExclusive}T12:00:00+08:00`,
+    };
+}
+
+// 依（邏輯）日期取得所在賽季月；早於賽季→第一個月，晚於賽季→最後一個月
+export function getCurrentSeasonMonth(date: Date = new Date()): SeasonMonth {
+    const dStr = getLogicalDateStr(date);
+    for (const m of SEASON_MONTHS) {
+        if (dStr >= m.startDate && dStr < m.endExclusive) return m;
+    }
+    if (dStr < SEASON_MONTHS[0].startDate) return SEASON_MONTHS[0];
+    return SEASON_MONTHS[SEASON_MONTHS.length - 1];
+}
+
+export function getSeasonMonthByKey(key: string): SeasonMonth | undefined {
+    return SEASON_MONTHS.find(m => m.key === key);
+}
+
+// 前一個賽季月；若為第一個月則回 null
+export function getPrevSeasonMonth(key: string): SeasonMonth | null {
+    const idx = SEASON_MONTHS.findIndex(m => m.key === key);
+    if (idx <= 0) return null;
+    return SEASON_MONTHS[idx - 1];
+}
+
+// 顯示標籤，例：「第一個月（5/10–6/14）」；查無 key 時回傳原字串
+export function formatSeasonMonthLabel(key: string): string {
+    const m = getSeasonMonthByKey(key);
+    if (!m) return key;
+    const md = (d: string) => { const [, mm, dd] = d.split('-'); return `${parseInt(mm, 10)}/${parseInt(dd, 10)}`; };
+    return `${m.label}（${md(m.startDate)}–${md(m.endDate)}）`;
+}
+
 // ── 活動旅程階段 ────────────────────────────────────────────────────────────
 
 export type ThemePeriodType = 'before' | 'regular' | 'graduation' | 'after';
