@@ -29,6 +29,14 @@ export const DAILY_BASIC_CONFIG: Quest[] = [
 export const BASIC_QUEST_IDS = new Set(['d1','d2','d3','d4','d5','d6','d7','d8']);
 export const DAILY_BASIC_LIMIT = 3;
 
+// 體系長（地位在大隊長之上）專屬實體定聚：
+//   - 以此固定隊名作為跨小隊的「體系長 session」識別
+//   - 5 人（含體系長本人）即成立，固定每人 4000（比照大隊長到場，不疊全到）
+//   - 任何學員皆可掃此 session 的 QR；體系長本人可跨大隊掃任何 session
+export const SYSTEM_HEAD_TEAM = '體系長';
+export const SYSTEM_HEAD_GATHERING_REWARD = 4000;
+export const SYSTEM_HEAD_GATHERING_MIN_ATTENDEES = 5;
+
 // ── 加權定課（500分/項，每日上限3項）───────────────────────────────────────
 // p1–p5：需要更深刻投入或身體力行的修練
 // 每日最多完成 3 項，與基本定課各自獨立計算

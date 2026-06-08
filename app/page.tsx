@@ -127,7 +127,7 @@ export default function App() {
 
   const showCaptainTab = userData?.IsGM
     ? (gmViewMode === 'all' || gmViewMode === 'captain')
-    : (!!userData?.IsCaptain || !!userData?.IsCommandant);
+    : (!!userData?.IsCaptain || !!userData?.IsCommandant || !!userData?.IsSystemHead);
   const showCommandantTab = userData?.IsGM
     ? (gmViewMode === 'all' || gmViewMode === 'commandant')
     : !!userData?.IsCommandant;
@@ -855,7 +855,7 @@ export default function App() {
                 : 'bg-[#1A6B4A]/70 text-white/80 hover:text-white hover:bg-[#0F4A30]'}`}
           >
             <StarWandIcon size={13} />
-            隊長基地
+            {!!userData?.IsSystemHead && !userData?.IsCaptain ? '體系長基地' : '隊長基地'}
           </button>
         )}
         {showCommandantTab && (
@@ -983,6 +983,7 @@ export default function App() {
             onReviewBonus={handleReviewBonusBySquad}
             squadMembers={squadMembers}
             squadMembersLoaded={squadMembersLoaded}
+            isSystemHead={!!userData.IsSystemHead && !userData.IsCaptain}
           />
         )}
         {activeTab === 'commandant' && showCommandantTab && userData && (

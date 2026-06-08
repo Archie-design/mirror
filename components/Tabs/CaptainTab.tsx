@@ -14,8 +14,11 @@ import {
     getTeamGatheringContext,
     submitGatheringForReview,
     scanGatheringQR,
+    scheduleSquadGathering,
+    reviewGathering,
     type TeamGatheringContext,
 } from '@/app/actions/squad-gathering';
+import { SYSTEM_HEAD_TEAM, SYSTEM_HEAD_GATHERING_MIN_ATTENDEES } from '@/lib/constants';
 import {
     listPendingOnlineGatheringsForCaptain,
     reviewOnlineGathering,
@@ -53,6 +56,7 @@ interface CaptainTabProps {
     squadMembersLoaded?: boolean;
     captainId: string;
     captainName: string;
+    isSystemHead?: boolean;
 }
 
 // 可抽籤的定課：基本定課 + 加權定課
@@ -392,6 +396,200 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
 
             {session && session.status === 'rejected' && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center space-y-2">
+                    <p className="font-black text-red-700">已退回</p>
+                    {session.notes && <p className="text-sm text-red-600 italic">{session.notes}</p>}
+                </div>
+            )}
+        </section>
+    );
+}
+
+// ── 體系長定聚（跨小隊；5 人含本人成立、固定每人 +4000）────────────────────
+function SystemHeadGatheringSection({ userId }: { userId: string }) {
+    const [ctx, setCtx] = useState<TeamGatheringContext | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [busy, setBusy] = useState<null | 'schedule' | 'checkin' | 'submit' | 'approve'>(null);
+    const [err, setErr] = useState<string | null>(null);
+
+    const reload = useCallback(async () => {
+        const res = await getTeamGatheringContext(userId);
+        if (res.success) setCtx(res.context ?? null);
+        setLoading(false);
+    }, [userId]);
+
+    useEffect(() => { reload(); }, [reload]);
+
+    // 排定中每 15 秒刷新出席進度；分頁不可見時暫停
+    useEffect(() => {
+        if (!ctx?.session || ctx.session.status !== 'scheduled') return;
+        let id: ReturnType<typeof setInterval> | null = null;
+        const start = () => { if (id === null) id = setInterval(reload, 15000); };
+        const stop = () => { if (id !== null) { clearInterval(id); id = null; } };
+        const onVis = () => {
+            if (document.visibilityState === 'visible') { reload(); start(); } else stop();
+        };
+        if (document.visibilityState === 'visible') start();
+        document.addEventListener('visibilitychange', onVis);
+        return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+    }, [ctx?.session, reload]);
+
+    const today = getTaipeiDateStr();
+    const session = ctx?.session;
+    const attendees = ctx?.attendees ?? [];
+    const isTodaySession = session?.gatheringDate === today;
+    const meIn = attendees.some(a => a.userId === userId);
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
+    const MIN = SYSTEM_HEAD_GATHERING_MIN_ATTENDEES;
+    const enough = attendees.length >= MIN;
+    // 需顯示「排定今日定聚」：尚無 session，或現有 session 非今日且已結案
+    const needSchedule = !session
+        || (session.gatheringDate !== today && ['approved', 'rejected', 'cancelled'].includes(session.status));
+
+    const handleSchedule = async () => {
+        setBusy('schedule'); setErr(null);
+        const res = await scheduleSquadGathering(SYSTEM_HEAD_TEAM, today);
+        if (!res.success) setErr(res.error ?? '排定失敗');
+        await reload(); setBusy(null);
+    };
+    const handleCheckin = async () => {
+        if (!session) return;
+        setBusy('checkin'); setErr(null);
+        const res = await scanGatheringQR(userId, session.id);
+        if (!res.success) setErr(res.error ?? '報到失敗');
+        await reload(); setBusy(null);
+    };
+    const handleSubmit = async () => {
+        if (!session) return;
+        setBusy('submit'); setErr(null);
+        const res = await submitGatheringForReview(userId, session.id);
+        if (!res.success) setErr(res.error ?? '送審失敗');
+        await reload(); setBusy(null);
+    };
+    const handleApprove = async () => {
+        if (!session) return;
+        setBusy('approve'); setErr(null);
+        const res = await reviewGathering(userId, session.id, true);
+        if (!res.success) setErr(res.error ?? '核准失敗');
+        await reload(); setBusy(null);
+    };
+
+    if (loading) return (
+        <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl">
+            <div className="flex items-center gap-2 text-rose-600 text-sm font-black">
+                <CalendarIcon size={16} /> 體系長定聚
+            </div>
+            <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-rose-500" /></div>
+        </section>
+    );
+
+    return (
+        <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl space-y-4 shadow-md">
+            <h3 className="text-lg font-black text-gray-900 border-b border-gray-200 pb-3 flex items-center gap-2">
+                <CalendarIcon size={18} className="text-rose-500" /> 體系長定聚（跨小隊）
+            </h3>
+            <p className="text-xs text-gray-500 -mt-2">
+                {MIN} 人（含您本人）即成立，每位出席者 +4000；任何學員皆可掃此 QR 報到。
+            </p>
+
+            {needSchedule && (
+                <button
+                    disabled={busy === 'schedule'}
+                    onClick={handleSchedule}
+                    className="w-full py-3 bg-rose-600 text-white font-black rounded-2xl shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                    {busy === 'schedule' ? <Loader2 size={16} className="animate-spin" /> : <CalendarIcon size={16} />}
+                    排定今日體系長定聚（{today}）
+                </button>
+            )}
+
+            {session && session.status === 'scheduled' && !isTodaySession && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                    <p className="font-black text-amber-700">預定定聚日：{session.gatheringDate}</p>
+                    <p className="text-sm text-amber-500 mt-1">當日將顯示掃碼 QR Code</p>
+                </div>
+            )}
+
+            {session && session.status === 'scheduled' && isTodaySession && (
+                <div className="space-y-4">
+                    <div className="bg-gray-50 rounded-2xl p-5 flex flex-col items-center gap-3 border border-gray-200">
+                        <p className="text-sm font-black text-gray-700">請參與者掃以下 QR 完成報到</p>
+                        <div className="bg-white p-3 rounded-xl">
+                            <QRCode value={qrUrl} size={180} />
+                        </div>
+                        <p className="text-xs text-gray-400 break-all text-center">{qrUrl}</p>
+                    </div>
+
+                    <button
+                        disabled={busy === 'checkin' || meIn}
+                        onClick={handleCheckin}
+                        className="w-full py-3 bg-emerald-500 text-white font-black rounded-2xl shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {busy === 'checkin' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        {meIn ? '我已完成報到' : '我也到場了（體系長簽到）'}
+                    </button>
+
+                    <div className="bg-gray-50 rounded-2xl p-4 space-y-2 border border-gray-200">
+                        <div className="flex items-center gap-2 text-sm font-black text-gray-700">
+                            <Users size={14} /> 出席進度 {attendees.length} / {MIN}
+                            <span className={enough ? 'text-emerald-600' : 'text-gray-400'}>
+                                {enough ? '· 已達成立門檻' : `· 還需 ${MIN - attendees.length} 人`}
+                            </span>
+                        </div>
+                        {attendees.length > 0 && (
+                            <div className="pt-2 border-t border-gray-200 grid grid-cols-2 gap-1">
+                                {attendees.map(a => (
+                                    <span key={a.userId} className="text-sm text-gray-600 flex items-center gap-1">
+                                        <Check size={12} className="text-emerald-500" />
+                                        {a.userName ?? a.userId}
+                                        {a.isCommandant && <Crown size={10} className="text-amber-500" />}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        disabled={busy === 'submit' || !enough}
+                        onClick={handleSubmit}
+                        className="w-full py-3 bg-rose-600 text-white font-black rounded-2xl shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {busy === 'submit' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                        {enough ? '送出審核' : `尚需 ${MIN} 人才可送審`}
+                    </button>
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
+                </div>
+            )}
+
+            {session && session.status === 'pending_review' && (
+                <div className="space-y-3">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-center">
+                        <p className="font-black text-yellow-700">待終審</p>
+                        <p className="text-sm text-yellow-600">出席 {attendees.length} 人</p>
+                    </div>
+                    <button
+                        disabled={busy === 'approve'}
+                        onClick={handleApprove}
+                        className="w-full py-3 bg-emerald-600 text-white font-black rounded-2xl shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {busy === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        核准入帳（體系長終審）
+                    </button>
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
+                </div>
+            )}
+
+            {session && session.status === 'approved' && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center space-y-1">
+                    <p className="font-black text-emerald-700">
+                        ✓ 已核准 — 每人 +{session.approvedRewardPerPerson ?? 4000} 分
+                    </p>
+                    <p className="text-sm text-emerald-600">出席 {session.approvedAttendeeCount ?? attendees.length} 人</p>
+                </div>
+            )}
+
+            {session && session.status === 'rejected' && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
                     <p className="font-black text-red-700">已退回</p>
                     {session.notes && <p className="text-sm text-red-600 italic">{session.notes}</p>}
                 </div>
@@ -845,6 +1043,7 @@ export function CaptainTab({
     squadMembers = [],
     squadMembersLoaded = false,
     captainId, captainName,
+    isSystemHead = false,
 }: CaptainTabProps) {
     const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
     const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -855,6 +1054,23 @@ export function CaptainTab({
         setReviewingId(null);
         setReviewNotes(prev => { const n = { ...prev }; delete n[appId]; return n; });
     };
+
+    // 體系長（非一般小隊長）：只顯示專屬的「體系長定聚」面板，
+    // 不顯示小隊成員管理、初審等小隊長專屬區塊（對體系長無對應小隊）。
+    if (isSystemHead) {
+        return (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-4xl p-6 shadow-md text-center mx-auto">
+                    <div className="flex items-center justify-center gap-2 text-rose-500 font-black text-sm uppercase mb-2 tracking-widest">
+                        <Crown size={16} /> 體系長基地
+                    </div>
+                    <h2 className="text-2xl font-black text-gray-900 italic mx-auto">{captainName}</h2>
+                    <p className="text-sm text-rose-400 mt-2 font-black">體系長定聚：跨小隊集會，5 人成立每人 +4000。</p>
+                </div>
+                <SystemHeadGatheringSection userId={captainId} />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">

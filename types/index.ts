@@ -11,6 +11,7 @@ export interface CharacterStats {
   SquadRole?: string;   // 小隊角色職稱（副隊長/抱抱/衡衡/叮叮1號/叮叮2號/樂樂）
   Birthday?: string;    // ISO date string YYYY-MM-DD
   IsCommandant?: boolean; // 大隊長
+  IsSystemHead?: boolean; // 體系長（地位在大隊長之上；專屬實體定聚規則）
   IsGM?: boolean;         // GM 遊戲管理員
   IsAdmin?: boolean;      // 可登入大法師密室的管理員
   LineUserId?: string;    // LINE Login 綁定 ID

@@ -8,9 +8,35 @@ import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { getTaipeiDateStr, getSeasonWeekStart } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
+import {
+    SYSTEM_HEAD_TEAM,
+    SYSTEM_HEAD_GATHERING_REWARD,
+    SYSTEM_HEAD_GATHERING_MIN_ATTENDEES,
+} from '@/lib/constants';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// 凝聚獎勵計算（單一來源，避免三處重複）
+//   一般小隊：base 3000 +（全到 +1000）+（大隊長到場 +1000）
+//   體系長定聚：固定 4000（比照大隊長到場；不疊全到，多位大隊長/體系長仍只算一次）
+function computeGatheringReward(params: {
+    teamName: string;
+    attendeeCount: number;
+    memberCount: number;
+    hasCommandant: boolean;
+}): number {
+    if (params.teamName === SYSTEM_HEAD_TEAM) return SYSTEM_HEAD_GATHERING_REWARD;
+    let reward = 3000;
+    if (params.memberCount > 0 && params.attendeeCount >= params.memberCount) reward += 1000;
+    if (params.hasCommandant) reward += 1000;
+    return reward;
+}
+
+// 凝聚成立的最少出席人數：一般小隊 3 人；體系長定聚 5 人（含體系長本人）
+function minAttendeesFor(teamName: string): number {
+    return teamName === SYSTEM_HEAD_TEAM ? SYSTEM_HEAD_GATHERING_MIN_ATTENDEES : 3;
+}
 
 export type GatheringCheckin = {
     userId: string;
@@ -185,13 +211,24 @@ export async function scheduleSquadGathering(
     let adminId: string;
     try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
 
-    // 允許大隊長（限本大隊）或管理員排定凝聚
+    // 允許大隊長（限本大隊）或管理員排定凝聚；體系長定聚由體系長本人或管理員排定
     const isAdmin = await verifyAdminSession();
     if (!isAdmin) {
-        const scope = await getCommandantTeamNames(supabase, adminId);
-        if (!scope) return { success: false, error: '僅限大隊長或管理員操作' };
-        if (!scope.teamNames.includes(teamName)) {
-            return { success: false, error: '無權限排定非本大隊小隊' };
+        if (teamName === SYSTEM_HEAD_TEAM) {
+            const { data: me } = await supabase
+                .from('CharacterStats')
+                .select('IsSystemHead')
+                .eq('UserID', adminId)
+                .maybeSingle();
+            if (!me?.IsSystemHead) {
+                return { success: false, error: '僅限體系長或管理員排定體系長定聚' };
+            }
+        } else {
+            const scope = await getCommandantTeamNames(supabase, adminId);
+            if (!scope) return { success: false, error: '僅限大隊長或管理員操作' };
+            if (!scope.teamNames.includes(teamName)) {
+                return { success: false, error: '無權限排定非本大隊小隊' };
+            }
         }
     }
 
@@ -374,7 +411,7 @@ export async function scanGatheringQR(
 
     const { data: user } = await supabase
         .from('CharacterStats')
-        .select('Name, TeamName, SquadName, IsCommandant')
+        .select('Name, TeamName, SquadName, IsCommandant, IsSystemHead')
         .eq('UserID', userId)
         .maybeSingle();
 
@@ -382,22 +419,29 @@ export async function scanGatheringQR(
 
     const isMemberOfTeam = user.TeamName === session.team_name;
     const isCommandant = !!user.IsCommandant;
+    const isSystemHead = !!user.IsSystemHead;
+    const isSystemHeadSession = session.team_name === SYSTEM_HEAD_TEAM;
 
-    if (!isMemberOfTeam) {
-        // 非本小隊成員：僅限大隊長，且必須與小隊隸屬同一大隊
-        if (!isCommandant) {
-            return { success: false, error: '僅限本小隊成員或大隊長可掃此 QR' };
-        }
-        const { data: teamMember } = await supabase
-            .from('CharacterStats')
-            .select('SquadName')
-            .eq('TeamName', session.team_name)
-            .not('SquadName', 'is', null)
-            .limit(1)
-            .maybeSingle();
-        const teamBattalion = teamMember?.SquadName;
-        if (!teamBattalion || teamBattalion !== user.SquadName) {
-            return { success: false, error: '僅能掃本大隊所轄小隊的 QR' };
+    // 權限放寬（僅限體系長情境，其餘維持嚴格小隊邊界）：
+    //   - 體系長定聚（session 屬「體系長」隊）：任何已登入學員皆可掃（跨小隊集會）
+    //   - 體系長本人：可掃任何 session（跨大隊）
+    if (!isSystemHeadSession && !isSystemHead) {
+        if (!isMemberOfTeam) {
+            // 非本小隊成員：僅限大隊長，且必須與小隊隸屬同一大隊
+            if (!isCommandant) {
+                return { success: false, error: '僅限本小隊成員或大隊長可掃此 QR' };
+            }
+            const { data: teamMember } = await supabase
+                .from('CharacterStats')
+                .select('SquadName')
+                .eq('TeamName', session.team_name)
+                .not('SquadName', 'is', null)
+                .limit(1)
+                .maybeSingle();
+            const teamBattalion = teamMember?.SquadName;
+            if (!teamBattalion || teamBattalion !== user.SquadName) {
+                return { success: false, error: '僅能掃本大隊所轄小隊的 QR' };
+            }
         }
     }
 
@@ -408,7 +452,8 @@ export async function scanGatheringQR(
                 session_id: sessionId,
                 user_id: userId,
                 user_name: user.Name,
-                is_commandant: isCommandant,
+                // 體系長到場比照大隊長，觸發 +1000 加成（多位仍只算一次）
+                is_commandant: isCommandant || isSystemHead,
             },
             { onConflict: 'session_id,user_id', ignoreDuplicates: true },
         );
@@ -501,11 +546,13 @@ export async function submitGatheringForReview(
 
     const { data: captain } = await supabase
         .from('CharacterStats')
-        .select('TeamName, IsCaptain')
+        .select('TeamName, IsCaptain, IsSystemHead')
         .eq('UserID', captainId)
         .maybeSingle();
 
-    if (!captain?.IsCaptain) return { success: false, error: '僅限小隊長送出審核' };
+    if (!captain?.IsCaptain && !captain?.IsSystemHead) {
+        return { success: false, error: '僅限小隊長或體系長送出審核' };
+    }
 
     const { data: session } = await supabase
         .from('SquadGatheringSessions')
@@ -514,7 +561,11 @@ export async function submitGatheringForReview(
         .maybeSingle();
 
     if (!session) return { success: false, error: '找不到凝聚紀錄' };
-    if (session.team_name !== captain.TeamName) {
+    // 體系長只能送自己的體系長定聚；小隊長只能送本小隊
+    const allowedTeam = captain.IsSystemHead && session.team_name === SYSTEM_HEAD_TEAM
+        ? true
+        : session.team_name === captain.TeamName;
+    if (!allowedTeam) {
         return { success: false, error: '只能送出本小隊的凝聚審核' };
     }
     if (session.status !== 'scheduled') {
@@ -620,9 +671,12 @@ export async function listPendingGatherings(): Promise<{
         const attendees = attendeesBySession.get(session.id) ?? [];
         const teamCount = countByTeam.get(session.teamName) ?? 0;
         const hasCommandant = attendees.some(a => a.isCommandant);
-        let reward = 3000;
-        if (teamCount && attendees.length >= teamCount) reward += 1000;
-        if (hasCommandant) reward += 1000;
+        const reward = computeGatheringReward({
+            teamName: session.teamName,
+            attendeeCount: attendees.length,
+            memberCount: teamCount,
+            hasCommandant,
+        });
         return {
             session,
             attendees,
@@ -650,9 +704,6 @@ export async function reviewGathering(
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const reviewerScope = await getCommandantTeamNames(supabase, reviewerId);
-    if (!reviewerScope) return { success: false, error: '僅限大隊長終審' };
-
     const { data: session } = await supabase
         .from('SquadGatheringSessions')
         .select('*')
@@ -663,8 +714,28 @@ export async function reviewGathering(
     if (session.status !== 'pending_review') {
         return { success: false, error: '此凝聚不在待審狀態' };
     }
-    if (!reviewerScope.teamNames.includes(session.team_name)) {
-        return { success: false, error: '無權限審核非本大隊小隊的凝聚' };
+
+    // 授權：體系長定聚無所屬大隊長，改由管理員或體系長本人終審；
+    //       一般小隊凝聚維持大隊長（限本大隊）終審。
+    const isSystemHeadSession = session.team_name === SYSTEM_HEAD_TEAM;
+    if (isSystemHeadSession) {
+        const isAdmin = await verifyAdminSession();
+        if (!isAdmin) {
+            const { data: reviewer } = await supabase
+                .from('CharacterStats')
+                .select('IsSystemHead')
+                .eq('UserID', reviewerId)
+                .maybeSingle();
+            if (!reviewer?.IsSystemHead) {
+                return { success: false, error: '僅限管理員或體系長終審體系長定聚' };
+            }
+        }
+    } else {
+        const reviewerScope = await getCommandantTeamNames(supabase, reviewerId);
+        if (!reviewerScope) return { success: false, error: '僅限大隊長終審' };
+        if (!reviewerScope.teamNames.includes(session.team_name)) {
+            return { success: false, error: '無權限審核非本大隊小隊的凝聚' };
+        }
     }
 
     if (!approve) {
@@ -691,8 +762,10 @@ export async function reviewGathering(
         .eq('session_id', sessionId);
 
     const attendees = (attRows ?? []);
-    if (attendees.length < 3) {
-        return { success: false, error: '出席人數需至少 3 人（含大隊長），目前 ' + attendees.length + ' 人' };
+    const minAttendees = minAttendeesFor(session.team_name);
+    if (attendees.length < minAttendees) {
+        const who = isSystemHeadSession ? '（含體系長本人）' : '（含大隊長）';
+        return { success: false, error: `出席人數需至少 ${minAttendees} 人${who}，目前 ${attendees.length} 人` };
     }
 
     const { count: teamMemberCount } = await supabase
@@ -703,9 +776,12 @@ export async function reviewGathering(
     const hasCommandant = attendees.some(a => a.is_commandant);
     const memberCount = teamMemberCount ?? 0;
 
-    let reward = 3000;
-    if (memberCount > 0 && attendees.length >= memberCount) reward += 1000;
-    if (hasCommandant) reward += 1000;
+    const reward = computeGatheringReward({
+        teamName: session.team_name,
+        attendeeCount: attendees.length,
+        memberCount,
+        hasCommandant,
+    });
 
     // 先鎖定 session 狀態為 approved（冪等保護：若 update 0 rows 代表已被他人處理）
     const { data: locked, error: lockErr } = await supabase
@@ -878,31 +954,55 @@ export async function adminBackfillGathering(params: {
         await supabase.from('SquadGatheringSessions').delete().eq('id', (existing as { id: string }).id);
     }
 
-    // 驗證 attendeeUserIds 都是該小隊成員（避免亂塞）
-    const { data: teamMembers } = await supabase
+    const isSystemHeadSession = teamName === SYSTEM_HEAD_TEAM;
+
+    // 解析所有出席者資料（姓名 / 大隊長 / 體系長旗標）
+    const { data: attendeeRows } = await supabase
         .from('CharacterStats')
-        .select('UserID, Name, IsCommandant')
-        .eq('TeamName', teamName);
-    const memberIds = new Set((teamMembers ?? []).map(m => m.UserID as string));
-    // 大隊長可能不在 TeamName 內，所以額外把已勾選但不在 memberIds 的 user 拉出來驗證是否為大隊長
-    const outsideIds = attendeeUserIds.filter(id => !memberIds.has(id));
-    if (outsideIds.length > 0) {
-        const { data: commandants } = await supabase
+        .select('UserID, Name, IsCommandant, IsSystemHead')
+        .in('UserID', attendeeUserIds);
+    const attendeeInfo = new Map(
+        (attendeeRows ?? []).map(r => [r.UserID as string, r as { UserID: string; Name: string | null; IsCommandant: boolean | null; IsSystemHead: boolean | null }])
+    );
+
+    // 驗證出席者歸屬：一般小隊限本隊成員或大隊長；體系長定聚跨小隊，不限成員
+    if (!isSystemHeadSession) {
+        const { data: teamMembers } = await supabase
             .from('CharacterStats')
-            .select('UserID, IsCommandant')
-            .in('UserID', outsideIds);
-        const allCommandants = (commandants ?? []).every(c => c.IsCommandant);
-        if (!allCommandants || (commandants ?? []).length !== outsideIds.length) {
-            return { success: false, error: '勾選了不屬於該小隊的成員' };
+            .select('UserID')
+            .eq('TeamName', teamName);
+        const memberIds = new Set((teamMembers ?? []).map(m => m.UserID as string));
+        const outsideIds = attendeeUserIds.filter(id => !memberIds.has(id));
+        if (outsideIds.length > 0) {
+            const allCommandants = outsideIds.every(id => attendeeInfo.get(id)?.IsCommandant);
+            if (!allCommandants) {
+                return { success: false, error: '勾選了不屬於該小隊的成員' };
+            }
         }
     }
 
-    const memberCount = (teamMembers ?? []).length;
+    // 最少出席人數（體系長定聚需 5 人含本人）
+    const minAttendees = minAttendeesFor(teamName);
+    if (attendeeUserIds.length < minAttendees) {
+        return { success: false, error: `出席人數需至少 ${minAttendees} 人` };
+    }
 
-    // 計算 reward（同 reviewGathering 規則）
-    let reward = 3000;
-    if (memberCount > 0 && attendeeUserIds.length >= memberCount) reward += 1000;
-    if (hasCommandant) reward += 1000;
+    // 小隊人數（體系長定聚不適用全到，memberCount 取 0；helper 會固定回 4000）
+    let memberCount = 0;
+    if (!isSystemHeadSession) {
+        const { count } = await supabase
+            .from('CharacterStats')
+            .select('UserID', { count: 'exact', head: true })
+            .eq('TeamName', teamName);
+        memberCount = count ?? 0;
+    }
+
+    const reward = computeGatheringReward({
+        teamName,
+        attendeeCount: attendeeUserIds.length,
+        memberCount,
+        hasCommandant,
+    });
 
     // 建立 session（status=approved）
     const nowIso = new Date().toISOString();
@@ -933,14 +1033,17 @@ export async function adminBackfillGathering(params: {
     }
     const sessionId = sessionRow.id as string;
 
-    // 寫入 attendances
-    const attendanceRows = attendeeUserIds.map(uid => ({
-        session_id: sessionId,
-        user_id: uid,
-        user_name: (teamMembers ?? []).find(m => m.UserID === uid)?.Name ?? null,
-        is_commandant: hasCommandant && !memberIds.has(uid),
-        scanned_at: nowIso,
-    }));
+    // 寫入 attendances（大隊長 / 體系長依本人旗標標記，觸發 +1000 加成）
+    const attendanceRows = attendeeUserIds.map(uid => {
+        const info = attendeeInfo.get(uid);
+        return {
+            session_id: sessionId,
+            user_id: uid,
+            user_name: info?.Name ?? null,
+            is_commandant: !!(info?.IsCommandant || info?.IsSystemHead),
+            scanned_at: nowIso,
+        };
+    });
     const { error: attErr } = await supabase
         .from('SquadGatheringAttendances')
         .insert(attendanceRows);
