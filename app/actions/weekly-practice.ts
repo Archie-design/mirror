@@ -6,7 +6,7 @@ import { requireSelf } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { processCheckInCore } from '@/lib/checkin-core';
 import { logAdminAction } from '@/app/actions/admin';
-import { getSeasonWeekStart } from '@/lib/utils/time';
+import { getSeasonWeekStart, getTaipeiDateStr } from '@/lib/utils/time';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import type { WeeklyPracticeApplication } from '@/types';
 
@@ -42,28 +42,34 @@ export async function submitWeeklyPractice(
         .maybeSingle();
     if (!user) return { success: false, error: '找不到使用者' };
 
-    // 週上限：同一使用者，本週（以 questDate 所在週）是否已有 pending/squad_approved/approved 申請
+    // 週上限：以 questDate 所在賽季週為界（含 W1 5/10 8 天特例）。
+    // 重點：一律以「任務日 quest_date」歸週，不可用 Timestamp——精進力於「核准時」才入帳，
+    // 其 DailyLogs.Timestamp 落在核准週而非任務週，會造成上週的核准誤判本週已入帳。
     const weekStart = getSeasonWeekStart(new Date(`${questDate}T12:00:00+08:00`));
-    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const weekStartStr = getTaipeiDateStr(weekStart);  // +08 牆鐘日（避免 toISOString 退一天）
+    const weekDays = weekStartStr === '2026-05-10' ? 8 : 7;
+    const weekEndStr = getTaipeiDateStr(new Date(weekStart.getTime() + weekDays * 24 * 60 * 60 * 1000));
+
+    // 1) 本週是否已有申請（pending/squad_approved/approved）— 以 quest_date 歸週
     const { data: existing } = await supabase
         .from('WeeklyPracticeApplications')
         .select('id, status')
         .eq('user_id', userId)
         .in('status', ['pending', 'squad_approved', 'approved'])
-        .gte('quest_date', weekStart.toISOString().slice(0, 10))
-        .lt('quest_date', weekEnd.toISOString().slice(0, 10));
+        .gte('quest_date', weekStartStr)
+        .lt('quest_date', weekEndStr);
     if (existing && existing.length > 0) {
         return { success: false, error: '本週精進力已提交，每週限一次' };
     }
 
-    // 也查 DailyLogs 防重複（已通過入帳的）
+    // 2) 本週是否已入帳（DailyLogs）— 以 QuestID 內的任務日歸週（wk5|YYYY-MM-DD），非 Timestamp。
+    //    QuestID 為固定寬度 ISO 格式，字典序比較等同日期比較。
     const { count } = await supabase
         .from('DailyLogs')
         .select('id', { count: 'exact', head: true })
         .eq('UserID', userId)
-        .like('QuestID', `wk5|%`)
-        .gte('Timestamp', weekStart.toISOString())
-        .lt('Timestamp', weekEnd.toISOString());
+        .gte('QuestID', `wk5|${weekStartStr}`)
+        .lt('QuestID', `wk5|${weekEndStr}`);
     if ((count ?? 0) > 0) return { success: false, error: '本週精進力已入帳，每週限一次' };
 
     const { error } = await supabase.from('WeeklyPracticeApplications').insert({
