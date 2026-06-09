@@ -4,6 +4,7 @@ import { CharacterStats, BonusApplication } from '@/types';
 import { BonusQuestsSection } from '@/components/Tabs/BonusQuestsSection';
 import { HeartActivityCard } from '@/components/Tabs/HeartActivityCard';
 import { MyGatheringHistorySection } from '@/components/Tabs/MyGatheringHistorySection';
+import { ScoreAdjustmentsSection } from '@/components/Tabs/ScoreAdjustmentsSection';
 
 interface StatsTabProps {
     userData: CharacterStats;
@@ -52,6 +53,9 @@ export function StatsTab({ userData, myBonusApps, onBonusRefresh }: StatsTabProp
                 <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1 text-center">🎯 我的實體凝聚紀錄</h2>
                 <MyGatheringHistorySection userId={userData.UserID} />
             </section>
+
+            {/* ── 後台調整紀錄（admin_adjust；無資料時自動隱藏） ── */}
+            <ScoreAdjustmentsSection userId={userData.UserID} />
         </div>
     );
 }

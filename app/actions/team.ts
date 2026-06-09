@@ -4,7 +4,7 @@ import 'server-only';
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SquadMemberStats } from "@/types";
 import { requireSelf, authErrorResponse } from "@/lib/auth";
-import { getLogicalDateStr } from "@/lib/utils/time";
+import { getLogicalDateStr, getTaipeiDateStr } from "@/lib/utils/time";
 import { getCommandantTeamNames } from "@/lib/auth-scope";
 import { formatCsvRows } from "@/lib/utils/csv";
 
@@ -172,20 +172,21 @@ export interface DailyBucket {
     nine: string[];       // nine_grid_*
     once: string[];       // o*
     temp: string[];       // temp_*
+    other: string[];      // 其他/後台調整（admin_adjust 等未歸類項，顯示事由）
     total: number;
     // 各分類積分（hover 顯示用）
     dailyPts: number; boxingPts: number; pOtherPts: number; dietPts: number;
     topicWeekPts: number; angelPts: number; gatherPts: number;
-    ninePts: number; oncePts: number; tempPts: number;
+    ninePts: number; oncePts: number; tempPts: number; otherPts: number;
 }
 
 const emptyBucket = (): DailyBucket => ({
     daily: [], boxing: [], pOther: [], diet: [],
     topicWeek: [], angel: [], gather: [],
-    nine: [], once: [], temp: [], total: 0,
+    nine: [], once: [], temp: [], other: [], total: 0,
     dailyPts: 0, boxingPts: 0, pOtherPts: 0, dietPts: 0,
     topicWeekPts: 0, angelPts: 0, gatherPts: 0,
-    ninePts: 0, oncePts: 0, tempPts: 0,
+    ninePts: 0, oncePts: 0, tempPts: 0, otherPts: 0,
 });
 
 // 把單筆 log 灌進對應分類；mutates bucket
@@ -218,6 +219,9 @@ function addLogToBucket(b: DailyBucket, log: DailyLogRow) {
         b.once.push(title || base); b.oncePts += pts;
     } else if (base.startsWith('temp_')) {
         b.temp.push(title || base); b.tempPts += pts;
+    } else {
+        // 未歸類（admin_adjust 後台手動加分等）：顯示事由(QuestTitle)，補足「分類加總 = total」
+        b.other.push(title || base); b.otherPts += pts;
     }
 }
 
@@ -446,4 +450,35 @@ export async function getMemberDailyDetails(
         member: { userId: target.UserID, name: target.Name, teamName: target.TeamName },
         days,
     };
+}
+
+// ── 學員：查自己的後台調整紀錄（admin_adjust，含加分/扣分 + 事由）──────────────
+export interface ScoreAdjustment {
+    id: string;
+    date: string;     // 台灣日曆日 YYYY-MM-DD
+    reason: string;   // 事由（QuestTitle）
+    points: number;   // 可正可負
+}
+
+export async function getMyScoreAdjustments(
+    userId: string,
+): Promise<{ success: boolean; items?: ScoreAdjustment[]; error?: string }> {
+    try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
+
+    const supabase = createClient(supabaseUrl, supabaseActionKey);
+    const { data, error } = await supabase
+        .from('DailyLogs')
+        .select('id, QuestTitle, RewardPoints, Timestamp')
+        .eq('UserID', userId)
+        .eq('QuestID', 'admin_adjust')
+        .order('Timestamp', { ascending: false });
+    if (error) return { success: false, error: error.message };
+
+    const items: ScoreAdjustment[] = (data ?? []).map(r => ({
+        id: String((r as { id: string | number }).id),
+        date: getTaipeiDateStr((r as { Timestamp: string }).Timestamp),
+        reason: ((r as { QuestTitle: string | null }).QuestTitle) || '後台調整',
+        points: (r as { RewardPoints: number | null }).RewardPoints || 0,
+    }));
+    return { success: true, items };
 }

@@ -865,6 +865,7 @@ function MemberDayCard({ day }: { day: MemberDailyDetail }) {
         { label: '九宮格',       items: day.bucket.nine,      pts: day.bucket.ninePts },
         { label: '一次性任務',   items: day.bucket.once,      pts: day.bucket.oncePts },
         { label: '臨時加碼',     items: day.bucket.temp,      pts: day.bucket.tempPts },
+        { label: '其他/後台調整', items: day.bucket.other,     pts: day.bucket.otherPts },
     ].filter(r => r.items.length > 0);
 
     return (
