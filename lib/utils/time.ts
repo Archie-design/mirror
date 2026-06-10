@@ -96,7 +96,7 @@ export function getSeasonWeekStart(date: Date = new Date()): Date {
 // ── 賽季月分桶 ─────────────────────────────────────────────────────────────
 // 月排行榜採「賽季月」而非日曆月，邊界對齊賽季週、以中午 12:00 為邏輯日邊界。
 //   第一個月：5/10–6/14（W1–W5，5 週）
-//   第二個月：6/15–7/11（W6–W9，4 週；7/12 畢業日不計入任何月）
+//   第二個月：6/15–7/19（W6–W10，5 週；分數統計至 7/19，畢業典禮另於 7/24）
 // key 直接作為 MonthlyRankSnapshot.month_start（DATE）。
 export interface SeasonMonth {
     key: string;          // 賽季月起始日（= 快照 month_start）
@@ -108,7 +108,7 @@ export interface SeasonMonth {
 
 export const SEASON_MONTHS: SeasonMonth[] = [
     { key: '2026-05-10', label: '第一個月', startDate: '2026-05-10', endDate: '2026-06-14', endExclusive: '2026-06-15' },
-    { key: '2026-06-15', label: '第二個月', startDate: '2026-06-15', endDate: '2026-07-11', endExclusive: '2026-07-12' },
+    { key: '2026-06-15', label: '第二個月', startDate: '2026-06-15', endDate: '2026-07-19', endExclusive: '2026-07-20' },
 ];
 
 // 賽季月的聚合區間（中午 12:00 +08 邏輯日邊界）
@@ -163,7 +163,7 @@ export interface ThemePeriod {
 
 /**
  * 依今日日期判斷活動旅程所在階段（GAME_DESIGN §1.3）
- * 活動期間：2026-05-10 ～ 2026-07-12
+ * 活動期間（分數統計）：2026-05-10 ～ 2026-07-19；畢業典禮另於 2026-07-24
  */
 export function getCurrentThemePeriod(date: Date = new Date()): ThemePeriod {
     const dateStr = new Intl.DateTimeFormat('en-CA', {
@@ -173,14 +173,14 @@ export function getCurrentThemePeriod(date: Date = new Date()): ThemePeriod {
     if (dateStr < '2026-05-10') {
         return { title: '活動即將開始', emoji: '🌪️', type: 'before', taskType: null, weeks: '宣傳期', desc: '親證班將於 2026/5/10 正式啟動，龍捲風即將來臨' };
     }
-    if (dateStr > '2026-07-12') {
-        return { title: '感謝參與', emoji: '🏆', type: 'after', taskType: null, weeks: '活動已結束', desc: '感謝所有學員踏上屬於自己的黃磚路！' };
+    if (dateStr > '2026-07-19') {
+        return { title: '感謝參與', emoji: '🏆', type: 'after', taskType: null, weeks: '活動已結束', desc: '感謝所有學員踏上屬於自己的黃磚路！7/24 畢業典禮見。' };
     }
     if (dateStr >= '2026-05-10' && dateStr <= '2026-05-17') {
         return { title: '開學日・踏上黃磚路', emoji: '👟', type: 'regular', taskType: 't1t2', weeks: '第 1 週', desc: '一切都是陌生的，不舒服正是真正開始走路的感覺' };
     }
     if (dateStr >= '2026-07-06') {
-        return { title: '畢業典禮・回望旅程', emoji: '✨', type: 'graduation', taskType: 't1t2', weeks: '第 9 週', desc: '停下來回望，看見自己走過的路。黃磚路盡頭沒有大法師，只有一面鏡子' };
+        return { title: '畢業典禮・回望旅程', emoji: '✨', type: 'graduation', taskType: 't1t2', weeks: '第 9–10 週', desc: '停下來回望，看見自己走過的路。黃磚路盡頭沒有大法師，只有一面鏡子' };
     }
     // 2026-05-18 ~ 2026-07-05（第 2–8 週）
     return { title: '課後課・旅伴同行', emoji: '🌿', type: 'regular', taskType: 't1t2', weeks: '第 2–8 週', desc: '夥伴成為彼此的鏡子，給出鼓勵的同時已先相信自己值得' };

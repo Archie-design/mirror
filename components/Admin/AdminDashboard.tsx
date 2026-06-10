@@ -1226,11 +1226,11 @@ export function AdminDashboard({
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-[10px] text-slate-500 font-bold mb-1">開放日期（選填）</label>
-                                        <input name="start_date" type="date" min="2026-05-10" max="2026-06-28" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
+                                        <input name="start_date" type="date" min="2026-05-10" max="2026-07-19" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
                                     </div>
                                     <div>
                                         <label className="block text-[10px] text-slate-500 font-bold mb-1">截止日期（選填）</label>
-                                        <input name="end_date" type="date" min="2026-05-10" max="2026-06-28" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
+                                        <input name="end_date" type="date" min="2026-05-10" max="2026-07-19" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-white text-sm outline-none focus:border-orange-500" />
                                     </div>
                                 </div>
                                 <div className="flex gap-4 items-center">

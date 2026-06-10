@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { SEASON_MONTHS, seasonMonthRangeIso, type SeasonMonth } from '@/lib/utils/time';
 
 // Cron 執行時間：每日 04:30 UTC = 台灣時間（Asia/Taipei, UTC+8）12:30
-// 本系統邏輯日以中午 12:00 TW 為邊界；賽季月（5/10–6/14、6/15–7/11）結束邊界
+// 本系統邏輯日以中午 12:00 TW 為邊界；賽季月（5/10–6/14、6/15–7/19）結束邊界
 // 為「endExclusive 當日 12:00 TW」。route 每日自我把關：找出已結束、且尚未快照的
 // 最後一個賽季月才寫入 → 自癒、不漏（即使某天 cron 漏跑，隔天會補）。
 // vercel.json schedule: "30 4 * * *"（UTC）= 每日 04:30 UTC = 台灣時間 12:30

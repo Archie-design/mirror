@@ -82,14 +82,22 @@ The codebase uses **both** database clients for different purposes:
 Primary gameplay currency:
 - `EnergyDice` / `GoldenDice`: Dice earned from quests and events, used for gameplay mechanics
 
-### Key Constants (`lib/constants.tsx`)
+### Key Constants
 
-- `BASE_START_DATE_STR` / `END_DATE`: Season date range (Feb 1 – Jun 28, 2026)
-- `PENALTY_PER_DAY`: Fine amount per missed day (50)
-- `ADMIN_PASSWORD`: Hardcoded to `"123"` — dev-only, not a security boundary
-- `ZONES`: The 6 zone definitions (pride/doubt/anger/greed/delusion/chaos)
-- `IN_GAME_ITEMS` (`i1`–`i10`): Purchasable shop items with `GameGold`
-- `MONSTER_DROP_ITEMS` (`d1`–`d7`): Monster-only drops stored in `CharacterStats.GameInventory`
+**Quest config (`lib/constants.tsx`):**
+- `DAILY_BASIC_CONFIG` / `BASIC_QUEST_IDS` / `DAILY_BASIC_LIMIT` (d1–d8, 3/day)
+- `DAILY_WEIGHTED_CONFIG` / `WEIGHTED_QUEST_IDS` / `DAILY_WEIGHTED_LIMIT` (p1–p5, 3/day)
+- `DAWN_QUEST` (p1_dawn 破曉打拳), `DIET_QUEST_CONFIG` / `DIET_QUEST_IDS` (diet_veg/diet_seafood)
+- `WEEKLY_QUEST_CONFIG` (wk1–wk5), `SQUAD_ROLES`, `COMPANION_TYPES`, `QUEST_ICON_MAP`
+- `SYSTEM_HEAD_TEAM` (`'體系長'`) / `SYSTEM_HEAD_GATHERING_REWARD` (4000) / `SYSTEM_HEAD_GATHERING_MIN_ATTENDEES` (5) — 體系長跨小隊定聚規則
+
+**Season dates (`lib/utils/time.ts`) — authoritative:**
+- Activity (scoring) period: **2026-05-10 ～ 2026-07-19**; graduation ceremony 2026-07-24 (a course event)
+- `SEASON_W1_START` (`2026-05-10`) / `SEASON_W2_MONDAY` (`2026-05-18`) + `getSeasonWeekStart()`: 賽季週 W1 5/10–5/17 (8-day special), W2+ Mon–Sun (through W10 7/13–7/19)
+- `SEASON_MONTHS` + helpers (`getCurrentSeasonMonth`, `formatSeasonMonthLabel`…): 月排行榜「賽季月」— 第一個月 5/10–6/14 (W1–W5), 第二個月 6/15–7/19 (W6–W10), each 5 weeks; `key` = `MonthlyRankSnapshot.month_start`
+- `getCurrentThemePeriod()`: homepage journey phase (before / W1 / W2–8 / W9–10 graduation / after)
+
+**Other:** Admin password via `process.env.ADMIN_PASSWORD` (server-side only; not in `constants.tsx`). One-off bonus task deadline in `app/actions/bonus.ts` — all o-quests close 2026-07-12 23:59 (system scoring ends 7/20 noon). Course events default in `lib/courseConfig.ts`, overridable via `SystemSettings.CourseEvents` (graduation ceremony 2026-07-24).
 
 ### API Routes (`app/api/`)
 
@@ -98,7 +106,7 @@ Primary gameplay currency:
 | `GET /api/auth/line` | Initiates LINE Login OAuth (`?action=login` or `?action=bind&uid=USER_ID`) |
 | `GET /api/auth/line/callback` | OAuth callback — creates/binds account, sets session cookie |
 | `GET /api/cron/weekly-snapshot` | Vercel Cron (Mon 04:30 UTC = Mon 12:30 TW) — writes previous-week leaderboard snapshot (賽季週採週一→週日；W1 5/10–5/17 8 天特例); requires `CRON_SECRET` bearer token |
-| `GET /api/cron/monthly-snapshot` | Vercel Cron (1st 16:30 UTC = 1st 00:30 TW) — writes previous-month leaderboard snapshot; requires `CRON_SECRET` bearer token |
+| `GET /api/cron/monthly-snapshot` | Vercel Cron (daily 04:30 UTC = 12:30 TW) — self-healing: snapshots a 賽季月 only once its end has passed (第一個月 5/10–6/14, 第二個月 6/15–7/19); requires `CRON_SECRET` bearer token |
 
 LINE-related env vars (Login only): `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`
 

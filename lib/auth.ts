@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export const SESSION_COOKIE = 'line_session_uid';
 const TOKEN_LABEL = 'session-v1';
-// 活動期間至 2026-06-28；保守給 120 天覆蓋整季
+// 活動分數統計至 2026-07-19（畢業典禮 7/24）；保守給 120 天覆蓋整季
 export const SESSION_TTL_SECONDS = 120 * 24 * 60 * 60;
 
 export class AuthError extends Error {

@@ -363,15 +363,12 @@ export async function submitBonusApplication(
 ): Promise<{ success: boolean; error?: string }> {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
 
-    // 截止日：o7 傳愛、o9 心成活動為 2026-07-11 結束，其餘為 2026-07-01 結束
+    // 截止日：所有一次性任務（含傳愛 o7、心成活動 o9）統一 2026-07-12 23:59 截止。
+    // （系統最後計分至 7/20 中午；一次性加分依公告提早於 7/12 截止）
     // 使用 >= 比對截止瞬間（Taipei 隔日 00:00）以避免 1ms 邊界窗口
-    const lateDeadlineQuests = new Set(['o7', 'o9']);
-    const deadline = lateDeadlineQuests.has(questId)
-        ? new Date('2026-07-12T00:00:00+08:00')
-        : new Date('2026-07-02T00:00:00+08:00');
+    const deadline = new Date('2026-07-13T00:00:00+08:00');
     if (new Date() >= deadline) {
-        const label = lateDeadlineQuests.has(questId) ? '2026-07-11' : '2026-07-01';
-        return { success: false, error: `一次性任務已截止（${label}）` };
+        return { success: false, error: '一次性任務已截止（2026-07-12 23:59）' };
     }
     if (!interviewTarget.trim()) return { success: false, error: '申請說明不可為空' };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(interviewDate)) return { success: false, error: '日期格式錯誤，請填寫 YYYY-MM-DD' };
