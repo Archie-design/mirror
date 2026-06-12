@@ -2,15 +2,18 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { Loader2, CheckCircle2, XCircle, ChevronRight, X, Search, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, ChevronRight, X, Search, ArrowUpDown, AlertTriangle, Trophy, Users } from 'lucide-react';
 import type { TempQuestApplication } from '@/types';
-import { listAllAppsForMission1, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
+import { listAllAppsForMission, reviewTempQuestByAdmin } from '@/app/actions/temp-quest-application';
 
 type StatusFilter = 'all' | 'pending' | 'squad_approved' | 'approved' | 'rejected' | 'duplicate';
 type SortKey = 'date_asc' | 'date_desc' | 'name' | 'team' | 'status';
+type AwardFilter = 'none' | 'five' | 'full';
 
 interface SquadStat { teamName: string; total: number; credited: number; }
 interface CreditedNoApp { userId: string; userName: string; teamName: string | null; }
+
+const FULL_THRESHOLD = 5; // ≥5 人完成的參獎門檻
 
 const STATUS_LABEL: Record<string, string> = {
     pending: '待初審', squad_approved: '初審通過', approved: '已核准', rejected: '已退回',
@@ -32,9 +35,10 @@ function toTaipeiTime(isoStr: string): string {
     });
 }
 
-export function Mission1Tab({ adminUserId, onShowMessage }: {
-    adminUserId: string;
+export function MissionReviewTab({ questId, onShowMessage, showTeamAwards = false }: {
+    questId: string;
     onShowMessage: (msg: string, type: 'success' | 'error' | 'info') => void;
+    showTeamAwards?: boolean;
 }) {
     const [apps, setApps] = useState<TempQuestApplication[]>([]);
     const [squadStats, setSquadStats] = useState<SquadStat[]>([]);
@@ -43,6 +47,7 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
     const [showNoApp, setShowNoApp] = useState(false);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<StatusFilter>('all');
+    const [awardFilter, setAwardFilter] = useState<AwardFilter>('none');
     const [sortBy, setSortBy] = useState<SortKey>('date_desc');
     const [nameSearch, setNameSearch] = useState('');
     const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -51,7 +56,7 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
 
     const reload = useCallback(async () => {
         setLoading(true);
-        const res = await listAllAppsForMission1();
+        const res = await listAllAppsForMission(questId);
         if (res.success) {
             setApps(res.apps);
             setSquadStats(res.squadStats);
@@ -60,9 +65,11 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
         }
         else onShowMessage(res.error ?? '載入失敗', 'error');
         setLoading(false);
-    }, [onShowMessage]);
+    }, [questId, onShowMessage]);
 
     useEffect(() => { reload(); }, [reload]);
+    // 切換任務時重置篩選，避免沿用上一個任務的狀態
+    useEffect(() => { setFilter('all'); setAwardFilter('none'); setNameSearch(''); }, [questId]);
 
     // user_id 出現 2+ 筆 → 重複送審
     const duplicateUserIds = useMemo(() => {
@@ -70,6 +77,12 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
         for (const a of apps) count.set(a.user_id, (count.get(a.user_id) ?? 0) + 1);
         return new Set([...count.entries()].filter(([, n]) => n > 1).map(([id]) => id));
     }, [apps]);
+
+    // 參獎資格：以實際入帳(credited)為準
+    const fullTeams = useMemo(() => squadStats.filter(s => s.total > 0 && s.credited === s.total), [squadStats]);
+    const fiveTeams = useMemo(() => squadStats.filter(s => s.credited >= FULL_THRESHOLD), [squadStats]);
+    const fullTeamNames = useMemo(() => new Set(fullTeams.map(s => s.teamName)), [fullTeams]);
+    const fiveTeamNames = useMemo(() => new Set(fiveTeams.map(s => s.teamName)), [fiveTeams]);
 
     const counts = useMemo(() => ({
         all: apps.length,
@@ -80,10 +93,19 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
         duplicate: apps.filter(a => duplicateUserIds.has(a.user_id)).length,
     }), [apps, duplicateUserIds]);
 
+    // 參獎篩選作用的隊伍集合
+    const awardTeamSet = awardFilter === 'full' ? fullTeamNames : awardFilter === 'five' ? fiveTeamNames : null;
+
+    const displayedSquads = useMemo(() => (
+        awardTeamSet ? squadStats.filter(s => awardTeamSet.has(s.teamName)) : squadStats
+    ), [squadStats, awardTeamSet]);
+
     const displayed = useMemo(() => {
         let list = apps;
         if (filter === 'duplicate') list = list.filter(a => duplicateUserIds.has(a.user_id));
         else if (filter !== 'all') list = list.filter(a => a.status === filter);
+
+        if (awardTeamSet) list = list.filter(a => a.team_name != null && awardTeamSet.has(a.team_name));
 
         if (nameSearch.trim()) {
             const q = nameSearch.trim().toLowerCase();
@@ -98,7 +120,7 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
             if (sortBy === 'status') return a.status.localeCompare(b.status);
             return 0;
         });
-    }, [apps, filter, nameSearch, sortBy, duplicateUserIds]);
+    }, [apps, filter, awardTeamSet, nameSearch, sortBy, duplicateUserIds]);
 
     const handleReview = async (appId: string, action: 'approve' | 'reject') => {
         setReviewingId(appId);
@@ -113,7 +135,7 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
     return (
         <div className="space-y-5">
             <div className="flex items-center gap-2 text-amber-400 font-black text-sm uppercase tracking-widest">
-                <ChevronRight size={16} /> 秘密任務1・全部送審記錄
+                <ChevronRight size={16} /> 全部送審記錄
             </div>
 
             {/* 統計卡（前 5 張為申請狀態；末張為實際入帳＝真正完成，含直接補分） */}
@@ -135,6 +157,58 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
                     <p className="text-xs text-emerald-400/80 mt-0.5">實際入帳</p>
                 </div>
             </div>
+
+            {/* 參獎資格（僅秘密任務2 等啟用者）— 以實際入帳為準、不含大隊長 */}
+            {showTeamAwards && (
+                <div className="bg-amber-950/30 border border-amber-700/40 rounded-3xl p-4 space-y-4">
+                    <p className="text-xs font-black text-amber-300 uppercase tracking-widest flex items-center gap-1.5">
+                        <Trophy size={13} /> 參獎資格（依實際入帳，不含大隊長）
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="bg-slate-900/60 border border-emerald-700/40 rounded-2xl p-3">
+                            <p className="text-xs font-black text-emerald-300 mb-2 flex items-center gap-1">
+                                <CheckCircle2 size={12} /> 全組完成 · {fullTeams.length} 隊
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {fullTeams.length === 0 && <span className="text-[11px] text-slate-500">尚無</span>}
+                                {fullTeams.map(s => (
+                                    <span key={s.teamName} className="text-[11px] bg-emerald-900/40 border border-emerald-700/40 rounded-lg px-2 py-1 text-emerald-200">
+                                        {s.teamName} <span className="text-emerald-400/70">{s.credited}/{s.total}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="bg-slate-900/60 border border-amber-700/40 rounded-2xl p-3">
+                            <p className="text-xs font-black text-amber-300 mb-2 flex items-center gap-1">
+                                <Users size={12} /> ≥{FULL_THRESHOLD} 人完成 · {fiveTeams.length} 隊
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {fiveTeams.length === 0 && <span className="text-[11px] text-slate-500">尚無</span>}
+                                {fiveTeams.map(s => (
+                                    <span key={s.teamName} className="text-[11px] bg-amber-900/40 border border-amber-700/40 rounded-lg px-2 py-1 text-amber-200">
+                                        {s.teamName} <span className="text-amber-400/70">{s.credited}/{s.total}</span>
+                                        {fullTeamNames.has(s.teamName) && <span className="ml-1 text-emerald-400">★全組</span>}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-[11px] text-slate-500">篩選下方名單：</span>
+                        {([
+                            ['none', '全部'],
+                            ['full', `全組完成 (${fullTeams.length})`],
+                            ['five', `≥${FULL_THRESHOLD} 人完成 (${fiveTeams.length})`],
+                        ] as [AwardFilter, string][]).map(([key, label]) => (
+                            <button key={key} onClick={() => setAwardFilter(key)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                                    awardFilter === key ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+                                }`}
+                            >{label}</button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* 直接補分（無申請）名單：申請列表看不到，這裡補列，回應「後台沒顯示有做過」 */}
             {creditedNoApp.length > 0 && (
@@ -160,13 +234,19 @@ export function Mission1Tab({ adminUserId, onShowMessage }: {
 
             {/* 小隊完成率（以實際入帳為準）*/}
             <div className="bg-slate-900 border border-slate-700 rounded-3xl p-4">
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">各小隊完成率（實際入帳）</p>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">
+                    各小隊完成率（實際入帳）{awardTeamSet && <span className="text-amber-400">· 已篩選 {displayedSquads.length} 隊</span>}
+                </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {squadStats.map(s => {
+                    {displayedSquads.map(s => {
                         const rate = s.total > 0 ? Math.round(s.credited / s.total * 100) : 0;
+                        const isFull = s.total > 0 && s.credited === s.total;
+                        const isFive = s.credited >= FULL_THRESHOLD;
                         const barColor = rate === 100 ? 'bg-emerald-500' : rate >= 50 ? 'bg-amber-500' : 'bg-slate-600';
+                        const ring = showTeamAwards && isFull ? 'ring-1 ring-emerald-500/60'
+                            : showTeamAwards && isFive ? 'ring-1 ring-amber-500/50' : '';
                         return (
-                            <div key={s.teamName} className="bg-slate-800 rounded-xl p-2.5">
+                            <div key={s.teamName} className={`bg-slate-800 rounded-xl p-2.5 ${ring}`}>
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-xs font-bold text-slate-200">{s.teamName}</span>
                                     <span className={`text-xs font-black ${rate === 100 ? 'text-emerald-400' : 'text-slate-400'}`}>{s.credited}/{s.total}</span>

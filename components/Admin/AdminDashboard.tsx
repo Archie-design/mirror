@@ -15,7 +15,7 @@ import type { WeeklyPracticeApplication } from '@/types';
 import { AdminPendingReviewSection } from '@/components/Admin/AdminPendingReviewSection';
 import { AdminGatheringBackfillSection } from '@/components/Admin/AdminGatheringBackfillSection';
 import { downloadCsv } from '@/lib/utils/csv-download';
-import { Mission1Tab } from '@/components/Admin/Mission1Tab';
+import { SecretMissionsTab } from '@/components/Admin/SecretMissionsTab';
 import type { SnapshotStatus } from '@/app/actions/snapshot';
 
 interface MemberRow {
@@ -741,7 +741,7 @@ export function AdminDashboard({
     const [reviewingW4Id, setReviewingW4Id] = React.useState<string | null>(null);
     const [volunteerPwd, setVolunteerPwd] = React.useState('');
     const [volPwdSaved, setVolPwdSaved] = React.useState(false);
-    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course' | 'mission1'>('members');
+    const [activeAdminTab, setActiveAdminTab] = React.useState<'members' | 'quests' | 'review' | 'system' | 'ninegrid' | 'course' | 'mission'>('members');
 
     // Announcement state
     const [newAnnouncementText, setNewAnnouncementText] = React.useState('');
@@ -946,7 +946,7 @@ export function AdminDashboard({
         { id: 'ninegrid' as const, label: '九宮格', numeral: 'IV',  icon: <Grid3X3 size={14} /> },
         { id: 'system'   as const, label: '系統',   numeral: 'V',   icon: <BarChart3 size={14} /> },
         { id: 'course'   as const, label: '課程',   numeral: 'VI',  icon: <Calendar size={14} /> },
-        { id: 'mission1' as const, label: '秘密任務1', numeral: 'VII', icon: <Star size={14} /> },
+        { id: 'mission' as const, label: '秘密任務', numeral: 'VII', icon: <Star size={14} /> },
     ];
 
     return (
@@ -1944,14 +1944,13 @@ export function AdminDashboard({
                 </div>
                 )}
 
-                {/* ── Tab: 秘密任務1 ── */}
-                {activeAdminTab === 'mission1' && (
+                {/* ── Tab: 秘密任務（任務切換器） ── */}
+                {activeAdminTab === 'mission' && (
                 <div className="space-y-6 animate-fade-up">
-                    <Mission1Tab
-                        adminUserId={adminUserId ?? 'admin'}
+                    <SecretMissionsTab
                         onShowMessage={(msg, type) => {
-                            if (type === 'error') console.error('[Mission1]', msg);
-                            else console.log('[Mission1]', msg);
+                            if (type === 'error') console.error('[SecretMission]', msg);
+                            else console.log('[SecretMission]', msg);
                         }}
                     />
                 </div>

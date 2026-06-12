@@ -380,7 +380,9 @@ export async function reviewTempQuestByAdmin(
 
 // ── 管理員：列出秘密任務1全部申請 + 小隊統計 ──────────────────────────────────
 // 「真正完成」以 DailyLogs 實際入帳為準（含直接補分、無申請者），不只看 approved 申請
-export async function listAllAppsForMission1(): Promise<{
+// 泛化：列出某秘密/臨時任務的全部送審 + 完成統計（admin 後台查詢用）。
+// questId 例：'temp_1779076958469'（秘密任務1）、'temp_1780288200701'（秘密任務2）。
+export async function listAllAppsForMission(questId: string): Promise<{
     success: boolean;
     apps: TempQuestApplication[];
     squadStats: { teamName: string; total: number; credited: number }[];
@@ -392,13 +394,14 @@ export async function listAllAppsForMission1(): Promise<{
     if (!(await verifyAdminSession())) {
         return { ...empty, error: '無權限執行此操作' };
     }
+    if (!questId) return { ...empty, error: '缺少任務 ID' };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data, error } = await supabase
         .from('TempQuestApplications')
         .select('*')
-        .eq('quest_id', 'temp_1779076958469')
+        .eq('quest_id', questId)
         .order('created_at', { ascending: true });
 
     if (error) return { ...empty, error: error.message };
@@ -408,7 +411,7 @@ export async function listAllAppsForMission1(): Promise<{
     const { data: creditLogs } = await supabase
         .from('DailyLogs')
         .select('UserID')
-        .like('QuestID', 'temp_1779076958469|%');
+        .like('QuestID', `${questId}|%`);
     const creditedUserIds = new Set((creditLogs ?? []).map(l => l.UserID as string));
 
     // 全員（UserID / Name / TeamName / IsCommandant）
@@ -444,6 +447,35 @@ export async function listAllAppsForMission1(): Promise<{
         .sort((a, b) => (a.teamName ?? '').localeCompare(b.teamName ?? '', 'zh-TW') || a.userName.localeCompare(b.userName, 'zh-TW'));
 
     return { success: true, apps, squadStats, creditedCount: creditedUserIds.size, creditedNoApp };
+}
+
+// 薄包裝：維持秘密任務1 既有呼叫端不變
+export async function listAllAppsForMission1() {
+    return listAllAppsForMission('temp_1779076958469');
+}
+
+// 列出「秘密任務」系列任務（供後台切換器）
+export async function listSecretMissions(): Promise<{
+    success: boolean;
+    missions: { id: string; title: string; active: boolean; startDate: string | null; endDate: string | null }[];
+    error?: string;
+}> {
+    if (!(await verifyAdminSession())) return { success: false, missions: [], error: '無權限執行此操作' };
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data, error } = await supabase
+        .from('temporaryquests')
+        .select('id, title, active, start_date, end_date')
+        .ilike('title', '秘密任務%')
+        .order('created_at', { ascending: true });
+    if (error) return { success: false, missions: [], error: error.message };
+    const missions = (data ?? []).map(m => ({
+        id: m.id as string,
+        title: m.title as string,
+        active: !!m.active,
+        startDate: (m.start_date as string | null) ?? null,
+        endDate: (m.end_date as string | null) ?? null,
+    }));
+    return { success: true, missions };
 }
 
 // ── 管理員：列出全系統 pending 申請（admin 兜底初審用） ────────────────────────
