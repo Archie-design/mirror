@@ -169,7 +169,7 @@ function SquadOnlineGatheringCard({ quest, userId }: { quest: Quest; userId: str
 }
 
 // ── 小組凝聚（實體）QR 審核制卡片 ───────────────────────────────────────────
-function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: string }) {
+function SquadOfflineGatheringCard({ quest, userId, seasonWeekStart }: { quest: Quest; userId: string; seasonWeekStart: Date }) {
     const [ctx, setCtx] = useState<TeamGatheringContext | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -181,7 +181,15 @@ function SquadOfflineGatheringCard({ quest, userId }: { quest: Quest; userId: st
 
     useEffect(() => { reload(); }, [reload]);
 
-    const session = ctx?.session ?? null;
+    const rawSession = ctx?.session ?? null;
+    // 僅顯示「本賽季週」的凝聚；getTeamGatheringContext 會 fallback 到最新一場（可能是上週已核准），
+    // 不過濾的話新的一週會仍顯示上週的「已完成 +4000」。
+    const weekStartStr = getTaipeiDateStr(seasonWeekStart);
+    const weekDays = weekStartStr === '2026-05-10' ? 8 : 7;
+    const weekEndStr = getTaipeiDateStr(new Date(seasonWeekStart.getTime() + weekDays * 24 * 60 * 60 * 1000));
+    const session = rawSession && rawSession.gatheringDate >= weekStartStr && rawSession.gatheringDate < weekEndStr
+        ? rawSession
+        : null;
     const attendees = ctx?.attendees ?? [];
     const teamCount = ctx?.teamMemberCount ?? 0;
     const hasCheckedIn = ctx?.hasCheckedIn ?? false;
@@ -387,7 +395,7 @@ export function WeeklyTopicTab({
                             <SquadOnlineGatheringCard quest={wk3OnlineQuest} userId={userId} />
                         )}
                         {wk3OfflineQuest && (
-                            <SquadOfflineGatheringCard quest={wk3OfflineQuest} userId={userId} />
+                            <SquadOfflineGatheringCard quest={wk3OfflineQuest} userId={userId} seasonWeekStart={seasonWeekStart} />
                         )}
                     </div>
                 </section>
