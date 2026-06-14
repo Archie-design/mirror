@@ -192,6 +192,7 @@ function SquadOfflineGatheringCard({ quest, userId, seasonWeekStart }: { quest: 
         : null;
     const attendees = ctx?.attendees ?? [];
     const teamCount = ctx?.teamMemberCount ?? 0;
+    const memberPresent = attendees.filter(a => !a.isCommandant).length; // 出席分子只算小隊員(非大隊長)
     const hasCheckedIn = ctx?.hasCheckedIn ?? false;
     const isToday = session?.gatheringDate === getTaipeiDateStr();
 
@@ -211,7 +212,7 @@ function SquadOfflineGatheringCard({ quest, userId, seasonWeekStart }: { quest: 
             <div className={`rounded-xl p-3 text-center ${hasCheckedIn ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'}`}>
                 {hasCheckedIn ? (
                     <p className="text-sm font-bold text-emerald-700 flex items-center justify-center gap-1">
-                        <CheckCircle2 size={14} /> 已報到 · {attendees.length}/{teamCount}
+                        <CheckCircle2 size={14} /> 已報到 · 小隊員 {memberPresent}/{teamCount}
                     </p>
                 ) : (
                     <p className="text-sm font-bold text-blue-700 flex items-center justify-center gap-1">
@@ -222,13 +223,13 @@ function SquadOfflineGatheringCard({ quest, userId, seasonWeekStart }: { quest: 
         );
         if (session.status === 'pending_review') return (
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-center">
-                <p className="text-sm font-bold text-yellow-700">審核中…等待大隊長終審</p>
+                <p className="text-sm font-bold text-yellow-700">審核中（{session.gatheringDate}）…等待大隊長終審</p>
             </div>
         );
         if (session.status === 'approved') return (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
                 <p className="text-sm font-bold text-emerald-700">
-                    ✓ 已完成 — +{session.approvedRewardPerPerson ?? 300} 分
+                    ✓ 已完成（{session.gatheringDate}）— +{session.approvedRewardPerPerson ?? 300} 分
                 </p>
             </div>
         );

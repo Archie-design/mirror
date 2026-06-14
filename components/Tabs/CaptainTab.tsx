@@ -16,6 +16,7 @@ import {
     scanGatheringQR,
     scheduleSquadGathering,
     reviewGathering,
+    listTeamScheduledGatherings,
     type TeamGatheringContext,
 } from '@/app/actions/squad-gathering';
 import { SYSTEM_HEAD_TEAM, SYSTEM_HEAD_GATHERING_MIN_ATTENDEES } from '@/lib/constants';
@@ -219,14 +220,20 @@ function SquadNineGridSection({ captainId }: { captainId: string }) {
 // ── 本週實體凝聚（wk3_offline） ─────────────────────────────────────────────
 function SquadGatheringSection({ captainId }: { captainId: string }) {
     const [ctx, setCtx] = useState<TeamGatheringContext | null>(null);
+    const [scheduledList, setScheduledList] = useState<{ id: string; gatheringDate: string; attendeeCount: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [submittingId, setSubmittingId] = useState<string | null>(null);
     const [selfCheckingIn, setSelfCheckingIn] = useState(false);
     const [err, setErr] = useState<string | null>(null);
 
     const reload = useCallback(async () => {
-        const res = await getTeamGatheringContext(captainId);
+        const [res, listRes] = await Promise.all([
+            getTeamGatheringContext(captainId),
+            listTeamScheduledGatherings(captainId),
+        ]);
         if (res.success) setCtx(res.context ?? null);
+        if (listRes.success) setScheduledList(listRes.sessions ?? []);
         setLoading(false);
     }, [captainId]);
 
@@ -281,6 +288,16 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
         setSelfCheckingIn(false);
     };
 
+    // 逐場送審（不限當日；後端只要 scheduled + 有掃碼即可送）
+    const handleSubmitId = async (sessionId: string) => {
+        setSubmittingId(sessionId);
+        setErr(null);
+        const res = await submitGatheringForReview(captainId, sessionId);
+        if (!res.success) setErr(res.error ?? '送審失敗');
+        await reload();
+        setSubmittingId(null);
+    };
+
     if (loading) return (
         <section className="bg-white border-2 border-rose-100 p-6 rounded-4xl">
             <div className="flex items-center gap-2 text-rose-600 text-sm font-black">
@@ -294,6 +311,8 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
     const attendees = ctx?.attendees ?? [];
     const teamMemberCount = ctx?.teamMemberCount ?? 0;
     const hasCommandant = attendees.some(a => a.isCommandant);
+    // 出席分子只算「本小隊員」(非大隊長)；大隊長另計，避免「4/5 含大隊長」的混淆
+    const memberPresent = attendees.filter(a => !a.isCommandant).length;
     const captainAlreadyIn = attendees.some(a => a.userId === captainId);
     const isToday = session?.gatheringDate === getTaipeiDateStr();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
@@ -339,7 +358,7 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
 
                     <div className="bg-gray-50 rounded-2xl p-4 space-y-2 border border-gray-200">
                         <div className="flex items-center gap-2 text-sm font-black text-gray-700">
-                            <Users size={14} /> 出席進度 {attendees.length} / {teamMemberCount}
+                            <Users size={14} /> 小隊員出席 {memberPresent} / {teamMemberCount}
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                             <Crown size={14} className={hasCommandant ? 'text-amber-500' : 'text-gray-400'} />
@@ -374,9 +393,9 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
 
             {session && session.status === 'pending_review' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-center space-y-2">
-                    <p className="font-black text-yellow-700">審核中…等待大隊長終審</p>
+                    <p className="font-black text-yellow-700">審核中（{session.gatheringDate}）…等待大隊長終審</p>
                     <p className="text-sm text-yellow-600">
-                        出席 {attendees.length} / {teamMemberCount}
+                        小隊員出席 {memberPresent} / {teamMemberCount}
                         {hasCommandant && ' · 大隊長已到'}
                     </p>
                 </div>
@@ -385,10 +404,10 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
             {session && session.status === 'approved' && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center space-y-2">
                     <p className="font-black text-emerald-700">
-                        ✓ 已核准 — 每人 +{session.approvedRewardPerPerson ?? 300} 分
+                        ✓ 已核准（{session.gatheringDate}）— 每人 +{session.approvedRewardPerPerson ?? 300} 分
                     </p>
                     <p className="text-sm text-emerald-600">
-                        出席 {session.approvedAttendeeCount ?? attendees.length} / {session.approvedMemberCount ?? teamMemberCount}
+                        小隊員出席 {memberPresent} / {session.approvedMemberCount ?? teamMemberCount}
                         {session.approvedHasCommandant && ' · 大隊長到場'}
                     </p>
                 </div>
@@ -398,6 +417,30 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center space-y-2">
                     <p className="font-black text-red-700">已退回</p>
                     {session.notes && <p className="text-sm text-red-600 italic">{session.notes}</p>}
+                </div>
+            )}
+
+            {/* 待送審場次（含過往未送出）— 不限當日，凝聚日已過也能補送 */}
+            {scheduledList.length > 0 && (
+                <div className="pt-4 mt-2 border-t border-gray-200 space-y-2">
+                    <p className="text-sm font-black text-gray-700">待送審場次（每場掃完碼後請逐一送出）</p>
+                    {scheduledList.map(s => (
+                        <div key={s.id} className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                            <div className="min-w-0">
+                                <p className="font-black text-amber-800 text-sm">{s.gatheringDate}</p>
+                                <p className="text-xs text-amber-600">已掃碼 {s.attendeeCount} 人</p>
+                            </div>
+                            <button
+                                disabled={submittingId === s.id || s.attendeeCount === 0}
+                                onClick={() => handleSubmitId(s.id)}
+                                className="shrink-0 px-4 py-2 bg-rose-600 text-white font-black text-sm rounded-xl shadow active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                                {submittingId === s.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                {s.attendeeCount === 0 ? '尚無人掃碼' : '送出審核'}
+                            </button>
+                        </div>
+                    ))}
+                    {err && <p className="text-sm text-red-500 text-center">{err}</p>}
                 </div>
             )}
         </section>

@@ -20,15 +20,17 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 // 凝聚獎勵計算（單一來源，避免三處重複）
 //   一般小隊：base 3000 +（全到 +1000）+（大隊長到場 +1000）
 //   體系長定聚：固定 4000（比照大隊長到場；不疊全到，多位大隊長/體系長仍只算一次）
+//   ⚠️「全到」必須用「到場的小隊員數」(memberAttendeeCount，不含大隊長)比對在籍人數；
+//      不可用總掃碼數，否則大隊長到場會把缺員的隊伍誤判為全到。
 function computeGatheringReward(params: {
     teamName: string;
-    attendeeCount: number;
+    memberAttendeeCount: number;
     memberCount: number;
     hasCommandant: boolean;
 }): number {
     if (params.teamName === SYSTEM_HEAD_TEAM) return SYSTEM_HEAD_GATHERING_REWARD;
     let reward = 3000;
-    if (params.memberCount > 0 && params.attendeeCount >= params.memberCount) reward += 1000;
+    if (params.memberCount > 0 && params.memberAttendeeCount >= params.memberCount) reward += 1000;
     if (params.hasCommandant) reward += 1000;
     return reward;
 }
@@ -596,6 +598,54 @@ export async function submitGatheringForReview(
     return { success: true };
 }
 
+// ── 小隊長 / 體系長：列出本隊所有「排定中」場次（含出席人數）─────────────────
+// 用於隊長端「待送審場次」清單：解決多場 scheduled 累積時、舊版 UI 只露一場、
+// 且過了凝聚日就沒有送審鈕，導致掃完碼卻送不出去的問題。
+export async function listTeamScheduledGatherings(
+    callerId: string,
+): Promise<{ success: boolean; sessions?: { id: string; gatheringDate: string; attendeeCount: number }[]; error?: string }> {
+    try { await requireSelf(callerId); } catch (e) { return authErrorResponse(e)!; }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data: caller } = await supabase
+        .from('CharacterStats')
+        .select('TeamName, IsCaptain, IsSystemHead')
+        .eq('UserID', callerId)
+        .maybeSingle();
+    if (!caller?.IsCaptain && !caller?.IsSystemHead) {
+        return { success: false, error: '僅限小隊長或體系長' };
+    }
+    if (!caller.TeamName) return { success: true, sessions: [] };
+
+    const { data: rows } = await supabase
+        .from('SquadGatheringSessions')
+        .select('id, gathering_date')
+        .eq('team_name', caller.TeamName)
+        .eq('status', 'scheduled')
+        .order('gathering_date', { ascending: true });
+    const list = rows ?? [];
+    if (list.length === 0) return { success: true, sessions: [] };
+
+    const ids = list.map(s => s.id as string);
+    const { data: atts } = await supabase
+        .from('SquadGatheringAttendances')
+        .select('session_id')
+        .in('session_id', ids);
+    const countBy = new Map<string, number>();
+    for (const a of (atts ?? []) as { session_id: string }[]) {
+        countBy.set(a.session_id, (countBy.get(a.session_id) ?? 0) + 1);
+    }
+
+    return {
+        success: true,
+        sessions: list.map(s => ({
+            id: s.id as string,
+            gatheringDate: s.gathering_date as string,
+            attendeeCount: countBy.get(s.id as string) ?? 0,
+        })),
+    };
+}
+
 // ── 大隊長：列出待審凝聚（含出席資訊） ────────────────────────────────────
 export type PendingGatheringReview = {
     session: SquadGatheringSession;
@@ -673,7 +723,7 @@ export async function listPendingGatherings(): Promise<{
         const hasCommandant = attendees.some(a => a.isCommandant);
         const reward = computeGatheringReward({
             teamName: session.teamName,
-            attendeeCount: attendees.length,
+            memberAttendeeCount: attendees.filter(a => !a.isCommandant).length,
             memberCount: teamCount,
             hasCommandant,
         });
@@ -778,7 +828,7 @@ export async function reviewGathering(
 
     const reward = computeGatheringReward({
         teamName: session.team_name,
-        attendeeCount: attendees.length,
+        memberAttendeeCount: attendees.filter(a => !a.is_commandant).length,
         memberCount,
         hasCommandant,
     });
@@ -997,9 +1047,14 @@ export async function adminBackfillGathering(params: {
         memberCount = count ?? 0;
     }
 
+    // 全到只算「小隊員」(排除大隊長/體系長)
+    const memberAttendeeCount = attendeeUserIds.filter(uid => {
+        const info = attendeeInfo.get(uid);
+        return !(info?.IsCommandant || info?.IsSystemHead);
+    }).length;
     const reward = computeGatheringReward({
         teamName,
-        attendeeCount: attendeeUserIds.length,
+        memberAttendeeCount,
         memberCount,
         hasCommandant,
     });
