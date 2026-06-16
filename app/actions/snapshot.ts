@@ -3,6 +3,7 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
+import { SEASON_MONTHS, seasonMonthRangeIso, type SeasonMonth } from '@/lib/utils/time';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -38,13 +39,17 @@ function getExpectedLastWeekMonday(): string {
     return `${lastMonday.getUTCFullYear()}-${String(lastMonday.getUTCMonth() + 1).padStart(2, '0')}-${String(lastMonday.getUTCDate()).padStart(2, '0')}`;
 }
 
-function getExpectedLastMonthStart(): string {
-    const twStr = getTaiwanDateStr();
-    const [y, m] = twStr.split('-').map(n => parseInt(n, 10));
-    const thisMonth = new Date(Date.UTC(y, m - 1, 1));
-    const lastMonth = new Date(thisMonth);
-    lastMonth.setUTCMonth(thisMonth.getUTCMonth() - 1);
-    return `${lastMonth.getUTCFullYear()}-${String(lastMonth.getUTCMonth() + 1).padStart(2, '0')}-01`;
+// 最近一個「結束邊界已過」的賽季月（= 應已有快照者）；都還沒結束則回 null。
+// 與 app/api/cron/monthly-snapshot/route.ts 的 getEndedSeasonMonthToSnapshot 對齊，
+// 統一採賽季月（第一個月 5/10–6/14、第二個月 6/15–7/19），而非日曆月。
+function getEndedSeasonMonthToSnapshot(): SeasonMonth | null {
+    const now = Date.now();
+    let ended: SeasonMonth | null = null;
+    for (const m of SEASON_MONTHS) {
+        const endMs = new Date(seasonMonthRangeIso(m).end).getTime();
+        if (endMs <= now) ended = m; // SEASON_MONTHS 已按時間排序，取最後一個已結束者
+    }
+    return ended;
 }
 
 export async function getSnapshotStatus(): Promise<{ success: boolean; data?: SnapshotStatus; error?: string }> {
@@ -86,7 +91,8 @@ export async function getSnapshotStatus(): Promise<{ success: boolean; data?: Sn
         .slice(0, 4)
         .map(([date, count]) => ({ date, count }));
     const monthLatest = monthHistory[0] ?? null;
-    const expectedMonth = getExpectedLastMonthStart();
+    const endedMonth = getEndedSeasonMonthToSnapshot();
+    const expectedMonth = endedMonth?.key ?? '';
 
     return {
         success: true,
@@ -102,7 +108,8 @@ export async function getSnapshotStatus(): Promise<{ success: boolean; data?: Sn
                 latestDate: monthLatest?.date ?? null,
                 latestCount: monthLatest?.count ?? 0,
                 history: monthHistory,
-                isMissing: !monthLatest || monthLatest.date < expectedMonth,
+                // 尚無任何賽季月結束（endedMonth 為 null）→ 不算缺漏
+                isMissing: !!endedMonth && (!monthLatest || monthLatest.date < expectedMonth),
                 expectedDate: expectedMonth,
             },
         },
@@ -139,17 +146,12 @@ function getLastWeekRange(): { weekMonday: string; start: string; end: string } 
     };
 }
 
-function getLastMonthRange(): { monthStart: string; start: string; end: string } {
-    const twStr = getTaiwanDateStr();
-    const [y, m] = twStr.split('-').map(n => parseInt(n, 10));
-    const thisMonthStart = new Date(Date.UTC(y, m - 1, 1));
-    const lastMonthStart = new Date(thisMonthStart);
-    lastMonthStart.setUTCMonth(thisMonthStart.getUTCMonth() - 1);
-    return {
-        monthStart: fmtDate(lastMonthStart),
-        start: `${fmtDate(lastMonthStart)}T12:00:00+08:00`,
-        end:   `${fmtDate(thisMonthStart)}T12:00:00+08:00`,
-    };
+// 取「最近一個已結束賽季月」的快照區間；都還沒結束則回 null。
+function getLastMonthRange(): { monthStart: string; start: string; end: string } | null {
+    const target = getEndedSeasonMonthToSnapshot();
+    if (!target) return null;
+    const { start, end } = seasonMonthRangeIso(target);
+    return { monthStart: target.key, start, end };
 }
 
 export async function triggerWeeklySnapshot(): Promise<{ success: boolean; inserted?: number; weekMonday?: string; note?: string; error?: string }> {
@@ -183,7 +185,9 @@ export async function triggerWeeklySnapshot(): Promise<{ success: boolean; inser
 export async function triggerMonthlySnapshot(): Promise<{ success: boolean; inserted?: number; monthStart?: string; note?: string; error?: string }> {
     if (!(await verifyAdminSession())) return { success: false, error: '無權限執行此操作' };
     try {
-        const { monthStart, start, end } = getLastMonthRange();
+        const range = getLastMonthRange();
+        if (!range) return { success: true, inserted: 0, note: '尚無已結束的賽季月' };
+        const { monthStart, start, end } = range;
         const supabase = createClient(supabaseUrl, supabaseKey);
         const { data, error } = await supabase.rpc('aggregate_dailylogs_by_user', { p_start: start, p_end: end });
         if (error) return { success: false, error: error.message };
