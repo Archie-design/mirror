@@ -15,6 +15,7 @@ import {
     submitGatheringForReview,
     scanGatheringQR,
     scheduleSquadGathering,
+    cancelSquadGathering,
     reviewGathering,
     listTeamScheduledGatherings,
     type TeamGatheringContext,
@@ -485,12 +486,19 @@ function SystemHeadGatheringSection({ userId }: { userId: string }) {
     const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
     const MIN = SYSTEM_HEAD_GATHERING_MIN_ATTENDEES;
     const enough = attendees.length >= MIN;
-    // 需顯示「排定今日定聚」：尚無 session，或現有 session 非今日且已結案
+    // 過期未完成：仍是 scheduled 但定聚日已過 → 視為可重新排定（否則會卡在舊日期死鎖）
+    const isStaleScheduled = !!session && session.status === 'scheduled' && session.gatheringDate < today;
+    // 需顯示「排定今日定聚」：尚無 session、現有 session 非今日且已結案、或過期未完成的 scheduled
     const needSchedule = !session
-        || (session.gatheringDate !== today && ['approved', 'rejected', 'cancelled'].includes(session.status));
+        || (session.gatheringDate !== today && ['approved', 'rejected', 'cancelled'].includes(session.status))
+        || isStaleScheduled;
 
     const handleSchedule = async () => {
         setBusy('schedule'); setErr(null);
+        // 先取消過期未完成的舊場次，避免殘留並在沒當日場次時又被撈回卡死
+        if (isStaleScheduled && session) {
+            await cancelSquadGathering(session.id);
+        }
         const res = await scheduleSquadGathering(SYSTEM_HEAD_TEAM, today);
         if (!res.success) setErr(res.error ?? '排定失敗');
         await reload(); setBusy(null);
@@ -546,10 +554,18 @@ function SystemHeadGatheringSection({ userId }: { userId: string }) {
                 </button>
             )}
 
-            {session && session.status === 'scheduled' && !isTodaySession && (
+            {session && session.status === 'scheduled' && !isTodaySession && !isStaleScheduled && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
                     <p className="font-black text-amber-700">預定定聚日：{session.gatheringDate}</p>
                     <p className="text-sm text-amber-500 mt-1">當日將顯示掃碼 QR Code</p>
+                </div>
+            )}
+
+            {isStaleScheduled && session && (
+                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3 text-center">
+                    <p className="text-sm text-gray-500">
+                        上次排定（{session.gatheringDate}）已過期，點上方按鈕可重新排定今日定聚。
+                    </p>
                 </div>
             )}
 
