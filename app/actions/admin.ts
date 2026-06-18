@@ -702,6 +702,21 @@ export async function deleteCheckInRecord(
         await supabase.from('CharacterStats').update({ Score: newScore }).eq('UserID', targetUserId);
     }
 
+    // 一次性 bonus（o*）的入帳由 BonusApplications.status='approved' 驅動前台「已核准」徽章。
+    // 僅刪 DailyLogs 不會讓徽章消失，需一併移除對應的已核准申請（退回未申請，可重新申請）。
+    if (row.QuestID.startsWith('o')) {
+        const { error: appDelErr } = await supabase
+            .from('BonusApplications')
+            .delete()
+            .eq('user_id', targetUserId)
+            .eq('quest_id', row.QuestID)
+            .eq('status', 'approved');
+        if (appDelErr) {
+            // 分數已扣回，僅 bonus 申請清理失敗：回報但不視為整體失敗
+            console.error('deleteCheckInRecord: 清理 BonusApplications 失敗', appDelErr.message);
+        }
+    }
+
     await logAdminAction('delete_checkin', actorName, targetUserId, row.QuestTitle, { questId: row.QuestID, points: row.RewardPoints });
     return { success: true, reversedPoints: row.RewardPoints };
 }
