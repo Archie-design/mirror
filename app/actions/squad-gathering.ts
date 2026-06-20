@@ -1,12 +1,12 @@
 'use server';
 
 import 'server-only';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getTaipeiDateStr, getSeasonWeekStart } from '@/lib/utils/time';
+import { getTaipeiDateStr, getSeasonWeekStart, getSeasonWeekEnd } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 import {
     SYSTEM_HEAD_TEAM,
@@ -16,6 +16,9 @@ import {
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// 與本檔 createClient(supabaseUrl, supabaseKey) 一致的 client 型別（預設 public schema），供內部 helper 共用。
+type SupabaseSrvClient = SupabaseClient;
 
 // 凝聚獎勵計算（單一來源，避免三處重複）
 //   一般小隊：base 3000 +（全到 +1000）+（大隊長到場 +1000）
@@ -38,6 +41,68 @@ function computeGatheringReward(params: {
 // 凝聚成立的最少出席人數：一般小隊 3 人；體系長定聚 5 人（含體系長本人）
 function minAttendeesFor(teamName: string): number {
     return teamName === SYSTEM_HEAD_TEAM ? SYSTEM_HEAD_GATHERING_MIN_ATTENDEES : 3;
+}
+
+// 凝聚批次入帳（reviewGathering / adminBackfillGathering / retryGatheringPayout 共用）。
+//   - 冪等（H3）：本場 wk3_offline|<sessionId> 已入帳的人自動跳過，故核准後可安全重跑補入 failedUsers。
+//   - 週上限（M5）：以「凝聚日所屬賽季週」的 [weekStart, weekEnd) 雙界統計，避免只有下界把
+//     後續週次入帳算進本週額度而誤 cap。
+//   - process_checkin 對 wk3_offline 不去重不限額，故去重與封頂都在此呼叫端把關。
+//   每人實得（封頂後）金額直接落在 DailyLogs.RewardPoints，作為日後回退的單一事實來源。
+async function payoutGatheringAttendees(
+    supabase: SupabaseSrvClient,
+    sessionId: string,
+    userIds: string[],
+    reward: number,
+    gatheringDateStr: string,
+    gatheringTs: string,
+): Promise<{ failedUsers: string[]; cappedUsers: { userId: string; granted: number }[] }> {
+    const questId = `wk3_offline|${sessionId}`;
+    const questTitle = '小組凝聚（實體）';
+    const WEEKLY_CAP = 5000;
+    const failedUsers: string[] = [];
+    const cappedUsers: { userId: string; granted: number }[] = [];
+    if (userIds.length === 0) return { failedUsers, cappedUsers };
+
+    const gatheringAnchor = new Date(`${gatheringDateStr}T12:00:00+08:00`);
+    const weekStart = getSeasonWeekStart(gatheringAnchor);
+    const weekEnd = getSeasonWeekEnd(gatheringAnchor);
+
+    // 本場已入帳者（H3 冪等）：重跑時跳過，只補沒入帳的人。
+    const { data: alreadyPaid } = await supabase
+        .from('DailyLogs')
+        .select('UserID')
+        .in('UserID', userIds)
+        .eq('QuestID', questId);
+    const paidSet = new Set((alreadyPaid ?? []).map((r: { UserID: string }) => r.UserID));
+
+    // 本賽季週已累積（M5 雙界）。
+    const { data: existingLogs } = await supabase
+        .from('DailyLogs')
+        .select('UserID, RewardPoints')
+        .in('UserID', userIds)
+        .like('QuestID', 'wk3_offline|%')
+        .gte('Timestamp', weekStart.toISOString())
+        .lt('Timestamp', weekEnd.toISOString());
+    const weekTotalByUser = new Map<string, number>();
+    for (const log of (existingLogs ?? []) as { UserID: string; RewardPoints: number | null }[]) {
+        weekTotalByUser.set(log.UserID, (weekTotalByUser.get(log.UserID) ?? 0) + (log.RewardPoints ?? 0));
+    }
+
+    for (const uid of userIds) {
+        if (paidSet.has(uid)) continue; // 本場已入帳，跳過（冪等）
+        const already = weekTotalByUser.get(uid) ?? 0;
+        const remaining = Math.max(0, WEEKLY_CAP - already);
+        const grantReward = Math.min(reward, remaining);
+        if (grantReward <= 0) {
+            cappedUsers.push({ userId: uid, granted: 0 });
+            continue;
+        }
+        const r = await processCheckInCore(uid, questId, questTitle, grantReward, gatheringTs);
+        if (!r.success) failedUsers.push(uid);
+        else if (grantReward < reward) cappedUsers.push({ userId: uid, granted: grantReward });
+    }
+    return { failedUsers, cappedUsers };
 }
 
 export type GatheringCheckin = {
@@ -301,6 +366,125 @@ export async function cancelSquadGathering(
     return { success: true };
 }
 
+// ── 管理員 / 大隊長：取消「已核准」凝聚並回收已入帳分數（H1）────────────────
+// approved 後若發現掃錯人/重複場/誤判，需乾淨回退：
+//   以 DailyLogs（QuestID=wk3_offline|<sessionId>）每筆 RewardPoints 為「實得金額」單一事實來源，
+//   逐人扣回 Score、刪該 logs，再把 session 設為 cancelled。
+//   （不靠 approved_reward_per_person，因該值未反映週上限截斷，逐人實得才精確。）
+export async function cancelApprovedGathering(
+    sessionId: string,
+): Promise<{ success: boolean; error?: string; reversedTotal?: number; affected?: number }> {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    let adminId: string;
+    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+
+    const { data: session } = await supabase
+        .from('SquadGatheringSessions')
+        .select('status, team_name, gathering_date')
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (!session) return { success: false, error: '找不到凝聚紀錄' };
+    if (session.status !== 'approved') {
+        return { success: false, error: '僅限已核准的凝聚可用此功能回退（未核准請用一般取消）' };
+    }
+
+    // 權限：管理員，或該小隊所屬大隊的大隊長
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const scope = await getCommandantTeamNames(supabase, adminId);
+        if (!scope) return { success: false, error: '僅限大隊長或管理員操作' };
+        if (!scope.teamNames.includes(session.team_name)) {
+            return { success: false, error: '無權限回退非本大隊小隊的凝聚' };
+        }
+    }
+
+    // 反查本場實得金額（每人一筆，RewardPoints = 實得，已含週上限截斷）
+    const questId = `wk3_offline|${sessionId}`;
+    const { data: logs } = await supabase
+        .from('DailyLogs')
+        .select('id, UserID, RewardPoints')
+        .eq('QuestID', questId);
+    const payoutLogs = (logs ?? []) as { id: string; UserID: string; RewardPoints: number | null }[];
+
+    // 逐人扣回 Score（max(0,…) 防負），再刪該 log
+    let reversedTotal = 0;
+    let affected = 0;
+    for (const log of payoutLogs) {
+        const pts = log.RewardPoints ?? 0;
+        if (pts !== 0) {
+            const { data: cur } = await supabase
+                .from('CharacterStats').select('Score').eq('UserID', log.UserID).maybeSingle();
+            const newScore = Math.max(0, ((cur as { Score: number } | null)?.Score ?? 0) - pts);
+            await supabase.from('CharacterStats').update({ Score: newScore }).eq('UserID', log.UserID);
+            reversedTotal += pts;
+        }
+        await supabase.from('DailyLogs').delete().eq('id', log.id);
+        affected++;
+    }
+
+    // session 設為 cancelled
+    const { error: upErr } = await supabase
+        .from('SquadGatheringSessions')
+        .update({ status: 'cancelled' })
+        .eq('id', sessionId)
+        .eq('status', 'approved');
+    if (upErr) return { success: false, error: '回退分數已處理，但更新 session 狀態失敗：' + upErr.message };
+
+    await logAdminAction('cancel_approved_gathering', adminId, sessionId, session.team_name, {
+        gatheringDate: session.gathering_date, reversedTotal, affected,
+    });
+
+    return { success: true, reversedTotal, affected };
+}
+
+// ── 管理員 / 大隊長：重試已核准凝聚的入帳（H3）────────────────────────────────
+// reviewGathering 入帳非交易，部分人失敗時 session 仍 approved、冪等鎖擋住重跑。
+// 此 action 對 approved session 重跑 payout：本場已入帳者自動跳過，只補 failedUsers。
+export async function retryGatheringPayout(
+    sessionId: string,
+): Promise<{ success: boolean; error?: string; failedUsers?: string[] }> {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    let adminId: string;
+    try { adminId = await requireUser(); } catch { return { success: false, error: '請先登入' }; }
+
+    const { data: session } = await supabase
+        .from('SquadGatheringSessions')
+        .select('status, team_name, gathering_date, approved_reward_per_person')
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (!session) return { success: false, error: '找不到凝聚紀錄' };
+    if (session.status !== 'approved') {
+        return { success: false, error: '僅限已核准的凝聚可重試入帳' };
+    }
+
+    const isAdmin = await verifyAdminSession();
+    if (!isAdmin) {
+        const scope = await getCommandantTeamNames(supabase, adminId);
+        if (!scope) return { success: false, error: '僅限大隊長或管理員操作' };
+        if (!scope.teamNames.includes(session.team_name)) {
+            return { success: false, error: '無權限操作非本大隊小隊的凝聚' };
+        }
+    }
+
+    const { data: attRows } = await supabase
+        .from('SquadGatheringAttendances')
+        .select('user_id')
+        .eq('session_id', sessionId);
+    const userIds = (attRows ?? []).map((a: { user_id: string }) => a.user_id);
+    const reward = (session.approved_reward_per_person as number | null) ?? 0;
+    const gatheringDateStr = getTaipeiDateStr(new Date(session.gathering_date as string));
+    const gatheringTs = `${gatheringDateStr}T12:00:00+08:00`;
+
+    const { failedUsers, cappedUsers } = await payoutGatheringAttendees(
+        supabase, sessionId, userIds, reward, gatheringDateStr, gatheringTs,
+    );
+    await logAdminAction('retry_squad_gathering_payout', adminId, sessionId, session.team_name, {
+        gatheringDate: session.gathering_date, failedUsers, cappedUsers,
+    }, failedUsers.length > 0 ? 'error' : 'success');
+
+    return { success: true, failedUsers };
+}
+
 // ── 成員 / 小隊長 / 大隊長共用：取得本隊本週最近一筆凝聚情境 ───────────────
 export async function getTeamGatheringContext(
     userId: string,
@@ -402,13 +586,18 @@ export async function scanGatheringQR(
         .maybeSingle();
 
     if (!session) return { success: false, error: '找不到凝聚紀錄' };
-    if (session.status !== 'scheduled') {
+    // 報到開放狀態：scheduled（尚未送審）與 pending_review（送審後晚到者仍可補掃）。
+    // approved / rejected / cancelled 一律不可再報到。
+    if (session.status !== 'scheduled' && session.status !== 'pending_review') {
         return { success: false, error: '此凝聚已結束或被取消，無法再報到' };
     }
 
+    // gathering_date 可能是純日期字串（'YYYY-MM-DD'）或完整時間戳（'...T16:00:00Z'，
+    // production schema drift）。一律正規化為台北日曆日後比對，避免時間戳直接字串比對恆不等。
+    const sessionDateStr = getTaipeiDateStr(new Date(session.gathering_date as string));
     const calendarToday = getTaipeiDateStr();
-    if (session.gathering_date !== calendarToday) {
-        return { success: false, error: `QR 僅限凝聚當日（${session.gathering_date}）有效` };
+    if (sessionDateStr !== calendarToday) {
+        return { success: false, error: `QR 僅限凝聚當日（${sessionDateStr}）有效` };
     }
 
     const { data: user } = await supabase
@@ -789,10 +978,15 @@ export async function reviewGathering(
     }
 
     if (!approve) {
+        // 退回 = 打回重來：狀態回到 scheduled，讓 QR 當日重新可掃、可重新送審
+        //（清掉送審戳記）。notes 保留退回原因。避免舊版設 'rejected' 後 QR 永久失效、
+        // 又無路徑復原的死鎖。
         const { error } = await supabase
             .from('SquadGatheringSessions')
             .update({
-                status: 'rejected',
+                status: 'scheduled',
+                captain_submitted_at: null,
+                captain_submitted_by: null,
                 commandant_reviewed_at: new Date().toISOString(),
                 approved_by: reviewerId,
                 notes: notes ?? null,
@@ -855,43 +1049,13 @@ export async function reviewGathering(
         return { success: false, error: '核准失敗（此凝聚可能已被處理）' };
     }
 
-    // 批次入帳：QuestID = wk3_offline|<sessionId>
-    const questId = `wk3_offline|${sessionId}`;
-    const questTitle = '小組凝聚（實體）';
-    const failedUsers: string[] = [];
-    const cappedUsers: { userId: string; granted: number }[] = [];
-
-    // 每週每人 wk3_offline 累積上限：5000
-    // 以「凝聚日」所在的賽季週為基準（非核准日），避免補報跨週佔錯週上限
-    const WEEKLY_CAP = 5000;
-    const gatheringAnchor = new Date(`${session.gathering_date}T12:00:00+08:00`);
-    const weekStart = getSeasonWeekStart(gatheringAnchor);
-    const gatheringTs = `${session.gathering_date}T12:00:00+08:00`;
+    // 批次入帳（共用 helper：本場去重 + 週上限 cap + 落帳）。
+    const gatheringDateStr = getTaipeiDateStr(new Date(session.gathering_date as string));
+    const gatheringTs = `${gatheringDateStr}T12:00:00+08:00`;
     const userIds = attendees.map(a => a.user_id);
-    const { data: existingLogs } = await supabase
-        .from('DailyLogs')
-        .select('UserID, RewardPoints')
-        .in('UserID', userIds)
-        .like('QuestID', 'wk3_offline|%')
-        .gte('Timestamp', weekStart.toISOString());
-
-    const weekTotalByUser = new Map<string, number>();
-    for (const log of (existingLogs ?? []) as { UserID: string; RewardPoints: number | null }[]) {
-        weekTotalByUser.set(log.UserID, (weekTotalByUser.get(log.UserID) ?? 0) + (log.RewardPoints ?? 0));
-    }
-
-    for (const a of attendees) {
-        const already = weekTotalByUser.get(a.user_id) ?? 0;
-        const remaining = Math.max(0, WEEKLY_CAP - already);
-        const grantReward = Math.min(reward, remaining);
-        if (grantReward <= 0) {
-            cappedUsers.push({ userId: a.user_id, granted: 0 });
-            continue;
-        }
-        const r = await processCheckInCore(a.user_id, questId, questTitle, grantReward, gatheringTs);
-        if (!r.success) failedUsers.push(a.user_id);
-        else if (grantReward < reward) cappedUsers.push({ userId: a.user_id, granted: grantReward });
-    }
+    const { failedUsers, cappedUsers } = await payoutGatheringAttendees(
+        supabase, sessionId, userIds, reward, gatheringDateStr, gatheringTs,
+    );
 
     await logAdminAction('approve_squad_gathering', reviewerId, sessionId, session.team_name, {
         gatheringDate: session.gathering_date,
@@ -1110,37 +1274,10 @@ export async function adminBackfillGathering(params: {
 
     // 批次入帳（同 reviewGathering 規則，受每週 5000 cap）
     // 以「凝聚日」所在的賽季週為基準，補報不會佔錯週上限
-    const questId = `wk3_offline|${sessionId}`;
-    const questTitle = '小組凝聚（實體）';
-    const WEEKLY_CAP = 5000;
-    const gatheringAnchor = new Date(`${gatheringDate}T12:00:00+08:00`);
-    const weekStart = getSeasonWeekStart(gatheringAnchor);
     const gatheringTs = `${gatheringDate}T12:00:00+08:00`;
-    const { data: existingLogs } = await supabase
-        .from('DailyLogs')
-        .select('UserID, RewardPoints')
-        .in('UserID', attendeeUserIds)
-        .like('QuestID', 'wk3_offline|%')
-        .gte('Timestamp', weekStart.toISOString());
-    const weekTotalByUser = new Map<string, number>();
-    for (const log of (existingLogs ?? []) as { UserID: string; RewardPoints: number | null }[]) {
-        weekTotalByUser.set(log.UserID, (weekTotalByUser.get(log.UserID) ?? 0) + (log.RewardPoints ?? 0));
-    }
-
-    const failedUsers: string[] = [];
-    const cappedUsers: { userId: string; granted: number }[] = [];
-    for (const uid of attendeeUserIds) {
-        const already = weekTotalByUser.get(uid) ?? 0;
-        const remaining = Math.max(0, WEEKLY_CAP - already);
-        const grantReward = Math.min(reward, remaining);
-        if (grantReward <= 0) {
-            cappedUsers.push({ userId: uid, granted: 0 });
-            continue;
-        }
-        const r = await processCheckInCore(uid, questId, questTitle, grantReward, gatheringTs);
-        if (!r.success) failedUsers.push(uid);
-        else if (grantReward < reward) cappedUsers.push({ userId: uid, granted: grantReward });
-    }
+    const { failedUsers, cappedUsers } = await payoutGatheringAttendees(
+        supabase, sessionId, attendeeUserIds, reward, gatheringDate, gatheringTs,
+    );
 
     await logAdminAction(
         'backfill_squad_gathering',

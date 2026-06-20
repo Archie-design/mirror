@@ -19,6 +19,8 @@ import { listTempQuestAppsForAdmin, reviewTempQuestByAdmin } from '@/app/actions
 import {
     scheduleSquadGathering,
     cancelSquadGathering,
+    cancelApprovedGathering,
+    retryGatheringPayout,
     listGatheringSessions,
     listPendingGatherings,
     reviewGathering,
@@ -222,8 +224,33 @@ function GatheringScheduler({
         }
     };
 
+    // H1：取消「已核准」凝聚並回收已入帳分數
+    const handleCancelApproved = async (sessionId: string) => {
+        if (!confirm('確定要取消此「已核准」凝聚？將回收所有已入帳分數，無法復原。')) return;
+        const res = await cancelApprovedGathering(sessionId);
+        if (res.success) {
+            onShowMessage(`已取消並回收 ${res.reversedTotal ?? 0} 分（${res.affected ?? 0} 人）`, 'info');
+            reload();
+        } else {
+            onShowMessage(res.error ?? '取消失敗', 'error');
+        }
+    };
+
+    // H3：重試已核准凝聚的入帳（補入先前失敗者；已入帳者自動跳過）
+    const handleRetryPayout = async (sessionId: string) => {
+        const res = await retryGatheringPayout(sessionId);
+        if (res.success) {
+            const failed = res.failedUsers ?? [];
+            onShowMessage(failed.length === 0 ? '✅ 入帳已補齊' : `仍有 ${failed.length} 人入帳失敗，請稍後再試`, failed.length === 0 ? 'success' : 'error');
+            reload();
+        } else {
+            onShowMessage(res.error ?? '重試失敗', 'error');
+        }
+    };
+
     const today = new Date().toISOString().slice(0, 10);
-    const upcoming = sessions.filter(s => s.status === 'scheduled' || s.status === 'pending_review');
+    // 顯示排定中/審核中，加上近期「已核准」場次（供回退/重試入帳）。
+    const upcoming = sessions.filter(s => s.status === 'scheduled' || s.status === 'pending_review' || s.status === 'approved');
 
     return (
         <div className="bg-white border-2 border-rose-100 rounded-3xl p-5 space-y-4 shadow-md">
@@ -288,8 +315,8 @@ function GatheringScheduler({
                                     <p className="text-sm font-black text-gray-900 truncate">{s.teamName}</p>
                                     <p className="text-xs text-gray-500">
                                         {s.gatheringDate}
-                                        <span className={`ml-2 font-bold ${s.status === 'scheduled' ? 'text-amber-600' : 'text-yellow-600'}`}>
-                                            {s.status === 'scheduled' ? '排定中' : '審核中'}
+                                        <span className={`ml-2 font-bold ${s.status === 'scheduled' ? 'text-amber-600' : s.status === 'approved' ? 'text-emerald-600' : 'text-yellow-600'}`}>
+                                            {s.status === 'scheduled' ? '排定中' : s.status === 'approved' ? '已核准' : '審核中'}
                                         </span>
                                     </p>
                                     {s.gatheringTheme && (
@@ -299,10 +326,29 @@ function GatheringScheduler({
                                 {s.status === 'scheduled' && (
                                     <button
                                         onClick={() => handleCancel(s.id)}
+                                        title="取消凝聚"
                                         className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all"
                                     >
                                         <Trash2 size={12} />
                                     </button>
+                                )}
+                                {s.status === 'approved' && (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            onClick={() => handleRetryPayout(s.id)}
+                                            title="重試入帳（補入先前失敗者）"
+                                            className="p-2 rounded-lg bg-sky-50 text-sky-500 hover:bg-sky-100 active:scale-95 transition-all"
+                                        >
+                                            <RefreshCw size={12} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleCancelApproved(s.id)}
+                                            title="取消已核准（回收分數）"
+                                            className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         ))}

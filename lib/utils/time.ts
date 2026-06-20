@@ -93,6 +93,18 @@ export function getSeasonWeekStart(date: Date = new Date()): Date {
     return getWeeklyMonday(date);
 }
 
+/**
+ * 取得某日所屬賽季週的「結束 exclusive 邊界」= 下一賽季週的起點。
+ * W1（5/10–5/17，8 天）→ 5/18；W2+（7 天）→ 下週一。
+ * 用途：週上限統計需要上界，避免「只有下界」把後續週次的記錄也算進本週額度。
+ * 作法：weekStart + 8 天必落入下一賽季週，再用 getSeasonWeekStart 對齊其起點。
+ */
+export function getSeasonWeekEnd(date: Date = new Date()): Date {
+    const weekStart = getSeasonWeekStart(date);
+    const intoNextWeek = new Date(weekStart.getTime() + 8 * 24 * 60 * 60 * 1000);
+    return getSeasonWeekStart(intoNextWeek);
+}
+
 // ── 賽季月分桶 ─────────────────────────────────────────────────────────────
 // 月排行榜採「賽季月」而非日曆月，邊界對齊賽季週、以中午 12:00 為邏輯日邊界。
 //   第一個月：5/10–6/14（W1–W5，5 週）
