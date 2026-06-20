@@ -6,7 +6,7 @@ import { requireSelf, requireUser, authErrorResponse } from '@/lib/auth';
 import { verifyAdminSession } from '@/app/actions/admin-auth';
 import { getCommandantTeamNames } from '@/lib/auth-scope';
 import { processCheckInCore } from '@/lib/checkin-core';
-import { getTaipeiDateStr, getSeasonWeekStart, getSeasonWeekEnd } from '@/lib/utils/time';
+import { getTaipeiDateStr, getLogicalDateStr, getSeasonWeekStart, getSeasonWeekEnd } from '@/lib/utils/time';
 import { logAdminAction } from '@/app/actions/admin';
 import {
     SYSTEM_HEAD_TEAM,
@@ -299,6 +299,27 @@ export async function scheduleSquadGathering(
         }
     }
 
+    // L1：同日同隊可能殘留已作廢場（cancelled/rejected）撞 UNIQUE(team_name, gathering_date)。
+    // 排定前先查：若存在 active 場（scheduled/pending_review/approved）→ 報「已排定」；
+    // 若僅存作廢場 → 先刪除它們，讓本次重排可成功。
+    const { data: sameDay } = await supabase
+        .from('SquadGatheringSessions')
+        .select('id, status')
+        .eq('team_name', teamName)
+        .eq('gathering_date', gatheringDateISO);
+    const ACTIVE = ['scheduled', 'pending_review', 'approved'];
+    const sameDayRows = (sameDay ?? []) as { id: string; status: string }[];
+    if (sameDayRows.some(s => ACTIVE.includes(s.status))) {
+        return { success: false, error: '該小隊當日已排定凝聚' };
+    }
+    if (sameDayRows.length > 0) {
+        // 僅作廢場（cancelled/rejected）：刪除以釋放 unique 名額
+        await supabase
+            .from('SquadGatheringSessions')
+            .delete()
+            .in('id', sameDayRows.map(s => s.id));
+    }
+
     const { data, error } = await supabase
         .from('SquadGatheringSessions')
         .insert({
@@ -312,6 +333,7 @@ export async function scheduleSquadGathering(
         .single();
 
     if (error) {
+        // 仍可能因併發撞 unique（極少數）：回報已排定
         if (error.code === '23505') return { success: false, error: '該小隊當日已排定凝聚' };
         return { success: false, error: '排定失敗：' + error.message };
     }
@@ -510,10 +532,13 @@ export async function getTeamGatheringContext(
 
     // 取「該掃描/處理」的那一場。多筆排定時優先順序：
     //   1. 今天且 scheduled（學員今天要掃的）
-    //   2. pending_review（剛辦完待審）
-    //   3. 最接近今天的未來 scheduled（上coming）
-    //   4. 其他 scheduled（過去未完成，取最新）
-    //   5. 最新一筆（approved/rejected/cancelled）
+    //   2. 今天的 pending_review（今天剛辦完、待審）
+    //   3. 最接近今天的未來 scheduled（upcoming）
+    //   4. 其他（舊）pending_review（過去卡著待審的，不可遮蔽未來場 → 降至此）
+    //   5. 其他 scheduled（過去未完成，取最新）
+    //   6. 最新一筆（approved/rejected/cancelled）
+    // 註：M2 修法 — 舊版「任一 pending_review」無條件優先於未來 scheduled，
+    //     會讓卡著的舊待審場遮蔽已排定的下一場。改為只有「今日」pending_review 優先。
     const { data: sessions } = await supabase
         .from('SquadGatheringSessions')
         .select('*')
@@ -523,13 +548,16 @@ export async function getTeamGatheringContext(
 
     const todayStr = getTaipeiDateStr();
     const list = sessions ?? [];
+    // 正規化每場的台北日曆日（gathering_date 可能是純日期或時間戳）。
+    const dateOf = (s: { gathering_date: string }) => getTaipeiDateStr(new Date(s.gathering_date as string));
     const upcoming = list
-        .filter(s => s.status === 'scheduled' && s.gathering_date >= todayStr)
-        .sort((a, b) => String(a.gathering_date).localeCompare(String(b.gathering_date)))[0];
+        .filter(s => s.status === 'scheduled' && dateOf(s) >= todayStr)
+        .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))[0];
     const sessionRow =
-        list.find(s => s.status === 'scheduled' && s.gathering_date === todayStr)
-        ?? list.find(s => s.status === 'pending_review')
+        list.find(s => s.status === 'scheduled' && dateOf(s) === todayStr)
+        ?? list.find(s => s.status === 'pending_review' && dateOf(s) === todayStr)
         ?? upcoming
+        ?? list.find(s => s.status === 'pending_review')
         ?? list.find(s => s.status === 'scheduled')
         ?? list[0]
         ?? null;
@@ -593,10 +621,12 @@ export async function scanGatheringQR(
     }
 
     // gathering_date 可能是純日期字串（'YYYY-MM-DD'）或完整時間戳（'...T16:00:00Z'，
-    // production schema drift）。一律正規化為台北日曆日後比對，避免時間戳直接字串比對恆不等。
+    // production schema drift）。先正規化為台北日曆日。
     const sessionDateStr = getTaipeiDateStr(new Date(session.gathering_date as string));
-    const calendarToday = getTaipeiDateStr();
-    if (sessionDateStr !== calendarToday) {
+    // M6：改用「邏輯日」（中午 12:00 切換）而非日曆日，讓跨午夜的凝聚到隔天中午前仍可補掃。
+    // 凝聚日（純日期）的邏輯日即其自身；以「現在的邏輯日」比對。
+    const logicalToday = getLogicalDateStr();
+    if (sessionDateStr !== logicalToday) {
         return { success: false, error: `QR 僅限凝聚當日（${sessionDateStr}）有效` };
     }
 
