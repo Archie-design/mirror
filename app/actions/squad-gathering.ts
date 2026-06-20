@@ -632,7 +632,7 @@ export async function scanGatheringQR(
 
     const { data: user } = await supabase
         .from('CharacterStats')
-        .select('Name, TeamName, SquadName, IsCommandant, IsSystemHead')
+        .select('Name, TeamName, IsCommandant, IsSystemHead')
         .eq('UserID', userId)
         .maybeSingle();
 
@@ -648,19 +648,14 @@ export async function scanGatheringQR(
     //   - 體系長本人：可掃任何 session（跨大隊）
     if (!isSystemHeadSession && !isSystemHead) {
         if (!isMemberOfTeam) {
-            // 非本小隊成員：僅限大隊長，且必須與小隊隸屬同一大隊
+            // 非本小隊成員：僅限大隊長，且該 session 的小隊須隸屬本大隊。
+            // M3：改以「大隊長自己的 SquadName → 轄下小隊清單」（getCommandantTeamNames，權威來源）
+            //     判斷，不再從目標小隊抽樣一名成員的 SquadName（limit(1) 無序、易受資料不一致誤判）。
             if (!isCommandant) {
                 return { success: false, error: '僅限本小隊成員或大隊長可掃此 QR' };
             }
-            const { data: teamMember } = await supabase
-                .from('CharacterStats')
-                .select('SquadName')
-                .eq('TeamName', session.team_name)
-                .not('SquadName', 'is', null)
-                .limit(1)
-                .maybeSingle();
-            const teamBattalion = teamMember?.SquadName;
-            if (!teamBattalion || teamBattalion !== user.SquadName) {
+            const scope = await getCommandantTeamNames(supabase, userId);
+            if (!scope || !scope.teamNames.includes(session.team_name)) {
                 return { success: false, error: '僅能掃本大隊所轄小隊的 QR' };
             }
         }
