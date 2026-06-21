@@ -315,8 +315,9 @@ function SquadGatheringSection({ captainId }: { captainId: string }) {
     // 出席分子只算「本小隊員」(非大隊長)；大隊長另計，避免「4/5 含大隊長」的混淆
     const memberPresent = attendees.filter(a => !a.isCommandant).length;
     const captainAlreadyIn = attendees.some(a => a.userId === captainId);
-    // 與後端掃碼一致：用邏輯日（中午切換），讓跨午夜的凝聚到隔天中午前仍顯示 QR。
-    const isToday = !!session && getTaipeiDateStr(new Date(session.gatheringDate)) === getLogicalDateStr();
+    // 與後端掃碼一致：有效窗 = 凝聚日當天整天 + 隔天中午前（日曆日命中當天、邏輯日命中跨午夜）。
+    const sgDate = session ? getTaipeiDateStr(new Date(session.gatheringDate)) : '';
+    const isToday = !!session && (sgDate === getTaipeiDateStr() || sgDate === getLogicalDateStr());
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';
 
@@ -481,8 +482,9 @@ function SystemHeadGatheringSection({ userId }: { userId: string }) {
     const today = getTaipeiDateStr();
     const session = ctx?.session;
     const attendees = ctx?.attendees ?? [];
-    // QR 顯示閘門與後端掃碼一致：用邏輯日（中午切換），跨午夜仍顯示。其餘過期判斷維持日曆日。
-    const isTodaySession = !!session && getTaipeiDateStr(new Date(session.gatheringDate)) === getLogicalDateStr();
+    // QR 顯示閘門與後端掃碼一致：有效窗 = 凝聚日當天整天 + 隔天中午前。其餘過期判斷維持日曆日。
+    const sgDateSys = session ? getTaipeiDateStr(new Date(session.gatheringDate)) : '';
+    const isTodaySession = !!session && (sgDateSys === today || sgDateSys === getLogicalDateStr());
     const meIn = attendees.some(a => a.userId === userId);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '');
     const qrUrl = session ? `${appUrl}/squad-gathering/${session.id}` : '';

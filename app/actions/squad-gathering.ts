@@ -623,10 +623,12 @@ export async function scanGatheringQR(
     // gathering_date 可能是純日期字串（'YYYY-MM-DD'）或完整時間戳（'...T16:00:00Z'，
     // production schema drift）。先正規化為台北日曆日。
     const sessionDateStr = getTaipeiDateStr(new Date(session.gathering_date as string));
-    // M6：改用「邏輯日」（中午 12:00 切換）而非日曆日，讓跨午夜的凝聚到隔天中午前仍可補掃。
-    // 凝聚日（純日期）的邏輯日即其自身；以「現在的邏輯日」比對。
+    // M6：有效掃碼窗 = 凝聚日當天整天 + 隔天中午前（跨午夜補掃）。
+    //   - 凝聚日 === 今日日曆日 → 涵蓋凝聚日當天（含中午前，修正先前只用邏輯日導致中午前失效的回歸）。
+    //   - 凝聚日 === 今日邏輯日 → 涵蓋隔天中午前（邏輯日仍停在凝聚日）。
+    const calendarToday = getTaipeiDateStr();
     const logicalToday = getLogicalDateStr();
-    if (sessionDateStr !== logicalToday) {
+    if (sessionDateStr !== calendarToday && sessionDateStr !== logicalToday) {
         return { success: false, error: `QR 僅限凝聚當日（${sessionDateStr}）有效` };
     }
 
