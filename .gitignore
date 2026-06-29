@@ -46,6 +46,10 @@ reference/
 # external tools (separate projects)
 ui-ux-pro-max-skill/
 
+# database exports (contain real PII — never commit)
+db-export/
+*.dump
+
 # local claude settings
 .claude/settings.local.json
 

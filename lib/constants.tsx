@@ -44,7 +44,7 @@ export const DAILY_WEIGHTED_CONFIG: Quest[] = [
     { id: 'p1', title: '打拳',     sub: '每日至少打一種拳或運動30分鐘',             reward: 500, icon: '🥊' },
     { id: 'p2', title: '觀心書',   sub: '閱讀觀心書',                               reward: 500, icon: '📖' },
     { id: 'p3', title: '大悲咒',   sub: '持誦大悲咒',                               reward: 500, icon: '🕉️' },
-    { id: 'p4', title: '子時入睡', sub: '子時（23:00）前入睡',                      reward: 500, icon: '🌙' },
+    { id: 'p4', title: '子時入睡', sub: '子時（23:00–01:00）入睡',                  reward: 500, icon: '🌙' },
     { id: 'p5', title: '痛參',     sub: '對生活中遇到的痛苦，透過內觀參解其出現的意義', reward: 500, icon: '🧠' },
 ];
 

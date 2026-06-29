@@ -69,8 +69,8 @@ export async function undoCheckIn(userId: string, questId: string): Promise<{
         .from('DailyLogs').delete().eq('id', log.id);
     if (deleteError) return { success: false, error: deleteError.message };
 
-    // 連動：撤銷 p1 時，同邏輯日的 p1_dawn 加成也要撤銷（前置不再成立）
-    if (questId === 'p1') {
+    // 連動：撤銷 p1 或 p4 時，同邏輯日的 p1_dawn 加成也要撤銷（前置不再成立）
+    if (questId === 'p1' || questId === 'p4') {
         const { data: dawnLogs } = await supabase
             .from('DailyLogs')
             .select('*')

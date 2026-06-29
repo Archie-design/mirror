@@ -136,16 +136,22 @@ export function DailyQuestsTab({
     const p1DoneRecently = p1Done || logs.some(l =>
         l.QuestID === 'p1' && getLogicalDateStr(l.Timestamp) === prevLogicalDateStr
     );
+    // 破曉打拳前置：需先完成子時入睡（p4），採與 p1 相同的「今日或前一邏輯日」判定
+    const p4Done = todayLogs.some(l => l.QuestID === 'p4');
+    const p4DoneRecently = p4Done || logs.some(l =>
+        l.QuestID === 'p4' && getLogicalDateStr(l.Timestamp) === prevLogicalDateStr
+    );
+    const dawnReady = p1DoneRecently && p4DoneRecently;
     const showDawnQuest = p1DoneRecently || dawnDone;
 
-    // 連續提交：p1 到帳後自動補記破曉
+    // 連續提交：p1 到帳後自動補記破曉（需 p4 前置已完成，否則後端會擋下）
     useEffect(() => {
-        if (p1DawnPending && p1Done && !dawnDone) {
+        if (p1DawnPending && p1Done && p4DoneRecently && !dawnDone) {
             setP1DawnPending(false);
             setP1DawnSelected(false);
             onCheckIn(dawnQuest);
         }
-    }, [p1Done, p1DawnPending, dawnDone]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [p1Done, p4DoneRecently, p1DawnPending, dawnDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 飲控 diet ──
     const dietQuests = DIET_QUEST_CONFIG.filter(q => !disabledSet.has(q.id)).map(applyOverride);
@@ -335,25 +341,33 @@ export function DailyQuestsTab({
                     <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">破曉加成</h2>
                     <button
                         onClick={() => dawnDone ? onUndo(dawnQuest) : onCheckIn(dawnQuest)}
-                        disabled={!p1DoneRecently && !dawnDone}
+                        disabled={!dawnReady && !dawnDone}
                         className={`w-full rounded-3xl border p-4 flex items-center gap-4 transition-all active:scale-95 text-left
                             ${dawnDone
                                 ? 'bg-[#C0392B]/10 border-[#C0392B]/40'
-                                : 'bg-white border-[#F5C842]/60 shadow-sm hover:border-[#F5C842]'}`}
+                                : !dawnReady
+                                    ? 'bg-gray-100 border-[#B2DFC0] opacity-40 cursor-not-allowed'
+                                    : 'bg-white border-[#F5C842]/60 shadow-sm hover:border-[#F5C842]'}`}
                     >
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-[#F5FAF7] shrink-0 ${dawnDone ? 'text-[#C0392B]' : 'text-[#F5C842]'}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-[#F5FAF7] shrink-0 ${dawnDone ? 'text-[#C0392B]' : !dawnReady ? 'text-gray-400' : 'text-[#F5C842]'}`}>
                             {dawnDone ? <CheckCircle2 size={26} /> : <Sunrise size={26} />}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <h3 className={`font-black text-base ${dawnDone ? 'text-[#C0392B]' : 'text-[#1A2A1A]'}`}>{dawnQuest.title}</h3>
-                            <p className="text-sm text-gray-500">今日已打拳，記錄破曉加成</p>
+                            <h3 className={`font-black text-base ${dawnDone ? 'text-[#C0392B]' : !dawnReady ? 'text-gray-400' : 'text-[#1A2A1A]'}`}>{dawnQuest.title}</h3>
+                            <p className={`text-sm ${!dawnReady && !dawnDone ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {dawnDone
+                                    ? '今日已打拳，記錄破曉加成'
+                                    : !p4DoneRecently
+                                        ? '需先完成子時入睡 🌙'
+                                        : '今日已打拳，記錄破曉加成'}
+                            </p>
                             {dawnDone && dawnLog && (
                                 <p className="text-sm font-mono text-[#C0392B]/70 mt-0.5">{formatCheckInTime(dawnLog.Timestamp)}</p>
                             )}
                         </div>
                         <div className="text-right shrink-0">
-                            <p className={`font-black text-lg ${dawnDone ? 'text-[#C0392B]' : 'text-[#1A6B4A]'}`}>+{dawnQuest.reward}</p>
-                            <p className="text-sm text-gray-500">分</p>
+                            <p className={`font-black text-lg ${dawnDone ? 'text-[#C0392B]' : !dawnReady ? 'text-gray-400' : 'text-[#1A6B4A]'}`}>+{dawnQuest.reward}</p>
+                            <p className={`text-sm ${!dawnReady && !dawnDone ? 'text-gray-400' : 'text-gray-500'}`}>分</p>
                         </div>
                     </button>
                 </section>
