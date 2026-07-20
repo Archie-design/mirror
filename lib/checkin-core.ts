@@ -1,6 +1,7 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 import { getLogicalDateStr } from '@/lib/utils/time';
+import { isSeasonEnded, SEASON_ENDED_ERROR } from '@/lib/season';
 
 // 這個檔案**不是** 'use server'：不會被 Next.js 曝露為 server action，
 // 因此可以放「不做 requireSelf 的內部入帳函式」供其他 server action（例如
@@ -20,6 +21,13 @@ export async function processCheckInCore(
     questReward: number,
     overrideTimestamp?: string,  // ISO 字串，讓凝聚入帳使用 gathering_date 而非 NOW()
 ): Promise<{ success: boolean; error?: string; rewardCapped?: boolean; user?: unknown }> {
+    // 賽季結束總開關：這裡是所有加分入口（每日定課／週任務／o1–o9 審核／週練習／
+    // 臨時任務／實體與線上凝聚）通往 process_checkin 的唯一路徑，擋在這等於全關。
+    // 例外：管理員手動加分（admin.ts）刻意不走本函式，賽季結束後仍可補分／紂正。
+    if (await isSeasonEnded()) {
+        return { success: false, error: SEASON_ENDED_ERROR };
+    }
+
     const supabase = getServiceClient();
     const logicalTodayStr = getLogicalDateStr();
 

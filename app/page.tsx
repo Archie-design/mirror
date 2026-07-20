@@ -593,6 +593,9 @@ export default function App() {
           DisabledQuests: tryParseJson<SystemSettings['DisabledQuests']>(sObj.DisabledQuests),
           CourseEvents: tryParseJson<SystemSettings['CourseEvents']>(sObj.CourseEvents),
           Announcements: tryParseJson<SystemSettings['Announcements']>(sObj.Announcements),
+          // 布林欄位需顯式解析：SystemSettings 一律以字串儲存，若靠 spread 帶入，
+          // "false" 會被當成 truthy 而誤判為賽季已結束。
+          SeasonEnded: sObj.SeasonEnded?.trim().toLowerCase() === 'true',
         });
       }
 
@@ -898,6 +901,7 @@ export default function App() {
             formatCheckInTime={formatCheckInTime}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
+            seasonEnded={systemSettings?.SeasonEnded}
           />
         )}
         {activeTab === 'weekly' && userData && (
@@ -913,6 +917,7 @@ export default function App() {
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
+            seasonEnded={systemSettings?.SeasonEnded}
             userId={userData.UserID}
             tempQuestApplications={myTempQuestApps}
             onTempQuestAppUpdated={async () => {
@@ -961,6 +966,7 @@ export default function App() {
             onUndo={setUndoTarget}
             questRewardOverrides={systemSettings?.QuestRewardOverrides}
             disabledQuests={systemSettings?.DisabledQuests}
+            seasonEnded={systemSettings?.SeasonEnded}
           />
         )}
         {activeTab === 'rank' && <RankTab leaderboard={leaderboard} currentUserId={userData?.UserID} currentUser={userData ?? undefined} />}

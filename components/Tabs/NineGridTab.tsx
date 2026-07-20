@@ -60,12 +60,13 @@ interface NineGridTabProps {
     onUndo: (q: Quest) => void;
     questRewardOverrides?: Record<string, number>;
     disabledQuests?: string[];
+    seasonEnded?: boolean;
 }
 
 export function NineGridTab({
     userId, userName, userData, grid, onFortuneSave, onRefresh,
     logs, currentWeeklyMonday, seasonWeekStart, onCheckIn, onUndo,
-    questRewardOverrides, disabledQuests,
+    questRewardOverrides, disabledQuests, seasonEnded = false,
 }: NineGridTabProps) {
     const [fortunes, setFortunes] = useState<Record<string, number>>(() => {
         const init: Record<string, number> = {};
@@ -120,10 +121,12 @@ export function NineGridTab({
 
         const makeWeekHandler = (questId: string, quest: Quest) => ({
             onCheckIn: (_qid: string, day: Date) => {
+                if (seasonEnded) return;   // 賽季結束：停止新增打卡
                 const qId = `${questId}|${getTaipeiDateStr(day)}`;
                 onCheckIn({ ...quest, id: qId });
             },
             onUndo: (qid: string, day: Date) => {
+                if (seasonEnded) return;   // 賽季結束：已定案成績不可回溯
                 // qid 為 WeekCalendarRow 實際比對到的 QuestID（可能是偏移格式），優先沿用以正確回朔
                 const qId = qid || `${questId}|${getTaipeiDateStr(day)}`;
                 onUndo({ ...quest, id: qId });
@@ -171,7 +174,7 @@ export function NineGridTab({
                         旅伴：{detail?.name ?? grid.companion_type}
                     </span>
                 </div>
-                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} seasonWeekStart={seasonWeekStart} />
+                <NineGridCard grid={grid} userId={userId} userName={userName} onRefresh={onRefresh} seasonWeekStart={seasonWeekStart} seasonEnded={seasonEnded} />
 
                 {/* 人生大戲分享 */}
                 {(wk4SmallQuest || wk4LargeQuest) && (

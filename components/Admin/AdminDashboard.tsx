@@ -1137,6 +1137,33 @@ export function AdminDashboard({
                 {/* ── Tab: 任務 ── */}
                 {activeAdminTab === 'quests' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* ── 賽季結束總開關：一鍵關閉所有打卡加分 ── */}
+                    <section className="space-y-6 md:col-span-2">
+                        <div className="flex items-center gap-2 text-amber-400 font-black text-sm uppercase tracking-widest">🏁 賽季結束總開關</div>
+                        <div className={`border-2 p-6 md:p-8 rounded-4xl space-y-4 shadow-xl transition-colors ${systemSettings.SeasonEnded ? 'bg-amber-950/30 border-amber-500/50' : 'bg-slate-900 border-slate-800'}`}>
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                                開啟後<b className="text-amber-300">立即關閉所有學員打卡加分</b>（每日定課、週任務、九宮格、一次性任務審核入帳、實體與線上凝聚、臨時任務）。
+                                <br />學員的<b className="text-slate-200">歷史紀錄與排行榜仍可正常查看</b>；管理員手動加分不受限制，仍可補分／紂正。此開關可隨時關閉以恢復打卡。
+                            </p>
+                            <label className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-slate-700/60 bg-slate-950/50 cursor-pointer select-none">
+                                <span className="flex-1 min-w-0">
+                                    <span className="text-sm font-black text-white block">
+                                        {systemSettings.SeasonEnded ? '🔒 打卡已關閉（賽季已結束）' : '🔓 打卡開放中（賽季進行中）'}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                                        {systemSettings.SeasonEnded ? '學員目前無法新增任何打卡' : '學員可正常打卡加分'}
+                                    </span>
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={!!systemSettings.SeasonEnded}
+                                    onChange={e => updateGlobalSetting('SeasonEnded', e.target.checked ? 'true' : 'false')}
+                                    className="accent-amber-500 w-6 h-6 shrink-0 cursor-pointer"
+                                />
+                            </label>
+                        </div>
+                    </section>
+
                     <section className="space-y-6 md:col-span-2">
                         <div className="flex items-center gap-2 text-emerald-400 font-black text-sm uppercase tracking-widest"><Sliders size={16} /> 定課分值 & 啟停管理</div>
                         <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-4xl space-y-4 shadow-xl">

@@ -110,6 +110,7 @@ export interface SystemSettings {
   CourseEvents?: CourseEvent[];                    // 慶典場次（後台可動態管理）
   Announcement?: string;                           // 舊版單一公告（保留供向下相容讀取）
   Announcements?: AnnouncementItem[];              // 新版公告陣列（newest first）
+  SeasonEnded?: boolean;                           // 賽季已結束：關閉所有打卡加分（前端鎖定 + 後端拒絕入帳）
 }
 
 export interface BonusApplication {

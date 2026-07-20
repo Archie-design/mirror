@@ -81,6 +81,7 @@ interface DailyQuestsTabProps {
     formatCheckInTime: (timestamp: string) => string;
     questRewardOverrides?: Record<string, number>;
     disabledQuests?: string[];
+    seasonEnded?: boolean;
 }
 
 export function DailyQuestsTab({
@@ -92,6 +93,7 @@ export function DailyQuestsTab({
     formatCheckInTime,
     questRewardOverrides,
     disabledQuests,
+    seasonEnded = false,
 }: DailyQuestsTabProps) {
     const [isEditMode, setIsEditMode] = useState(false);
     const [showOtherBasic, setShowOtherBasic] = useState(false);
@@ -158,14 +160,19 @@ export function DailyQuestsTab({
 
     const renderChip = (q: Quest, isDone: boolean, isDisabled: boolean) => {
         const log = todayLogs.find(l => l.QuestID === q.id);
-        const handleCheckIn = () => isDone ? onUndo(q) : onCheckIn(q);
+        // 賽季結束：一律鎖定（含已完成者，避免回溯改動已定案成績）
+        const lockedBySeason = seasonEnded && !isEditMode;
+        const handleCheckIn = () => {
+            if (lockedBySeason) return;
+            if (isDone) onUndo(q); else onCheckIn(q);
+        };
 
         return (
             <QuestChip
                 key={q.id}
                 quest={q}
                 isDone={isDone}
-                isDisabled={isDisabled}
+                isDisabled={isDisabled || lockedBySeason}
                 doneTime={log ? formatCheckInTime(log.Timestamp) : undefined}
                 onCheckIn={handleCheckIn}
                 editMode={isEditMode}
@@ -251,6 +258,18 @@ export function DailyQuestsTab({
     return (
         <div className={`space-y-5 pb-10 animate-in slide-in-from-bottom-4 duration-500 transition-colors ${isEditMode ? 'bg-amber-50/60 -mx-4 px-4 py-4 rounded-3xl' : ''}`}>
 
+            {/* 賽季結束提示：打卡已關閉，歷史紀錄與排行榜仍可查看 */}
+            {seasonEnded && !isEditMode && (
+                <div className="rounded-2xl bg-[#F5FAF7] border-2 border-[#B2DFC0] p-3 md:p-4 flex items-start gap-2 text-[#1A6B4A] text-sm font-bold shadow-sm">
+                    <span className="text-lg leading-none shrink-0">🏁</span>
+                    <span>
+                        賽季已結束，打卡功能已關閉，感謝你這段旅程的努力！
+                        <br className="hidden md:block" />
+                        <span className="font-normal">你的歷史紀錄與排行榜仍可隨時查看。</span>
+                    </span>
+                </div>
+            )}
+
             {/* 編輯模式提示條（A + C：背景變色 + 紅色提醒不會打卡） */}
             {isEditMode && (
                 <div className="rounded-2xl bg-red-50 border-2 border-red-300 p-3 flex items-start gap-2 text-red-700 text-sm font-bold shadow-sm">
@@ -296,8 +315,8 @@ export function DailyQuestsTab({
                 <section className="space-y-2">
                     <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest px-1">破曉加成</h2>
                     <button
-                        onClick={() => dawnDone ? onUndo(dawnQuest) : onCheckIn(dawnQuest)}
-                        disabled={!dawnReady && !dawnDone}
+                        onClick={() => { if (seasonEnded) return; if (dawnDone) onUndo(dawnQuest); else onCheckIn(dawnQuest); }}
+                        disabled={seasonEnded || (!dawnReady && !dawnDone)}
                         className={`w-full rounded-3xl border p-4 flex items-center gap-4 transition-all active:scale-95 text-left
                             ${dawnDone
                                 ? 'bg-[#C0392B]/10 border-[#C0392B]/40'
@@ -341,12 +360,12 @@ export function DailyQuestsTab({
                             return (
                                 <button
                                     key={q.id}
-                                    onClick={() => isDone ? onUndo(q) : onCheckIn(q)}
-                                    disabled={isBlockedByOther}
+                                    onClick={() => { if (seasonEnded) return; if (isDone) onUndo(q); else onCheckIn(q); }}
+                                    disabled={isBlockedByOther || seasonEnded}
                                     className={`flex-1 flex flex-col items-center gap-1.5 py-4 rounded-2xl border text-base font-bold transition-all active:scale-95
                                         ${isDone
                                             ? 'bg-[#C0392B]/10 border-[#C0392B]/40 text-[#C0392B]'
-                                            : isBlockedByOther
+                                            : (isBlockedByOther || seasonEnded)
                                                 ? 'bg-gray-100 border-[#B2DFC0] text-gray-400 opacity-40 cursor-not-allowed'
                                                 : 'bg-white border-[#B2DFC0] text-[#1A2A1A] hover:border-[#7FC49A]'}`}
                                 >

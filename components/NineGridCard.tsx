@@ -41,9 +41,10 @@ interface NineGridCardProps {
     userName: string;
     onRefresh: () => void;
     seasonWeekStart: Date;
+    seasonEnded?: boolean;
 }
 
-export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStart }: NineGridCardProps) {
+export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStart, seasonEnded = false }: NineGridCardProps) {
     const [completing, setCompleting] = React.useState<number | null>(null);
     const [undoing, setUndoing] = React.useState<number | null>(null);
     const [msg, setMsg] = React.useState('');
@@ -64,6 +65,7 @@ export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStar
     const hasCompletedThisWeek = thisWeekCells.size > 0;
 
     const handleComplete = async (idx: number) => {
+        if (seasonEnded) return;   // 賽季結束：停止新增打卡（後端 nine-grid.ts 亦有把關）
         if (grid.cells[idx].completed) return;
         if (completingRef.current !== null) return;
         completingRef.current = idx;
@@ -84,6 +86,7 @@ export function NineGridCard({ grid, userId, userName, onRefresh, seasonWeekStar
     };
 
     const handleUndo = async (idx: number) => {
+        if (seasonEnded) return;   // 賽季結束：已定案成績不可回溯
         if (undoing !== null) return;
         setUndoing(idx);
         setMsg('');

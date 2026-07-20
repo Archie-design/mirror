@@ -28,6 +28,7 @@ interface WeeklyTopicTabProps {
     onUndo: (q: Quest) => void;
     questRewardOverrides?: Record<string, number>;
     disabledQuests?: string[];
+    seasonEnded?: boolean;
     userId: string;
     tempQuestApplications?: TempQuestApplication[];
     onTempQuestAppUpdated?: () => Promise<void>;
@@ -269,6 +270,7 @@ export function WeeklyTopicTab({
     onUndo,
     questRewardOverrides,
     disabledQuests,
+    seasonEnded = false,
     userId,
     tempQuestApplications = [],
     onTempQuestAppUpdated,
@@ -311,10 +313,12 @@ export function WeeklyTopicTab({
 
     const makeWeekHandler = (questId: string, quest: Quest) => ({
         onCheckIn: (_qid: string, day: Date) => {
+            if (seasonEnded) return;   // 賽季結束：停止新增打卡
             const qId = `${questId}|${getTaipeiDateStr(day)}`;
             onCheckIn({ ...quest, id: qId });
         },
         onUndo: (qid: string, day: Date) => {
+            if (seasonEnded) return;   // 賽季結束：已定案成績不可回溯
             // qid 為 WeekCalendarRow 實際比對到的 QuestID（可能是偏移格式），優先沿用以正確回朔
             const qId = qid || `${questId}|${getTaipeiDateStr(day)}`;
             onUndo({ ...quest, id: qId });

@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NineGridTemplate, UserNineGrid, UserNineGridCell } from '@/types';
 import { logAdminAction } from '@/app/actions/admin';
 import { requireSelf, authErrorResponse } from '@/lib/auth';
+import { isSeasonEnded, SEASON_ENDED_ERROR } from '@/lib/season';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -129,6 +130,9 @@ export async function getMemberGrid(userId: string): Promise<{ success: boolean;
 export async function completeCell(userId: string, _userName: string, cellIndex: number) {
     try { await requireSelf(userId); } catch (e) { return authErrorResponse(e)!; }
     if (cellIndex < 0 || cellIndex > 8) return { success: false, error: '格子索引無效' };
+
+    // 賽季結束總開關：九宮格走獨立 RPC，不經過 processCheckInCore，需單獨把關。
+    if (await isSeasonEnded()) return { success: false, error: SEASON_ENDED_ERROR };
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data, error } = await supabase.rpc('process_nine_grid_cell', {
